@@ -2,7 +2,7 @@
 {% load crispy_forms_tags %}
 
 {% block content %}
-	<a href="{% url 'dashboard' %}" class="btn btn-outline-primary my-3 mx-4">Go Back</a>
+	<a href="{% url 'index' %}" class="btn btn-outline-primary my-3 mx-4">Home</a>
 
 	<div class="row">
 		<div class="col-11 col-md-4 mx-auto mt-5">
@@ -18,4 +18,12 @@
 			</form>
 		</div>
 	</div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set the focus to the SKU input field once the page has fully loaded
+            document.getElementById('id_sku').focus();
+        });
+    </script>
 {% endblock content %}
+

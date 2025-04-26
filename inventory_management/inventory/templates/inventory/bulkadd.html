@@ -1,0 +1,18 @@
+{% extends 'inventory/base.html' %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+	<a href="{% url '' %}" class="btn btn-outline-primary my-3 mx-4">Home</a>
+
+	<div class="row">
+		<div class="col-11 col-md-4 mx-auto mt-5">
+			<h1>New Inventory Units</h1>
+            <form method="post" id="scan_form">
+                {% csrf_token %}
+                <label for="sku">Scan SKU:</label>
+                <input type="text" name="sku" id="sku" autofocus>
+                <button class="btn btn-primary" type="submit">Add Item</button>
+            </form>
+		</div>
+	</div>
+{% endblock content %}
