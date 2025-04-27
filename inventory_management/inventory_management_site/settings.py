@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.1/ref/settings/
 
 
 from pathlib import Path
+from os.path import dirname, join
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,7 +27,11 @@ SECRET_KEY = 'django-insecure-w07&5gwrdk==i^43uy8szu2ftmy_-izw!_-((jd!p-e5l)whj6
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ['.localhost', '127.0.0.1']
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    'host.docker.internal'
+]
 
 
 # Application definition
@@ -120,6 +125,12 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.1/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# per default, the /static/ folder is located on the repo root, which is two levels above the BASE_DIR
+STATICFILES_DIRS = (join(dirname(BASE_DIR), "static"),)
+
+# per default, the /static_root/ folder is located on the repo root and is used as the target for the static files to server
+STATIC_ROOT = join(dirname(BASE_DIR), "static_root")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field

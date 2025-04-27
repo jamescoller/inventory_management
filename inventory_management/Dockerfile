@@ -19,5 +19,11 @@ EXPOSE 8000
 # Set environment variable to avoid Python buffering
 ENV PYTHONUNBUFFERED=1
 
-# Run Django migrations when the container starts
-CMD ["python manage.py migrate && gunicorn inventory_management_site.wsgi:application --bind 127.0.0.1:8000"]
+# Make sure the entrypoint.sh file is executable
+RUN chmod +x entrypoint.sh
+
+COPY entrypoint.sh /app/entrypoint.sh
+
+
+# Set entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"]
