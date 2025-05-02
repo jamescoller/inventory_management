@@ -5,6 +5,8 @@ from django.contrib.auth import authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from .forms import *
 from .models import InventoryItem, Category
+from django_tables2 import SingleTableMixin
+from django_filters.views import FilterView
 from inventory_management_site.settings import LOW_QUANTITY
 from django.contrib import messages
 
