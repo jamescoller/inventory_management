@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
-from .models import Category, InventoryItem, Location
+from .models import InventoryItem, Location
 
 class UserRegisterForm(UserCreationForm):
 	email = forms.EmailField()
@@ -15,6 +15,8 @@ class InventoryItemForm(forms.ModelForm):
 
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
+		#TODO Create a check to handle an empty inventory
+
 		# Get the most recent object
 		most_recent_shipment = InventoryItem.objects.order_by('-id').first().shipment
 		most_recent_location = InventoryItem.objects.order_by('-id').first().location
@@ -24,9 +26,9 @@ class InventoryItemForm(forms.ModelForm):
 
 	class Meta:
 		model = InventoryItem
-		fields = ['shipment', 'sku', 'location']
+		fields = ['shipment', 'upc', 'location']
 
 class MoveItemForm(forms.ModelForm):
 	class Meta:
 		model = InventoryItem
-		fields = ['sku', 'location']
+		fields = ['upc', 'location', 'status']

@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'django_tables2',
     'django_filters',
     'django_htmx',
+    'polymorphic',
 ]
 
 MIDDLEWARE = [
@@ -84,7 +85,7 @@ WSGI_APPLICATION = 'inventory_management_site.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': BASE_DIR / 'inventory_db.sqlite3',
     }
 }
 
