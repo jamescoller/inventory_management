@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.contenttypes.fields import GenericForeignKey
 from polymorphic.models import PolymorphicModel
 
 # Abstract Base Product
@@ -97,7 +98,7 @@ class InventoryItem(PolymorphicModel):
 	shipment = models.CharField(max_length=100, blank=True)
 	timestamp = models.DateTimeField(auto_now_add=True)
 	date_added = models.DateTimeField(auto_now_add=True)
-	product = models.ForeignKey(Product, on_delete=models.CASCADE)
+	product = GenericForeignKey('product_type', 'product_id')
 
 	class Status(models.IntegerChoices):
 		NEW = 1, "new"
