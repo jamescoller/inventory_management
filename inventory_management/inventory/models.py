@@ -1,7 +1,5 @@
 from django.db import models
 from django.contrib.auth.models import User
-from django.contrib.contenttypes.models import ContentType
-from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from polymorphic.models import PolymorphicModel
 
 # Polymorphic Base Product
@@ -34,7 +32,6 @@ class Filament(Product):
 	dry_temp_max_degC = models.IntegerField(blank=True, null=True)
 	dry_temp_ideal_degC = models.IntegerField(blank=True,null=True)
 	dry_time_hrs = models.IntegerField(blank=True, null=True)
-	inventory_items = GenericRelation('InventoryItem')
 
 	def __str__(self):
 		return f"{self.name} ({self.color})"
@@ -54,7 +51,6 @@ class Printer(Product):
 	bed_width_mm = models.IntegerField(blank=True, null=True)
 	max_height_mm = models.IntegerField(blank=True, null=True)
 	print_volume_mm3 = models.DecimalField(decimal_places=2, max_digits=10, blank=True, null=True)
-	inventory_items = GenericRelation('InventoryItem')
 
 	def __str__(self):
 		return f"{self.name} - {self.model}"
@@ -68,7 +64,6 @@ class Dryer(Product):
 	model = models.CharField(max_length=100)
 	num_slots = models.IntegerField( default=1)
 	max_temp_degC = models.IntegerField(blank=True, null=True)
-	inventory_items = GenericRelation('InventoryItem')
 
 	# class Meta(Product.Meta):
 	# 	db_table = 'dryers'
@@ -83,7 +78,6 @@ class AMS(Product):
 	mfr = models.CharField(max_length=100, default='Bambu Lab')
 	model = models.CharField(max_length=100, default='AMS')
 	num_slots = models.IntegerField(blank=True, default=4)
-	inventory_items = GenericRelation('InventoryItem')
 	# class Meta(Product.Meta):
 	# 	db_table = 'ams'
 		# db_table_comment = 'AMS units on the market; not necessarily in current inventory'
@@ -101,7 +95,6 @@ class Hardware(Product):
 		HARDWARE = 3, 'Hardware'
 
 	kind = models.IntegerField(choices=HardwareType.choices, default=HardwareType.HARDWARE)
-	inventory_items = GenericRelation('InventoryItem')
 	# class Meta(Product.Meta):
 	# 	db_table = 'hardware'
 		# db_table_comment = 'Hardware, accessories, or parts on the market; not necessarily in current inventory'
@@ -115,7 +108,7 @@ class InventoryItem(models.Model):
 	shipment = models.CharField(max_length=100, blank=True, null=True)
 	timestamp = models.DateTimeField(auto_now_add=True)
 	date_added = models.DateTimeField(auto_now_add=True)
-	product = models.ForeignKey(Product, on_delete=models.CASCADE)
+	product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="inventory_items")
 
 	class Status(models.IntegerChoices):
 		NEW = 1, "new"
