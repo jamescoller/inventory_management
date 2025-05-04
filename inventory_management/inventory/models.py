@@ -4,7 +4,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from polymorphic.models import PolymorphicModel
 
-# Abstract Base Product
+# Polymorphic Base Product
 class Product(PolymorphicModel):
 	name = models.CharField(max_length=255)
 	upc = models.CharField(max_length=50, unique=True) # the 13-digit barcode
@@ -14,7 +14,7 @@ class Product(PolymorphicModel):
 	category = models.CharField(max_length=255)
 
 	class Meta:
-		abstract = True
+		# abstract = True
 		ordering = ['sku']
 
 	def __str__(self):
@@ -36,6 +36,9 @@ class Filament(Product):
 	dry_time_hrs = models.IntegerField(blank=True)
 	inventory_items = GenericRelation('InventoryItem')
 
+	def __str__(self):
+		return f"{self.name} ({self.color})"
+
 	# Edit the database table that filament will be added to, and note it
 	# Abstract=False by default on children classes
 	# class Meta(Product.Meta):
@@ -53,6 +56,8 @@ class Printer(Product):
 	print_volume_mm3 = models.DecimalField(decimal_places=2, max_digits=10, blank=True)
 	inventory_items = GenericRelation('InventoryItem')
 
+	def __str__(self):
+		return f"{self.name} - {self.model}"
 	# class Meta(Product.Meta):
 	# 	db_table = 'printers'
 		# db_table_comment = 'Printers offered by Bambu; not necessarily in current inventory'
@@ -69,6 +74,9 @@ class Dryer(Product):
 	# 	db_table = 'dryers'
 		# db_table_comment = 'Dryers on the market; not necessarily in current inventory'
 
+	def __str__(self):
+		return f"{self.name} (Part #: {self.model})"
+
 
 # AMS subclass
 class AMS(Product):
@@ -79,6 +87,9 @@ class AMS(Product):
 	# class Meta(Product.Meta):
 	# 	db_table = 'ams'
 		# db_table_comment = 'AMS units on the market; not necessarily in current inventory'
+
+	def __str__(self):
+		return f"{self.name} (Part #: {self.model})"
 
 
 # Hardware subclass
@@ -95,8 +106,10 @@ class Hardware(Product):
 	# 	db_table = 'hardware'
 		# db_table_comment = 'Hardware, accessories, or parts on the market; not necessarily in current inventory'
 
+	def __str__(self):
+		return f"{self.name} (Part #: {self.part_number})"
 
-# InventoryItem with generic relation to any Product subclass
+# InventoryItem with ForeignKey to polymorphic Product
 class InventoryItem(models.Model):
 	upc = models.CharField(max_length=120)
 	shipment = models.CharField(max_length=100, blank=True)
@@ -104,7 +117,8 @@ class InventoryItem(models.Model):
 	date_added = models.DateTimeField(auto_now_add=True)
 	content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
 	object_id = models.PositiveIntegerField()
-	product = GenericForeignKey('content_type', 'object_id')
+	product = models.ForeignKey(Product, on_delete=models.CASCADE)
+	# product = GenericForeignKey('content_type', 'object_id')
 
 	class Status(models.IntegerChoices):
 		NEW = 1, "new"

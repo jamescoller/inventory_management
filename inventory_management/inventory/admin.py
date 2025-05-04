@@ -2,13 +2,10 @@ from django.contrib import admin
 from polymorphic.admin import PolymorphicParentModelAdmin, PolymorphicChildModelAdmin, PolymorphicChildModelFilter
 from .models import *
 
+# ----- Polymorphic Child Admins -----
+
 class ProductChildAdmin(PolymorphicChildModelAdmin):
     base_model = Product
-
-    base_form = ...
-    base_fieldsets = (
-        ...
-    )
 
 @admin.register(Filament)
 class FilamentAdmin(ProductChildAdmin):
@@ -26,38 +23,43 @@ class HardwareAdmin(ProductChildAdmin):
     show_in_index = True
 
 @admin.register(Dryer)
-class DryerAdmin(ProductChildAdmin):
+class HardwareAdmin(ProductChildAdmin):
     base_model = Dryer
     show_in_index = True
 
 @admin.register(AMS)
-class AMSAdmin(ProductChildAdmin):
+class HardwareAdmin(ProductChildAdmin):
     base_model = AMS
     show_in_index = True
 
-# @admin.register(Product)
-# class ProductParentAdmin(PolymorphicParentModelAdmin):
-#     base_model = Product
-#     child_models = (Filament, Printer, Hardware, Dryer, AMS)
-
 class OrderChildAdmin(PolymorphicChildModelAdmin):
     base_model = Order
-
-    base_form = ...
-    base_fieldsets = (
-        ...
-    )
 
 @admin.register(Shipment)
 class ShipmentAdmin(ProductChildAdmin):
     base_model = Shipment
     show_in_index = True
 
+# ----- Polymorphic Parent Admin -----
+
+@admin.register(Product)
+class ProductParentAdmin(PolymorphicParentModelAdmin):
+    base_model = Product
+    child_models = (Filament, Printer, Hardware, Dryer, AMS,)
+    list_display = ('name', 'upc', 'category')
+
 @admin.register(Order)
 class OrderParentAdmin(PolymorphicParentModelAdmin):
     base_model = Order
-    child_models = Shipment
+    child_models = (Shipment,)
     show_in_index = True
 
-admin.site.register(InventoryItem)
-admin.site.register(Location)
+# ----- InventoryItem Admin -----
+
+@admin.register(InventoryItem)
+class InventoryItemAdmin(admin.ModelAdmin):
+    list_display = ('product', 'tracking_number', 'timestamp')
+
+@admin.register(Location)
+class LocationAdmin(admin.ModelAdmin):
+    list_display = ('name')
