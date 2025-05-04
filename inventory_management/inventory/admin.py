@@ -46,7 +46,6 @@ class ShipmentAdmin(ProductChildAdmin):
 class ProductParentAdmin(PolymorphicParentModelAdmin):
     base_model = Product
     child_models = (Filament, Printer, Hardware, Dryer, AMS,)
-    list_display = ('name', 'upc', 'category')
 
 @admin.register(Order)
 class OrderParentAdmin(PolymorphicParentModelAdmin):

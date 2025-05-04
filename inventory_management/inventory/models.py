@@ -8,10 +8,10 @@ from polymorphic.models import PolymorphicModel
 class Product(PolymorphicModel):
 	name = models.CharField(max_length=255)
 	upc = models.CharField(max_length=50, unique=True) # the 13-digit barcode
-	sku = models.CharField(max_length=8) # a 6 character internal code within Bambu Lab
-	price = models.DecimalField(decimal_places=2, max_digits=5)
+	sku = models.CharField(max_length=8, null=True, blank=True) # a 6 character internal code within Bambu Lab
+	price = models.DecimalField(decimal_places=2, max_digits=5, null=True, blank=True)
 	notes = models.TextField(blank=True)
-	category = models.CharField(max_length=255)
+	category = models.CharField(max_length=255, null=True, blank=True)
 
 	class Meta:
 		# abstract = True
@@ -50,10 +50,10 @@ class Printer(Product):
 	mfr = models.CharField(max_length=100, default='Bambu Lab')
 	model = models.CharField(max_length=100, default='X1 Carbon')
 	num_extruders = models.IntegerField()
-	bed_length_mm = models.IntegerField(blank=True)
-	bed_width_mm = models.IntegerField(blank=True)
-	max_height_mm = models.IntegerField(blank=True)
-	print_volume_mm3 = models.DecimalField(decimal_places=2, max_digits=10, blank=True)
+	bed_length_mm = models.IntegerField(blank=True, null=True)
+	bed_width_mm = models.IntegerField(blank=True, null=True)
+	max_height_mm = models.IntegerField(blank=True, null=True)
+	print_volume_mm3 = models.DecimalField(decimal_places=2, max_digits=10, blank=True, null=True)
 	inventory_items = GenericRelation('InventoryItem')
 
 	def __str__(self):
@@ -67,7 +67,7 @@ class Dryer(Product):
 	mfr = models.CharField(max_length=100)
 	model = models.CharField(max_length=100)
 	num_slots = models.IntegerField( default=1)
-	max_temp_degC = models.IntegerField(blank=True)
+	max_temp_degC = models.IntegerField(blank=True, null=True)
 	inventory_items = GenericRelation('InventoryItem')
 
 	# class Meta(Product.Meta):
@@ -81,7 +81,7 @@ class Dryer(Product):
 # AMS subclass
 class AMS(Product):
 	mfr = models.CharField(max_length=100, default='Bambu Lab')
-	model = models.CharField(max_length=100, default='X1 Carbon')
+	model = models.CharField(max_length=100, default='AMS')
 	num_slots = models.IntegerField(blank=True, default=4)
 	inventory_items = GenericRelation('InventoryItem')
 	# class Meta(Product.Meta):
@@ -132,7 +132,7 @@ class InventoryItem(models.Model):
 	status = models.PositiveSmallIntegerField(choices=Status.choices, default=Status.NEW)
 
 	def __str__(self):
-		return f"{self.sku} - {self.timestamp.strftime('%Y-%m-%d')}"
+		return f"{self.upc} - {self.timestamp.strftime('%Y-%m-%d')}"
 
 
 class Location(models.Model):

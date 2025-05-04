@@ -1,0 +1,16 @@
+{% extends 'inventory/base.html' %}
+{% block content %}
+<div class="container py-4">
+  <h2>No product found with UPC {{ upc }}</h2>
+  <p>Select what type of product you want to create:</p>
+
+  <div class="list-group">
+      <a href="{% url 'add_filament' %}?from_inventory=1" class="list-group-item list-group-item-action">➕ Add Filament</a>
+      <a href="{% url 'add_hardware' %}?from_inventory=1" class="list-group-item list-group-item-action">➕ Add Hardware</a>
+      <a href="{% url 'add_dryer' %}?from_inventory=1" class="list-group-item list-group-item-action">➕ Add Dryer</a>
+      <a href="{% url 'add_ams' %}?from_inventory=1" class="list-group-item list-group-item-action">➕ Add AMS</a>
+      <a href="{% url 'add_printer' %}?from_inventory=1" class="list-group-item list-group-item-action">➕ Add Printer</a>
+    <!-- Add more as needed -->
+  </div>
+</div>
+{% endblock %}
