@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.contrib.contenttypes.models import ContentType
-from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from polymorphic.models import PolymorphicModel
 
 # Abstract Base Product
@@ -11,6 +11,7 @@ class Product(PolymorphicModel):
 	sku = models.CharField(max_length=8) # a 6 character internal code within Bambu Lab
 	price = models.DecimalField(decimal_places=2, max_digits=5)
 	notes = models.TextField(blank=True)
+	category = models.CharField(max_length=255)
 
 	class Meta:
 		abstract = True
@@ -33,6 +34,7 @@ class Filament(Product):
 	dry_temp_max_degC = models.IntegerField(blank=True)
 	dry_temp_ideal_degC = models.IntegerField(blank=True)
 	dry_time_hrs = models.IntegerField(blank=True)
+	inventory_items = GenericRelation('InventoryItem')
 
 	# Edit the database table that filament will be added to, and note it
 	# Abstract=False by default on children classes
@@ -49,6 +51,7 @@ class Printer(Product):
 	bed_width_mm = models.IntegerField(blank=True)
 	max_height_mm = models.IntegerField(blank=True)
 	print_volume_mm3 = models.DecimalField(decimal_places=2, max_digits=10, blank=True)
+	inventory_items = GenericRelation('InventoryItem')
 
 	# class Meta(Product.Meta):
 	# 	db_table = 'printers'
@@ -60,6 +63,7 @@ class Dryer(Product):
 	model = models.CharField(max_length=100)
 	num_slots = models.IntegerField( default=1)
 	max_temp_degC = models.IntegerField(blank=True)
+	inventory_items = GenericRelation('InventoryItem')
 
 	# class Meta(Product.Meta):
 	# 	db_table = 'dryers'
@@ -71,7 +75,7 @@ class AMS(Product):
 	mfr = models.CharField(max_length=100, default='Bambu Lab')
 	model = models.CharField(max_length=100, default='X1 Carbon')
 	num_slots = models.IntegerField(blank=True, default=4)
-
+	inventory_items = GenericRelation('InventoryItem')
 	# class Meta(Product.Meta):
 	# 	db_table = 'ams'
 		# db_table_comment = 'AMS units on the market; not necessarily in current inventory'
@@ -86,19 +90,21 @@ class Hardware(Product):
 		HARDWARE = 3, 'Hardware'
 
 	kind = models.IntegerField(choices=HardwareType.choices, default=HardwareType.HARDWARE)
-
+	inventory_items = GenericRelation('InventoryItem')
 	# class Meta(Product.Meta):
 	# 	db_table = 'hardware'
 		# db_table_comment = 'Hardware, accessories, or parts on the market; not necessarily in current inventory'
 
 
 # InventoryItem with generic relation to any Product subclass
-class InventoryItem(PolymorphicModel):
+class InventoryItem(models.Model):
 	upc = models.CharField(max_length=120)
 	shipment = models.CharField(max_length=100, blank=True)
 	timestamp = models.DateTimeField(auto_now_add=True)
 	date_added = models.DateTimeField(auto_now_add=True)
-	product = GenericForeignKey('product_type', 'product_id')
+	content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+	object_id = models.PositiveIntegerField()
+	product = GenericForeignKey('content_type', 'object_id')
 
 	class Status(models.IntegerChoices):
 		NEW = 1, "new"
@@ -118,7 +124,7 @@ class InventoryItem(PolymorphicModel):
 		return f"{self.sku} - {self.timestamp.strftime('%Y-%m-%d')}"
 
 
-class Location(PolymorphicModel):
+class Location(models.Model):
 	name = models.CharField(max_length=200)
 	class Meta:
 		verbose_name_plural = 'locations'
