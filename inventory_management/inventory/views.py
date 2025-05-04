@@ -11,14 +11,15 @@ from django.shortcuts import render, get_object_or_404
 class AboutView(TemplateView):
 	template_name = 'inventory/about.html'
 
-def add_inventory_view(request):
-	if request.method == 'POST':
-		upc = request.POST.get('upc')
-		tracking_number = request.POST.get('tracking_number')
-		product = get_object_or_404(Product.objects.all(), upc=upc)
-		InventoryItem.objects.create(product=product, shipment=tracking_number, upc=upc)
+class addInventoryView(View):
+	def addInventory(self, request):
+		if request.method == 'POST':
+			upc = request.POST.get('upc')
+			tracking_number = request.POST.get('tracking_number')
+			product = get_object_or_404(Product.objects.all(), upc=upc)
+			InventoryItem.objects.create(product=product, shipment=tracking_number, upc=upc)
 
-	return render(request, 'add_inventory.html')
+		return render(request, 'inventory/bulkadd.html')
 
 class Index(TemplateView):
 	template_name = 'inventory/index.html'
@@ -42,3 +43,9 @@ class SignUpView(View):
 			return redirect('index')
 
 		return render(request, 'inventory/signup.html', {'form': form})
+
+
+class Dashboard(LoginRequiredMixin, View):
+	def get(self, request):
+		items = InventoryItem.objects.all()
+		return render(request, 'inventory/dashboard.html', {'items': items})
