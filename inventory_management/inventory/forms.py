@@ -15,14 +15,21 @@ class InventoryItemForm(forms.ModelForm):
 
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
-		#TODO Create a check to handle an empty inventory
 
-		# Get the most recent object
-		most_recent_shipment = InventoryItem.objects.order_by('-id').first().shipment
-		most_recent_location = InventoryItem.objects.order_by('-id').first().location
-		# Set it as the initial value
-		self.fields['location'].initial = most_recent_location
-		self.fields['shipment'].initial = most_recent_shipment
+		has_inventory = InventoryItem.objects.exists()
+
+		if has_inventory:
+
+			# Get the most recent object
+			most_recent_shipment = InventoryItem.objects.order_by('-id').first().shipment
+			most_recent_location = InventoryItem.objects.order_by('-id').first().location
+			# Set it as the initial value
+			self.fields['location'].initial = most_recent_location
+			self.fields['shipment'].initial = most_recent_shipment
+
+		# if not has_inventory:
+		# 	self.fields['location'].initial = 'NULL'
+		# 	self.fields['shipment'].initial = 'NULL'
 
 	class Meta:
 		model = InventoryItem

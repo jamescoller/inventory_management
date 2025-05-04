@@ -11,15 +11,31 @@ from django.shortcuts import render, get_object_or_404
 class AboutView(TemplateView):
 	template_name = 'inventory/about.html'
 
-class addInventoryView(View):
-	def addInventory(self, request):
-		if request.method == 'POST':
-			upc = request.POST.get('upc')
-			tracking_number = request.POST.get('tracking_number')
-			product = get_object_or_404(Product.objects.all(), upc=upc)
-			InventoryItem.objects.create(product=product, shipment=tracking_number, upc=upc)
+# class addInventoryView(View):
+# 	def get(self, request):
+# 		if request.method == 'POST':
+# 			upc = request.POST.get('upc')
+# 			tracking_number = request.POST.get('tracking_number')
+# 			product = get_object_or_404(Product.objects.all(), upc=upc)
+# 			InventoryItem.objects.create(product=product, shipment=tracking_number, upc=upc)
+#
+# 		return render(request, 'inventory/item_form.html', {'form': InventoryItemForm()})
 
-		return render(request, 'inventory/bulkadd.html')
+
+class addInventoryView(LoginRequiredMixin, CreateView):
+	model = InventoryItem
+	form_class = InventoryItemForm
+	template_name = 'inventory/item_form.html'
+	success_url = reverse_lazy('add_inventory')
+
+	def get_context_data(self, **kwargs):
+		context = super().get_context_data(**kwargs)
+		context['location'] = Location.objects.all()
+		return context
+
+	def form_valid(self, form):
+		form.instance.user = self.request.user
+		return super().form_valid(form)
 
 class Index(TemplateView):
 	template_name = 'inventory/index.html'

@@ -24,16 +24,16 @@ class Product(PolymorphicModel):
 # Filament subclass
 class Filament(Product):
 	material = models.CharField(max_length=50)
-	material_type = models.CharField(max_length=50, blank=True)
+	material_type = models.CharField(max_length=50, blank=True, null=True)
 	color = models.CharField(max_length=50)
 	hex_code = models.CharField(max_length=7)
-	print_temp_min_degC = models.IntegerField(blank=True)
-	print_temp_max_degC = models.IntegerField(blank=True)
-	print_temp_ideal_degC = models.IntegerField(blank=True)
-	dry_temp_min_degC = models.IntegerField(blank=True)
-	dry_temp_max_degC = models.IntegerField(blank=True)
-	dry_temp_ideal_degC = models.IntegerField(blank=True)
-	dry_time_hrs = models.IntegerField(blank=True)
+	print_temp_min_degC = models.IntegerField(blank=True, null=True)
+	print_temp_max_degC = models.IntegerField(blank=True, null=True)
+	print_temp_ideal_degC = models.IntegerField(blank=True, null=True)
+	dry_temp_min_degC = models.IntegerField(blank=True, null=True)
+	dry_temp_max_degC = models.IntegerField(blank=True, null=True)
+	dry_temp_ideal_degC = models.IntegerField(blank=True,null=True)
+	dry_time_hrs = models.IntegerField(blank=True, null=True)
 	inventory_items = GenericRelation('InventoryItem')
 
 	def __str__(self):
@@ -112,13 +112,10 @@ class Hardware(Product):
 # InventoryItem with ForeignKey to polymorphic Product
 class InventoryItem(models.Model):
 	upc = models.CharField(max_length=120)
-	shipment = models.CharField(max_length=100, blank=True)
+	shipment = models.CharField(max_length=100, blank=True, null=True)
 	timestamp = models.DateTimeField(auto_now_add=True)
 	date_added = models.DateTimeField(auto_now_add=True)
-	content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-	object_id = models.PositiveIntegerField()
 	product = models.ForeignKey(Product, on_delete=models.CASCADE)
-	# product = GenericForeignKey('content_type', 'object_id')
 
 	class Status(models.IntegerChoices):
 		NEW = 1, "new"
