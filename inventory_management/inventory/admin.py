@@ -58,8 +58,8 @@ class OrderParentAdmin(PolymorphicParentModelAdmin):
 
 @admin.register(InventoryItem)
 class InventoryItemAdmin(admin.ModelAdmin):
-    list_display = ('product', 'tracking_number', 'timestamp')
+    list_display = ('product', 'shipment', 'timestamp')
 
 @admin.register(Location)
 class LocationAdmin(admin.ModelAdmin):
-    list_display = ('name')
+    list_display = ('name',)
