@@ -31,6 +31,8 @@ DEBUG = True
 ALLOWED_HOSTS = ['*']
 
 
+
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -111,7 +113,9 @@ AUTH_PASSWORD_VALIDATORS = [
 
 CSRF_TRUSTED_ORIGINS = [
     'http://192.168.68.86:8080',
+    'http://192.168.68.89:8080',
     'http://127.0.0.1:8080',
+    'http://knowledge.local:8080'
 ]
 
 

@@ -7,7 +7,7 @@ class Product(PolymorphicModel):
 	name = models.CharField(max_length=255)
 	upc = models.CharField(max_length=50, unique=True) # the 13-digit barcode
 	sku = models.CharField(max_length=8, null=True, blank=True) # a 6 character internal code within Bambu Lab
-	price = models.DecimalField(decimal_places=2, max_digits=5, null=True, blank=True)
+	price = models.DecimalField(decimal_places=2, max_digits=6, null=True, blank=True)
 	notes = models.TextField(blank=True)
 	category = models.CharField(max_length=255, null=True, blank=True)
 
