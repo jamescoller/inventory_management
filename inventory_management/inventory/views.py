@@ -5,11 +5,13 @@ from django.contrib.auth import authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from django.db.models import Count
+from django.db.models import Sum
 from django.contrib.contenttypes.models import ContentType
 from .forms import *
 from .models import *
 from django.shortcuts import render, get_object_or_404
 from decimal import Decimal
+import json
 
 class AboutView(TemplateView):
     template_name = 'inventory/about.html'
@@ -139,6 +141,31 @@ class Dashboard(LoginRequiredMixin, View):
             if item.product.price:
                 total_value += item.product.price * Decimal(str(item.product.inventory_count))
 
+        # Aggregate Filament items by material
+        materials = (
+                Filament.objects.values('material')
+                .annotate(count=Count('id'))
+                .order_by('-count')  # <-- This sorts it
+        )
+
+        # Prepare data for the pie chart
+        filament_chart_data = {
+            'labels': [item['material'] for item in materials],
+            'data': [item['count'] for item in materials],
+        }
+
+        # Aggregate Filament items by color
+        colors = (
+            Filament.objects.values('color')
+            .annotate(count=Count('id'))
+            .order_by('-count')  # <-- this sorts it
+        )
+
+        # Prepare data for the pie chart
+        color_chart_data = {
+            'labels': [item['color'] for item in colors],
+            'data': [item['count'] for item in colors],
+        }
 
 
         # Get latest timestamp for summary
@@ -146,6 +173,8 @@ class Dashboard(LoginRequiredMixin, View):
         latest_timestamp = latest_item.timestamp if latest_item else None
 
         grand_total = sum(item.product.inventory_count for item in items)
+
+        # print(json.dumps(color_chart_data))
 
 
         return render(request, 'inventory/dashboard.html', {
@@ -156,6 +185,8 @@ class Dashboard(LoginRequiredMixin, View):
             'locations': Location.objects.all(),
             'grand_total': grand_total,
             'value': total_value,
+            'filament_chart_data': filament_chart_data,
+            'color_chart_data': color_chart_data,
         })
 
 class AddFilamentView(LoginRequiredMixin, CreateView):
@@ -307,3 +338,73 @@ class AddAMSView(LoginRequiredMixin, CreateView):
                 messages.success(self.request, f"{self.object.name} and inventory item created.")
                 return redirect('add_inventory')
         return response
+
+class FilamentView(LoginRequiredMixin, View):
+    def get(self, request):
+
+        item_counts = (
+            Filament.objects
+            .values('product', 'product__name')
+            .annotate(count=Count('id'))
+        )
+
+        # Get actual product instances
+        items = []
+        for entry in item_counts:
+            inv = InventoryItem.objects.filter(product_id=entry['filament']).first()
+            if inv:
+                inv.product.inventory_count = entry['count']  # inject count
+                inv.product.class_name = inv.product.get_real_instance_class().__name__
+                items.append(inv)
+
+        total_value = Decimal('0.00')
+
+        # Calculate total value
+        for item in items:
+            if item.product.price:
+                total_value += item.product.price * Decimal(str(item.product.inventory_count))
+
+        inventory_by_sku = (
+            InventoryItem.objects
+            .values('product__sku', 'product__name')
+            .annotate(count=Count('id'))
+            .order_by('-count')
+        )
+
+        # Aggregate Filament items by material
+        materials = (
+            Filament.objects.values('material')
+            .annotate(count=Count('id'))
+            .order_by('-count')  # <-- This sorts it
+        )
+
+        # Prepare data for the pie chart
+        filament_chart_data = {
+            'labels': [item['material'] for item in materials],
+            'data': [item['count'] for item in materials],
+        }
+
+        # Aggregate Filament items by color
+        colors = (
+            Filament.objects.values('color')
+            .annotate(count=Count('id'))
+            .order_by('-count')  # <-- this sorts it
+        )
+
+        # Prepare data for the pie chart
+        color_chart_data = {
+            'labels': [item['color'] for item in colors],
+            'data': [item['count'] for item in colors],
+        }
+
+        num_filament_rolls = sum(item.product.inventory_count for item in items)
+
+        return render(request, 'inventory/dashboard.html', {
+            'item_counts': item_counts,
+            'item_counts_by_type': item_counts_by_type,
+            'items': items,
+            'locations': Location.objects.all(),
+            'filament_chart_data': filament_chart_data,
+            'color_chart_data': color_chart_data,
+            'inventory_by_sku': inventory_by_sku,
+        })
