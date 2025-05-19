@@ -89,7 +89,7 @@ WSGI_APPLICATION = 'inventory_management_site.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'inventory_db.sqlite3',
+        'NAME': 'inventory_db.sqlite3',
     }
 }
 
