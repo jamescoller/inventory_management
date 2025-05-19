@@ -15,5 +15,4 @@ pip-selfcheck.json
 .idea
 .DS_Store
 .idea/
-.DS_Store
 static_root/

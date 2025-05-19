@@ -16,7 +16,7 @@ from os.path import dirname, join
 from django.contrib.messages import constants as messages
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent
 
 
 # Quick-start development settings - unsuitable for production
@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'django_filters',
     'django_htmx',
     'polymorphic',
+    'django_extensions',
 ]
 
 MIDDLEWARE = [
@@ -112,9 +113,12 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    'http://192.168.68.86:8080',
-    'http://192.168.68.89:8080',
+    # Port 8000 would only be used on a local test deployment
+    'http://localhost:8000',
+    'http://127.0.0.1:8000'
+    # Port 8080 is used on the NAS
     'http://127.0.0.1:8080',
+    'http://localhost:8080',
     'http://knowledge.local:8080'
 ]
 
