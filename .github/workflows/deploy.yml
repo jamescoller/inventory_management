@@ -22,4 +22,4 @@ jobs:
           script: |
             cd /volume1/docker/inventory_management
             git pull origin main
-            docker compose -f docker-compose.yml up -d --build
+            docker-compose -f docker-compose.yml up -d --build
