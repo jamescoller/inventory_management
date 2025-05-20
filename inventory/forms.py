@@ -68,3 +68,9 @@ class HardwareForm(forms.ModelForm):
 		model = Hardware
 		fields = ['name', 'upc', 'sku', 'price', 'notes', 'category',
 				  'usage']
+
+
+class InventoryEditForm(forms.ModelForm):
+	class Meta:
+		model = InventoryItem
+		fields = '__all__'

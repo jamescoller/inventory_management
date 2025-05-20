@@ -9,9 +9,13 @@ from django.db.models import Sum
 from django.contrib.contenttypes.models import ContentType
 from .forms import *
 from .models import *
+from .tables import *
 from django.shortcuts import render, get_object_or_404
 from decimal import Decimal
 import json
+from django_tables2 import SingleTableMixin
+from django_filters.views import FilterView
+import django_filters
 
 class AboutView(TemplateView):
     template_name = 'inventory/about.html'
@@ -20,6 +24,68 @@ class AddProductChoiceView(LoginRequiredMixin, CreateView):
     def get(self, request):
         upc = request.session.get('pending_inventory', {}).get('upc', '')
         return render(request, 'inventory/add_product_choice.html', {'upc': upc})
+
+
+class InventoryFilter(django_filters.FilterSet):
+    sku = django_filters.CharFilter(field_name='product__sku', lookup_expr='exact', label='SKU')
+    upc = django_filters.CharFilter(field_name='product__upc', lookup_expr='exact', label='UPC')
+    name = django_filters.CharFilter(field_name='product__name', lookup_expr='icontains', label='Name')
+
+    class Meta:
+        model = InventoryItem
+        fields = ['sku', 'upc', 'name']
+
+
+class InventorySearchView(LoginRequiredMixin, View):
+    def get(self, request):
+        # Get search parameters from the query string
+        sku = request.GET.get('sku', '')
+        upc = request.GET.get('upc', '')
+        name = request.GET.get('name', '')
+        location = request.GET.get('location', '')
+
+        # Base queryset, excluding depleted items
+        items = InventoryItem.objects.exclude(status=5).select_related('product', 'location')
+
+        # Apply filters
+        if sku:
+            items = items.filter(product__sku=sku)
+        if upc:
+            items = items.filter(product__upc=upc)
+        if name:
+            items = items.filter(product__name__icontains=name)
+        if location:
+            items = items.filter(location__name__icontains=location)
+
+        # Pass filtered items to the template
+        context = {
+            'items': items or InventoryItem.objects.none(),
+            'search_values': {
+                'sku': sku,
+                'upc': upc,
+                'name': name,
+                'location': location,
+            },
+        }
+
+        return render(request, 'inventory/inventory_search.html', context)
+
+
+class inventoryEditView(LoginRequiredMixin, UpdateView):
+    def get(self, request, item_id):
+        item = get_object_or_404(InventoryItem, id=item_id)
+        form = InventoryEditForm(instance=item)
+        return render(request, 'inventory/inventory_edit.html', {'form': form, 'item': item})
+
+    def post(self, request, item_id):
+        form = InventoryEditForm(request.POST, instance=item)
+        if form.is_valid():
+            form.save()
+            return redirect('inventory_search')
+        else:
+            form = InventoryEditForm(instance=item)
+
+        return render(request, 'inventory/inventory_edit.html', {'form': form, 'item': item})
 
 
 class addInventoryView(LoginRequiredMixin, CreateView):
@@ -103,6 +169,7 @@ class SignUpView(View):
 class Dashboard(LoginRequiredMixin, View):
     def get(self, request):
 
+        # This will list how many of each subclass, i.e. AMS, Hardware, Filament, etc.
         item_counts_by_type = []
 
         # This ensures we get the actual subclass instance of the product
@@ -122,7 +189,7 @@ class Dashboard(LoginRequiredMixin, View):
 
         item_counts = (
             InventoryItem.objects
-            .values('product', 'product__category')
+            .values('product', 'product__sku')
             .annotate(count=Count('id'))
         )
 
