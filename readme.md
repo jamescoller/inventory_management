@@ -9,7 +9,7 @@ docker-compose build
 ```bash
 docker-compose up -d
 ```
-or, to rebuild it first
+or, to rebuild it first [same as below]
 ```bash
 docker-compose up --build --remove-orphans
 ```
