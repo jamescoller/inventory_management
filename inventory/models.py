@@ -100,7 +100,7 @@ class Hardware(Product):
 		# db_table_comment = 'Hardware, accessories, or parts on the market; not necessarily in current inventory'
 
 	def __str__(self):
-		return f"{self.name} (Part #: {self.part_number})"
+		return f"{self.name} (Part #: {self.sku})"
 
 # InventoryItem with ForeignKey to polymorphic Product
 class InventoryItem(models.Model):
