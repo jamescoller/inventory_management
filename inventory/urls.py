@@ -21,4 +21,5 @@ urlpatterns = [
     path('add-dryer/', AddDryerView.as_view(), name='add_dryer'),
     path('search/', InventorySearchView.as_view(), name='inventory_search'),
     path('edit/<int:item_id>/', inventoryEditView.as_view(), name='inventory_edit'),
+    path('search/export/', InventoryExportView.as_view(), name='inventory_export'),
 ]

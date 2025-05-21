@@ -16,6 +16,9 @@ import json
 from django_tables2 import SingleTableMixin
 from django_filters.views import FilterView
 import django_filters
+import openpyxl
+from django.http import HttpResponse
+from django.utils.timezone import localtime
 
 class AboutView(TemplateView):
     template_name = 'inventory/about.html'
@@ -475,3 +478,49 @@ class FilamentView(LoginRequiredMixin, View):
             'color_chart_data': color_chart_data,
             'inventory_by_sku': inventory_by_sku,
         })
+
+
+class InventoryExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        # Get filters from query parameters
+        sku = request.GET.get('sku', '')
+        upc = request.GET.get('upc', '')
+        name = request.GET.get('name', '')
+        location = request.GET.get('location', '')
+
+        # Rebuild the filtered queryset
+        items = InventoryItem.objects.exclude(status=5).select_related('product', 'location')
+        if sku:
+            items = items.filter(product__sku=sku)
+        if upc:
+            items = items.filter(product__upc=upc)
+        if name:
+            items = items.filter(product__name__icontains=name)
+        if location:
+            items = items.filter(location__name__icontains=location)
+
+        # Create Excel workbook
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Inventory Export"
+
+        # Write headers
+        headers = ['Product', 'SKU', 'UPC', 'Date Added', 'Location']
+        ws.append(headers)
+
+        # Write data rows
+        for item in items:
+            ws.append([
+                item.product.name,
+                item.product.sku,
+                item.product.upc,
+                localtime(item.date_added).strftime("%Y-%m-%d %H:%M:%S"),
+                item.location.name
+            ])
+
+        # Return as downloadable file
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        filename = "inventory_export.xlsx"
+        response['Content-Disposition'] = f'attachment; filename={filename}'
+        wb.save(response)
+        return response

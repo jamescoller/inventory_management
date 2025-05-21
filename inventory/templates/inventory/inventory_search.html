@@ -31,6 +31,15 @@
             </div>
         </form>
 
+        <!-- Export Option -->
+        <form method="get" action="{% url 'inventory_export' %}">
+            <input type="hidden" name="sku" value="{{ search_values.sku }}">
+            <input type="hidden" name="upc" value="{{ search_values.upc }}">
+            <input type="hidden" name="name" value="{{ search_values.name }}">
+            <input type="hidden" name="location" value="{{ search_values.location }}">
+            <button type="submit" class="btn btn-outline-success mb-3">⬇ Export to Excel</button>
+        </form>
+
 
         <!-- Results Table -->
         <div class="table-responsive">
