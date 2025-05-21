@@ -237,6 +237,25 @@ class Dashboard(LoginRequiredMixin, View):
             'data': [item['count'] for item in colors],
         }
 
+        raw_inventory_by_sku = (
+            InventoryItem.objects
+            .select_related('product')
+            .values('product__sku', 'product__name')
+            .annotate(total_quantity=Count('id'))
+            .order_by('-total_quantity')
+        )
+
+        # Inject class name via a mapping step
+        sku_class_lookup = {}
+        for item in InventoryItem.objects.select_related('product'):
+            sku = item.product.sku
+            if sku not in sku_class_lookup:
+                sku_class_lookup[sku] = item.product.get_real_instance_class().__name__
+
+        inventory_by_sku = []
+        for row in raw_inventory_by_sku:
+            row['product__class_name'] = sku_class_lookup.get(row['product__sku'], 'Unknown')
+            inventory_by_sku.append(row)
 
         # Get latest timestamp for summary
         latest_item = InventoryItem.objects.order_by('-timestamp').first()
@@ -257,6 +276,7 @@ class Dashboard(LoginRequiredMixin, View):
             'value': total_value,
             'filament_chart_data': filament_chart_data,
             'color_chart_data': color_chart_data,
+            'inventory_by_sku': inventory_by_sku,
         })
 
 class AddFilamentView(LoginRequiredMixin, CreateView):
@@ -433,13 +453,6 @@ class FilamentView(LoginRequiredMixin, View):
         for item in items:
             if item.product.price:
                 total_value += item.product.price * Decimal(str(item.product.inventory_count))
-
-        inventory_by_sku = (
-            InventoryItem.objects
-            .values('product__sku', 'product__name')
-            .annotate(count=Count('id'))
-            .order_by('-count')
-        )
 
         # Aggregate Filament items by material
         materials = (
