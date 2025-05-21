@@ -91,6 +91,7 @@ class inventoryEditView(LoginRequiredMixin, UpdateView):
         return render(request, 'inventory/inventory_edit.html', {'form': form, 'item': item})
 
 
+
 class addInventoryView(LoginRequiredMixin, CreateView):
     model = InventoryItem
     form_class = InventoryItemForm
@@ -140,6 +141,9 @@ class addInventoryView(LoginRequiredMixin, CreateView):
 
         messages.success(request, f"Added {product.name} to inventory.")
         return redirect('add_inventory')
+
+        # TODO Add a button to also print out a barcode label for the item
+        # TODO Design individual barcode stickers
 
     def form_valid(self, form):
         form.instance.user = self.request.user

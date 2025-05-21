@@ -5,22 +5,27 @@
 
         <!-- Search Form -->
         <form method="get" class="row g-3 mb-4">
-            <div class="col-md-3">
+            <div class="col-md-4">
                 <label for="sku" class="form-label">SKU</label>
                 <input type="text" name="sku" id="sku" class="form-control" value="{{ search_values.sku }}">
             </div>
 
-            <div class="col-md-3">
+            <div class="col-md-4">
                 <label for="upc" class="form-label">UPC</label>
                 <input type="text" name="upc" id="upc" class="form-control" value="{{ search_values.upc }}">
             </div>
 
-            <div class="col-md-3">
+            <div class="col-md-4">
                 <label for="name" class="form-label">Name</label>
                 <input type="text" name="name" id="name" class="form-control" value="{{ search_values.name }}">
             </div>
 
-            <div class="col-md-3">
+            <div class="col-md-6">
+                <label for="status" class="form-label">Status</label>
+                <input type="text" name="status" id="status" class="form-control" value="{{ search_values.status }}">
+            </div>
+
+            <div class="col-md-6">
                 <label for="location" class="form-label">Location</label>
                 <input type="text" name="location" id="location" class="form-control"
                        value="{{ search_values.location }}">
@@ -36,6 +41,7 @@
             <input type="hidden" name="sku" value="{{ search_values.sku }}">
             <input type="hidden" name="upc" value="{{ search_values.upc }}">
             <input type="hidden" name="name" value="{{ search_values.name }}">
+            <input type="hidden" name="status" value="{{ search_values.status }}">
             <input type="hidden" name="location" value="{{ search_values.location }}">
             <button type="submit" class="btn btn-outline-success mb-3">⬇ Export to Excel</button>
         </form>
@@ -50,6 +56,7 @@
                     <th>SKU</th>
                     <th>UPC</th>
                     <th>Date Added</th>
+                    <th>Status</th>
                     <th>Location</th>
                     <th>Action</th>
                 </tr>
@@ -62,6 +69,7 @@
                             <td>{{ item.product.sku }}</td>
                             <td>{{ item.product.upc }}</td>
                             <td>{{ item.date_added|date:"Y-m-d H:i:s" }}</td>
+                            <td>{{ item.get_status_display }}</td>
                             <td>{{ item.location.name }}</td>
                             <td>
                                 <a href="{% url 'inventory_edit' item.id %}"
@@ -72,6 +80,7 @@
                 {% else %}
                     <tr class="text-muted">
                         <td><em>No matching items</em></td>
+                        <td></td>
                         <td></td>
                         <td></td>
                         <td></td>
@@ -103,6 +112,7 @@
                     {title: "SKU"},
                     {title: "UPC"},
                     {title: "Date Added"},
+                    {title: "Status"},
                     {title: "Location"},
                     {title: "Action", orderable: false}
                 ]
