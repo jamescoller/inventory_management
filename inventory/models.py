@@ -100,7 +100,7 @@ class Hardware(Product):
 		# db_table_comment = 'Hardware, accessories, or parts on the market; not necessarily in current inventory'
 
 	def __str__(self):
-		return f"{self.name} (Part #: {self.part_number})"
+		return f"{self.name} (Part #: {self.sku})"
 
 # InventoryItem with ForeignKey to polymorphic Product
 class InventoryItem(models.Model):
@@ -117,7 +117,6 @@ class InventoryItem(models.Model):
 		STORED = 4, "stored"
 		DEPLETED = 5, "depleted"
 
-
 	last_modified = models.DateTimeField(auto_now=True)
 	date_depleted = models.DateTimeField(null=True, blank=True)
 	user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
@@ -126,6 +125,9 @@ class InventoryItem(models.Model):
 
 	def __str__(self):
 		return f"{self.upc} - {self.timestamp.strftime('%Y-%m-%d')}"
+
+# TODO Add a function that if the status is changed to depleated, then set the date_depleated to today
+# TODO Add a function that automatically sets the filament status based on the location
 
 
 class Location(models.Model):

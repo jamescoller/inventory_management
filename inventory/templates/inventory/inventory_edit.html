@@ -1,0 +1,12 @@
+{% extends 'inventory/base.html' %}
+{% block content %}
+    <div class="container py-4">
+        <h2>Edit Inventory Item</h2>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">Save</button>
+            <a href="{% url 'inventory_search' %}">Cancel</a>
+        </form>
+    </div>
+{% endblock %}

@@ -190,11 +190,6 @@
                         <span id="grandTotalCount">{{ grand_total }}</span>
                     </h5>
                 </div>
-                <div class="col-md-6 text-end">
-                    <h5>Visible (Filtered) Count:
-                        <span id="visibleCount">{{ items|length }}</span>
-                    </h5>
-                </div>
             </div>
             <!-- ✅ Printable Summary -->
             <div class="d-none d-print-block my-4">
@@ -231,25 +226,24 @@
                     </tbody>
                 </table>
             </div>
-
+            <!-- Product Table -->
             <table id="inventoryTable" class="table table-striped table-hover table-bordered align-middle">
                 <thead class="table-light">
                 <tr>
                     <th>Product</th>
                     <th>Type</th>
-                    <th>UPC</th>
-                    <th>Location</th>
+                    <th>SKU</th>
                     <th class="text-center">Inventory Count</th>
                 </tr>
                 </thead>
                 <tbody>
-                {% for item in items %}
+                {% for item in inventory_by_sku %}
                     <tr>
-                        <td>{{ item.product.name }}</td>
-                        <td>{{ item.product.class_name }}</td>
-                        <td>{{ item.product.upc }}</td>
-                        <td>{{ item.location.name }}</td>
-                        <td class="text-center">{{ item.product.inventory_count }}</td>
+                        <td>{{ item.product__name }}</td>
+                        <td>{{ item.product__class_name }}</td>
+                        <td>{{ item.product__sku }}</td>
+                        {#                        <td>{{ item.location.name }}</td>#}
+                        <td class="text-center">{{ item.total_quantity }}</td>
                     </tr>
                 {% endfor %}
                 </tbody>
@@ -257,7 +251,7 @@
                 <!-- ✅ Footer for dynamic totals -->
                 <tfoot>
                 <tr>
-                    <th colspan="4" class="text-end">Total Visible:</th>
+                    <th colspan="3" class="text-end">Total:</th>
                     <th class="text-center" id="totalVisibleCount">0</th>
                 </tr>
                 </tfoot>
@@ -274,12 +268,13 @@
 
             const table = $('#inventoryTable').DataTable({
                 ordering: true,
-                pageLength: 25
+                pageLength: 25,
+                order: [[3, 'desc']]  // Sort by Inventory Count, descending
             });
 
             function updateVisibleTotal() {
                 let total = 0;
-                table.column(4, { search: 'applied' }).nodes().each(function (cell) {
+                table.column(3, {search: 'applied'}).nodes().each(function (cell) {
                     const val = parseInt($(cell).text());
                     if (!isNaN(val)) total += val;
                 });

@@ -9,9 +9,16 @@ from django.db.models import Sum
 from django.contrib.contenttypes.models import ContentType
 from .forms import *
 from .models import *
+from .tables import *
 from django.shortcuts import render, get_object_or_404
 from decimal import Decimal
 import json
+from django_tables2 import SingleTableMixin
+from django_filters.views import FilterView
+import django_filters
+import openpyxl
+from django.http import HttpResponse
+from django.utils.timezone import localtime
 
 class AboutView(TemplateView):
     template_name = 'inventory/about.html'
@@ -20,6 +27,69 @@ class AddProductChoiceView(LoginRequiredMixin, CreateView):
     def get(self, request):
         upc = request.session.get('pending_inventory', {}).get('upc', '')
         return render(request, 'inventory/add_product_choice.html', {'upc': upc})
+
+
+class InventoryFilter(django_filters.FilterSet):
+    sku = django_filters.CharFilter(field_name='product__sku', lookup_expr='exact', label='SKU')
+    upc = django_filters.CharFilter(field_name='product__upc', lookup_expr='exact', label='UPC')
+    name = django_filters.CharFilter(field_name='product__name', lookup_expr='icontains', label='Name')
+
+    class Meta:
+        model = InventoryItem
+        fields = ['sku', 'upc', 'name']
+
+
+class InventorySearchView(LoginRequiredMixin, View):
+    def get(self, request):
+        # Get search parameters from the query string
+        sku = request.GET.get('sku', '')
+        upc = request.GET.get('upc', '')
+        name = request.GET.get('name', '')
+        location = request.GET.get('location', '')
+
+        # Base queryset, excluding depleted items
+        items = InventoryItem.objects.exclude(status=5).select_related('product', 'location')
+
+        # Apply filters
+        if sku:
+            items = items.filter(product__sku=sku)
+        if upc:
+            items = items.filter(product__upc=upc)
+        if name:
+            items = items.filter(product__name__icontains=name)
+        if location:
+            items = items.filter(location__name__icontains=location)
+
+        # Pass filtered items to the template
+        context = {
+            'items': items or InventoryItem.objects.none(),
+            'search_values': {
+                'sku': sku,
+                'upc': upc,
+                'name': name,
+                'location': location,
+            },
+        }
+
+        return render(request, 'inventory/inventory_search.html', context)
+
+
+class inventoryEditView(LoginRequiredMixin, UpdateView):
+    def get(self, request, item_id):
+        item = get_object_or_404(InventoryItem, id=item_id)
+        form = InventoryEditForm(instance=item)
+        return render(request, 'inventory/inventory_edit.html', {'form': form, 'item': item})
+
+    def post(self, request, item_id):
+        form = InventoryEditForm(request.POST, instance=item)
+        if form.is_valid():
+            form.save()
+            return redirect('inventory_search')
+        else:
+            form = InventoryEditForm(instance=item)
+
+        return render(request, 'inventory/inventory_edit.html', {'form': form, 'item': item})
+
 
 
 class addInventoryView(LoginRequiredMixin, CreateView):
@@ -72,6 +142,9 @@ class addInventoryView(LoginRequiredMixin, CreateView):
         messages.success(request, f"Added {product.name} to inventory.")
         return redirect('add_inventory')
 
+        # TODO Add a button to also print out a barcode label for the item
+        # TODO Design individual barcode stickers
+
     def form_valid(self, form):
         form.instance.user = self.request.user
         return super().form_valid(form)
@@ -103,6 +176,7 @@ class SignUpView(View):
 class Dashboard(LoginRequiredMixin, View):
     def get(self, request):
 
+        # This will list how many of each subclass, i.e. AMS, Hardware, Filament, etc.
         item_counts_by_type = []
 
         # This ensures we get the actual subclass instance of the product
@@ -122,7 +196,7 @@ class Dashboard(LoginRequiredMixin, View):
 
         item_counts = (
             InventoryItem.objects
-            .values('product', 'product__category')
+            .values('product', 'product__sku')
             .annotate(count=Count('id'))
         )
 
@@ -167,6 +241,25 @@ class Dashboard(LoginRequiredMixin, View):
             'data': [item['count'] for item in colors],
         }
 
+        raw_inventory_by_sku = (
+            InventoryItem.objects
+            .select_related('product')
+            .values('product__sku', 'product__name')
+            .annotate(total_quantity=Count('id'))
+            .order_by('-total_quantity')
+        )
+
+        # Inject class name via a mapping step
+        sku_class_lookup = {}
+        for item in InventoryItem.objects.select_related('product'):
+            sku = item.product.sku
+            if sku not in sku_class_lookup:
+                sku_class_lookup[sku] = item.product.get_real_instance_class().__name__
+
+        inventory_by_sku = []
+        for row in raw_inventory_by_sku:
+            row['product__class_name'] = sku_class_lookup.get(row['product__sku'], 'Unknown')
+            inventory_by_sku.append(row)
 
         # Get latest timestamp for summary
         latest_item = InventoryItem.objects.order_by('-timestamp').first()
@@ -187,6 +280,7 @@ class Dashboard(LoginRequiredMixin, View):
             'value': total_value,
             'filament_chart_data': filament_chart_data,
             'color_chart_data': color_chart_data,
+            'inventory_by_sku': inventory_by_sku,
         })
 
 class AddFilamentView(LoginRequiredMixin, CreateView):
@@ -364,13 +458,6 @@ class FilamentView(LoginRequiredMixin, View):
             if item.product.price:
                 total_value += item.product.price * Decimal(str(item.product.inventory_count))
 
-        inventory_by_sku = (
-            InventoryItem.objects
-            .values('product__sku', 'product__name')
-            .annotate(count=Count('id'))
-            .order_by('-count')
-        )
-
         # Aggregate Filament items by material
         materials = (
             Filament.objects.values('material')
@@ -408,3 +495,49 @@ class FilamentView(LoginRequiredMixin, View):
             'color_chart_data': color_chart_data,
             'inventory_by_sku': inventory_by_sku,
         })
+
+
+class InventoryExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        # Get filters from query parameters
+        sku = request.GET.get('sku', '')
+        upc = request.GET.get('upc', '')
+        name = request.GET.get('name', '')
+        location = request.GET.get('location', '')
+
+        # Rebuild the filtered queryset
+        items = InventoryItem.objects.exclude(status=5).select_related('product', 'location')
+        if sku:
+            items = items.filter(product__sku=sku)
+        if upc:
+            items = items.filter(product__upc=upc)
+        if name:
+            items = items.filter(product__name__icontains=name)
+        if location:
+            items = items.filter(location__name__icontains=location)
+
+        # Create Excel workbook
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Inventory Export"
+
+        # Write headers
+        headers = ['Product', 'SKU', 'UPC', 'Date Added', 'Location']
+        ws.append(headers)
+
+        # Write data rows
+        for item in items:
+            ws.append([
+                item.product.name,
+                item.product.sku,
+                item.product.upc,
+                localtime(item.date_added).strftime("%Y-%m-%d %H:%M:%S"),
+                item.location.name
+            ])
+
+        # Return as downloadable file
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        filename = "inventory_export.xlsx"
+        response['Content-Disposition'] = f'attachment; filename={filename}'
+        wb.save(response)
+        return response

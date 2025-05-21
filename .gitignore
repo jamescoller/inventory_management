@@ -16,3 +16,4 @@ pip-selfcheck.json
 .DS_Store
 .idea/
 static_root/
+inventory_db.sqlite3

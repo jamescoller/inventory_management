@@ -34,6 +34,8 @@ class InventoryItemForm(forms.ModelForm):
 		model = InventoryItem
 		fields = ['shipment', 'upc', 'location']
 
+	# TODO: Allow for items to be added by SKU, not just by UPC
+
 class MoveItemForm(forms.ModelForm):
 	class Meta:
 		model = InventoryItem
@@ -68,3 +70,8 @@ class HardwareForm(forms.ModelForm):
 		model = Hardware
 		fields = ['name', 'upc', 'sku', 'price', 'notes', 'category',
 				  'usage']
+
+class InventoryEditForm(forms.ModelForm):
+	class Meta:
+		model = InventoryItem
+		fields = ['location', 'status', 'date_depleted']
