@@ -5,9 +5,9 @@ services:
     restart: always
     volumes:
       - .:/app
-      - static_volume:/static/
+      - static_volume:/app/staticfiles  # ✅ Match STATIC_ROOT!
     expose:
-      - "8000"  # only expose internally, nginx will access it
+      - "8000"
     environment:
       - DEBUG=0
 
@@ -16,7 +16,7 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - static_volume:/static/
+      - static_volume:/static  # ✅ Match nginx.conf alias!
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       - web
