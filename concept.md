@@ -1,26 +1,28 @@
 # Inventory Management Concept
 
-## 1. Libraries 
+## 1. Libraries
 `django`
 
 ### Specific Imports
-```python 
+
+```python
 from django.db import models
 from django.contrib.auth.models import User
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
 ```
 
-## 2. Models 
+## 2. Models
 We'll be using subclasses of our model classes in this case. For more information, see the [Django documentation](https://docs.djangoproject.com/en/5.2/topics/db/models/#model-inheritance).
 
-### 1. Product 
-This is the structure for known "products" sold by a manufacturer. It will be matched with inventory items. 
-We don't want to have database entries of just 'Product' on its own, so we want to set it as an Abstract base class. 
+### 1. Product
+
+This is the structure for known "products" sold by a manufacturer. It will be matched with inventory items.
+We don't want to have database entries of just 'Product' on its own, so we want to set it as an Abstract base class.
 This means that the sub-classed models will pull their common properties from the base class when they are created, but
-the base class on its own cannot be created. 
-> Note: To make this abstract, use the following syntax within the class definition: 
-> ```python 
+the base class on its own cannot be created.
+> Note: To make this abstract, use the following syntax within the class definition:
+> ```python
 > class Meta:
 >   abstract = True
 > ```
@@ -52,7 +54,7 @@ Now, filaments will have several unique properties that are not shared with all 
 | Material Sub-Type          | material_type         | CharField    |             | null=True, blank=True          |                     |
 | Color (English)            | color_name            | CharField    |             |                                |                     |
 | Color (HEX)                | hex_code              | CharField    |             | max_length=7                   |                     |
-| Printing Temp Min (degC)   | print_temp_min_degC   | IntegerField | 0           | blank=True                     |                     | 
+| Printing Temp Min (degC)   | print_temp_min_degC   | IntegerField | 0           | blank=True                     |                     |
 | Printing Temp Max (degC)   | print_temp_max_degC   | IntegerField | 0           | blank=True                     |                     |
 | Printing Temp Ideal (degC) | print_temp_ideal_degC | IntegerField |             | blank=True                     | Based on User Notes |
 | Drying Temperature (degC)  | drying_temp_degC      | IntegerField |             | blank=True                     |                     |
@@ -80,7 +82,7 @@ class Filament(Product):
 		db_table_comment = 'Filaments offered by Bambu; not necessarily in current inventory'
 ```
 
-#### Printer Subclass 
+#### Printer Subclass
 ```python
 # Printer subclass
 class Printer(Product):

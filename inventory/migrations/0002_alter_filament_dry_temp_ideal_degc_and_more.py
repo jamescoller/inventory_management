@@ -6,53 +6,53 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('inventory', '0001_initial'),
+        ("inventory", "0001_initial"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='filament',
-            name='dry_temp_ideal_degC',
+            model_name="filament",
+            name="dry_temp_ideal_degC",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AlterField(
-            model_name='filament',
-            name='dry_temp_max_degC',
+            model_name="filament",
+            name="dry_temp_max_degC",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AlterField(
-            model_name='filament',
-            name='dry_temp_min_degC',
+            model_name="filament",
+            name="dry_temp_min_degC",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AlterField(
-            model_name='filament',
-            name='dry_time_hrs',
+            model_name="filament",
+            name="dry_time_hrs",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AlterField(
-            model_name='filament',
-            name='material_type',
+            model_name="filament",
+            name="material_type",
             field=models.CharField(blank=True, max_length=50, null=True),
         ),
         migrations.AlterField(
-            model_name='filament',
-            name='print_temp_ideal_degC',
+            model_name="filament",
+            name="print_temp_ideal_degC",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AlterField(
-            model_name='filament',
-            name='print_temp_max_degC',
+            model_name="filament",
+            name="print_temp_max_degC",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AlterField(
-            model_name='filament',
-            name='print_temp_min_degC',
+            model_name="filament",
+            name="print_temp_min_degC",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AlterField(
-            model_name='inventoryitem',
-            name='shipment',
+            model_name="inventoryitem",
+            name="shipment",
             field=models.CharField(blank=True, max_length=100, null=True),
         ),
     ]
