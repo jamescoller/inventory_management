@@ -6,48 +6,52 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('inventory', '0004_remove_inventoryitem_content_type'),
+        ("inventory", "0004_remove_inventoryitem_content_type"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='dryer',
-            name='max_temp_degC',
+            model_name="dryer",
+            name="max_temp_degC",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AlterField(
-            model_name='printer',
-            name='bed_length_mm',
+            model_name="printer",
+            name="bed_length_mm",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AlterField(
-            model_name='printer',
-            name='bed_width_mm',
+            model_name="printer",
+            name="bed_width_mm",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AlterField(
-            model_name='printer',
-            name='max_height_mm',
+            model_name="printer",
+            name="max_height_mm",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.AlterField(
-            model_name='printer',
-            name='print_volume_mm3',
-            field=models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True),
+            model_name="printer",
+            name="print_volume_mm3",
+            field=models.DecimalField(
+                blank=True, decimal_places=2, max_digits=10, null=True
+            ),
         ),
         migrations.AlterField(
-            model_name='product',
-            name='category',
+            model_name="product",
+            name="category",
             field=models.CharField(blank=True, max_length=255, null=True),
         ),
         migrations.AlterField(
-            model_name='product',
-            name='price',
-            field=models.DecimalField(blank=True, decimal_places=2, max_digits=5, null=True),
+            model_name="product",
+            name="price",
+            field=models.DecimalField(
+                blank=True, decimal_places=2, max_digits=5, null=True
+            ),
         ),
         migrations.AlterField(
-            model_name='product',
-            name='sku',
+            model_name="product",
+            name="sku",
             field=models.CharField(blank=True, max_length=8, null=True),
         ),
     ]

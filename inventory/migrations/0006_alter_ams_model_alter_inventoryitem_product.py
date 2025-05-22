@@ -7,18 +7,22 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('inventory', '0005_alter_dryer_max_temp_degc_and_more'),
+        ("inventory", "0005_alter_dryer_max_temp_degc_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='ams',
-            name='model',
-            field=models.CharField(default='AMS', max_length=100),
+            model_name="ams",
+            name="model",
+            field=models.CharField(default="AMS", max_length=100),
         ),
         migrations.AlterField(
-            model_name='inventoryitem',
-            name='product',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='inventory_items', to='inventory.product'),
+            model_name="inventoryitem",
+            name="product",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="inventory_items",
+                to="inventory.product",
+            ),
         ),
     ]

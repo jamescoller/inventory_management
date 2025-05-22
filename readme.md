@@ -14,8 +14,9 @@ or, to rebuild it first [same as below]
 docker-compose up --build --remove-orphans
 ```
 
-### Alternative: Deploy via PyCharm 
-You can deploy directly from PyCharm, at which case, the port will be 8000. 
+### Alternative: Deploy via PyCharm
+
+You can deploy directly from PyCharm, at which case, the port will be 8000.
 
 ## 3. Access it
 - Open your browser at: `http://localhost:8080`

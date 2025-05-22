@@ -1,19 +1,36 @@
-### venv template
-# Virtualenv
-# http://iamzed.com/2009/05/07/a-primer-on-virtualenv/
-.Python
-[Bb]in
-[Ii]nclude
-[Ll]ib
-[Ll]ib64
-[Ll]ocal
-[Ss]cripts
-pyvenv.cfg
-.venv
-pip-selfcheck.json
+# Python
 *.pyc
-.idea
+__pycache__/
+
+# macOS
 .DS_Store
+
+# Virtual environments
+.venv/
+.Python
+Include/
+Lib*/
+Local/
+Scripts/
+pyvenv.cfg
+pip-selfcheck.json
+
+# IDEs and project settings
 .idea/
-static_root/
+
+# Environment variables
+.env
+
+# SQLite database
 inventory_db.sqlite3
+
+# Media uploads (if applicable)
+media/
+
+# Static file output — don't version collectstatic output!
+staticfiles/
+inventory_management_site/staticfiles/
+static_root/
+
+# Optional: logs
+*.log
