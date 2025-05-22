@@ -104,7 +104,6 @@ class Hardware(Product):
 
 # InventoryItem with ForeignKey to polymorphic Product
 class InventoryItem(models.Model):
-	upc = models.CharField(max_length=120)
 	shipment = models.CharField(max_length=100, blank=True, null=True)
 	timestamp = models.DateTimeField(auto_now_add=True)
 	date_added = models.DateTimeField(auto_now_add=True)
@@ -124,7 +123,7 @@ class InventoryItem(models.Model):
 	status = models.PositiveSmallIntegerField(choices=Status.choices, default=Status.NEW)
 
 	def __str__(self):
-		return f"{self.upc} - {self.timestamp.strftime('%Y-%m-%d')}"
+		return f"{self.product.upc} - {self.timestamp.strftime('%Y-%m-%d')}"
 
 # TODO Add a function that if the status is changed to depleated, then set the date_depleated to today
 # TODO Add a function that automatically sets the filament status based on the location

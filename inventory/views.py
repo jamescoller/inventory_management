@@ -98,45 +98,76 @@ class addInventoryView(LoginRequiredMixin, CreateView):
     template_name = 'inventory/item_form.html'
     success_url = reverse_lazy('add_inventory')
 
+    def get_initial(self):
+        initial = super().get_initial()
+        if InventoryItem.objects.exists():
+            latest = InventoryItem.objects.order_by('-id').first()
+            initial['shipment'] = latest.shipment
+            initial['location'] = latest.location
+            initial['status'] = latest.status
+        return initial
+
     def post(self, request, **kwargs):
 
+        form = self.form_class(request.POST)
 
-        upc = request.POST.get('upc')
-        shipment = request.POST.get('shipment')
-        location_id = request.POST.get('location')
-        location = get_object_or_404(Location, id=location_id)
+        if not form.is_valid():
+            return self.form_invalid(form)
+
+        upc = form.cleaned_data.get('upc')
+        sku = form.cleaned_data.get('sku')
+        shipment = form.cleaned_data.get('shipment')
+        location = form.cleaned_data.get('location')
+        status = form.cleaned_data.get('status')
+
+        if not upc and not sku:
+            messages.error(request, "You must provide either a UPC or SKU.")
+            return redirect('add_inventory')
 
         product = None
 
-        # Loop through models and get the correct one
-        for model in [Filament, Printer, Hardware, AMS, Dryer]:
-            try:
-                product = model.objects.get(upc=upc)
-                break
-            except model.DoesNotExist:
-                continue
+        # Try to find product by UPC
+        if upc:
+            for model in [Filament, Printer, Hardware, AMS, Dryer]:
+                try:
+                    product = model.objects.get(upc=upc)
+                    break
+                except model.DoesNotExist:
+                    continue
 
+        # Try to find product by SKU
+        if product is None and sku:
+            for model in [Filament, Printer, Hardware, AMS, Dryer]:
+                model.objects.filter(sku=sku).first()
+                if product:
+                    break
+
+        # If still no product found, redirect to 'add_product_choice'
         if product is None:
             # Store scanned data temporarily in session
             request.session['pending_inventory'] = {
                 'upc': upc,
+                'sku': sku,
                 'shipment': shipment,
-                'location_id': location_id,
+                'location': location.id,
+                'status': status,
             }
             messages.warning(
                 request,
-                f"No product found with UPC: {upc}. Please add the product before continuing."
+                f"No product found with that UPC or SKU. Please add the product before continuing."
             )
             return redirect('add_product_choice')  # This is a new view we’ll create
             # messages.error(request, f"No product found with UPC: {upc}")
             # return redirect('add_inventory')
 
         # Create InventoryItem only if a product was found
+        messages.info(request, f"Matched product: {product.name} (SKU: {product.sku}, UPC: {product.upc})")
+
         InventoryItem.objects.create(
             product=product,
             shipment=shipment,
             location=location,
-            upc=upc,
+            status=status,
         )
 
         messages.success(request, f"Added {product.name} to inventory.")
@@ -306,7 +337,6 @@ class AddFilamentView(LoginRequiredMixin, CreateView):
                     product=self.object,
                     shipment=pending.get('shipment'),
                     location_id=pending.get('location_id'),
-                    upc=pending.get('upc'),
                     user=self.request.user
                 )
                 messages.success(self.request, f"{self.object.name} and inventory item created.")
@@ -336,7 +366,6 @@ class AddPrinterView(LoginRequiredMixin, CreateView):
                     product=self.object,
                     shipment=pending.get('shipment'),
                     location_id=pending.get('location_id'),
-                    upc=pending.get('upc'),
                     user=self.request.user
                 )
                 messages.success(self.request, f"{self.object.name} and inventory item created.")
@@ -366,7 +395,6 @@ class AddDryerView(LoginRequiredMixin, CreateView):
                     product=self.object,
                     shipment=pending.get('shipment'),
                     location_id=pending.get('location_id'),
-                    upc=pending.get('upc'),
                     user=self.request.user
                 )
                 messages.success(self.request, f"{self.object.name} and inventory item created.")
@@ -396,7 +424,6 @@ class AddHardwareView(LoginRequiredMixin, CreateView):
                     product=self.object,
                     shipment=pending.get('shipment'),
                     location_id=pending.get('location_id'),
-                    upc=pending.get('upc'),
                     user=self.request.user
                 )
                 messages.success(self.request, f"{self.object.name} and inventory item created.")
@@ -426,7 +453,6 @@ class AddAMSView(LoginRequiredMixin, CreateView):
                     product=self.object,
                     shipment=pending.get('shipment'),
                     location_id=pending.get('location_id'),
-                    upc=pending.get('upc'),
                     user=self.request.user
                 )
                 messages.success(self.request, f"{self.object.name} and inventory item created.")
