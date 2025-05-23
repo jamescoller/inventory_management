@@ -169,7 +169,7 @@ class addInventoryView(LoginRequiredMixin, CreateView):
                 "upc": upc,
                 "sku": sku,
                 "shipment": shipment,
-                "location": location.id,
+                "location_id": location.id,
                 "status": status,
             }
             messages.warning(
