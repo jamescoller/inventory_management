@@ -61,6 +61,7 @@ class InventorySearchView(LoginRequiredMixin, View):
         upc = request.GET.get("upc", "")
         name = request.GET.get("name", "")
         location = request.GET.get("location", "")
+        serial_number = request.GET.get("serial_number", "")
 
         # Base queryset, excluding depleted items
         items = InventoryItem.objects.exclude(status=5).select_related(
@@ -76,6 +77,8 @@ class InventorySearchView(LoginRequiredMixin, View):
             items = items.filter(product__name__icontains=name)
         if location:
             items = items.filter(location__name__icontains=location)
+        if serial_number:
+            items = items.filter(serial_number=serial_number)
 
         # Pass filtered items to the template
         context = {
@@ -85,6 +88,7 @@ class InventorySearchView(LoginRequiredMixin, View):
                 "upc": upc,
                 "name": name,
                 "location": location,
+                "serial_number": serial_number,
             },
         }
 

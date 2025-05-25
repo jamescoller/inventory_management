@@ -1,3 +1,4 @@
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.contrib.auth.models import User
 from polymorphic.models import PolymorphicModel
@@ -18,6 +19,18 @@ class Product(PolymorphicModel):
     class Meta:
         # abstract = True
         ordering = ["sku"]
+        verbose_name = "Product"
+        verbose_name_plural = "Products"
+
+    # Override the name of the polymorphic ctype and customize it so it's more readable
+    polymorphic_ctype = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+        editable=False,
+        verbose_name="Product Type",
+        related_name="+",
+        null=True,
+    )
 
     def __str__(self):
         return f"{self.name}"
@@ -40,11 +53,18 @@ class Filament(Product):
     def __str__(self):
         return f"{self.name} ({self.color})"
 
+    # TODO: Eventually I want to make "depleted" a boolean so that when it's enabled it will allow filtering more easily
+
     # Edit the database table that filament will be added to, and note it
     # Abstract=False by default on children classes
     # class Meta(Product.Meta):
     # db_table = 'filaments'
     # db_table_comment = 'Filaments offered by Bambu; not necessarily in current inventory'
+
+    class Meta:
+        # abstract = True
+        verbose_name = "Filament"
+        verbose_name_plural = "Filaments"
 
 
 # Printer subclass
@@ -61,6 +81,11 @@ class Printer(Product):
 
     def __str__(self):
         return f"{self.name} - {self.model}"
+
+    class Meta:
+        # abstract = True
+        verbose_name = "Printer"
+        verbose_name_plural = "Printers"
 
     # class Meta(Product.Meta):
     # 	db_table = 'printers'
@@ -81,6 +106,11 @@ class Dryer(Product):
     def __str__(self):
         return f"{self.name} (Part #: {self.model})"
 
+    class Meta:
+        # abstract = True
+        verbose_name = "Dryer"
+        verbose_name_plural = "Dryers"
+
 
 # AMS subclass
 class AMS(Product):
@@ -94,6 +124,11 @@ class AMS(Product):
 
     def __str__(self):
         return f"{self.name} (Part #: {self.model})"
+
+    class Meta:
+        # abstract = True
+        verbose_name = "AMS"
+        verbose_name_plural = "AMS"
 
 
 # Hardware subclass
@@ -115,6 +150,11 @@ class Hardware(Product):
 
     def __str__(self):
         return f"{self.name} (Part #: {self.sku})"
+
+    class Meta:
+        # abstract = True
+        verbose_name = "Hardware"
+        verbose_name_plural = "Hardware"
 
 
 # InventoryItem with ForeignKey to polymorphic Product
@@ -142,6 +182,7 @@ class InventoryItem(models.Model):
     status = models.PositiveSmallIntegerField(
         choices=Status.choices, default=Status.NEW
     )
+    serial_number = models.CharField(max_length=100, blank=True, null=True)
 
     def __str__(self):
         return f"{self.product.upc} - {self.timestamp.strftime('%Y-%m-%d')}"
@@ -167,6 +208,11 @@ class InventoryItem(models.Model):
 
         super().save(*args, **kwargs)
 
+    class Meta:
+        # abstract = True
+        verbose_name = "Inventory Item"
+        verbose_name_plural = "Inventory Items"
+
 
 class Location(models.Model):
     name = models.CharField(max_length=200, unique=True)
@@ -177,7 +223,8 @@ class Location(models.Model):
     )
 
     class Meta:
-        verbose_name_plural = "locations"
+        verbose_name = "Location"
+        verbose_name_plural = "Locations"
 
     def __str__(self):
         return self.name
@@ -206,9 +253,17 @@ class Order(PolymorphicModel):
     def remove_from_list(self, item):
         self._item_list.remove(item)
 
+    class Meta:
+        verbose_name = "Order"
+        verbose_name_plural = "Orders"
+
 
 class Shipment(Order):
     tracking = models.CharField(max_length=200)
+
+    class Meta:
+        verbose_name = "Shipment"
+        verbose_name_plural = "Shipments"
 
     # class Meta:
     # 	db_table = 'shipments'

@@ -20,15 +20,21 @@
                 <input type="text" name="name" id="name" class="form-control" value="{{ search_values.name }}">
             </div>
 
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <label for="status" class="form-label">Status</label>
                 <input type="text" name="status" id="status" class="form-control" value="{{ search_values.status }}">
             </div>
 
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <label for="location" class="form-label">Location</label>
                 <input type="text" name="location" id="location" class="form-control"
                        value="{{ search_values.location }}">
+            </div>
+
+            <div class="col-md-4">
+                <label for="serial_number" class="form-label">Serial Number</label>
+                <input type="text" name="serial_number" id="serial_number" class="form-control"
+                       value="{{ search_values.serial_number }}">
             </div>
 
             <div class="col-12 text-end">
@@ -43,6 +49,7 @@
             <input type="hidden" name="name" value="{{ search_values.name }}">
             <input type="hidden" name="status" value="{{ search_values.status }}">
             <input type="hidden" name="location" value="{{ search_values.location }}">
+            <input type="hidden" name="serial_number" value="{{ search_values.serial_number }}">
             <button type="submit" class="btn btn-outline-success mb-3">⬇ Export to Excel</button>
         </form>
 
@@ -58,6 +65,7 @@
                     <th>Date Added</th>
                     <th>Status</th>
                     <th>Location</th>
+                    <th>Serial Number</th>
                     <th>Action</th>
                 </tr>
                 </thead>
@@ -71,6 +79,7 @@
                             <td>{{ item.date_added|date:"Y-m-d H:i:s" }}</td>
                             <td>{{ item.get_status_display }}</td>
                             <td>{{ item.location.name }}</td>
+                            <td>{{ item.serial_number }}</td>
                             <td>
                                 <a href="{% url 'inventory_edit' item.id %}"
                                    class="btn btn-sm btn-outline-primary">Edit</a>
@@ -80,6 +89,7 @@
                 {% else %}
                     <tr class="text-muted">
                         <td><em>No matching items</em></td>
+                        <td></td>
                         <td></td>
                         <td></td>
                         <td></td>
@@ -114,6 +124,7 @@
                     {title: "Date Added"},
                     {title: "Status"},
                     {title: "Location"},
+                    {title: "Serial Number"},
                     {title: "Action", orderable: false}
                 ]
             });
