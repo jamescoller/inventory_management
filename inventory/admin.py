@@ -9,6 +9,14 @@ from polymorphic.admin import (
 )
 from django.contrib.contenttypes.models import ContentType
 from .models import *
+from .forms import (
+    InventoryItemForm,
+    PrinterForm,
+    AMSForm,
+    DryerForm,
+    HardwareForm,
+    FilamentForm,
+)
 
 
 # ----- Specialty Classes for Specific Views ----------
@@ -44,35 +52,6 @@ class ProductTypeFilter(admin.SimpleListFilter):
         return queryset
 
 
-# This allows us to hide the serial number field for everything except the Printer, AMS, or Dryer.
-class InventoryItemForm(forms.ModelForm):
-    class Meta:
-        model = InventoryItem
-        fields = "__all__"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # figure out which product we're dealing with:
-        product = None
-        if self.instance and self.instance.pk:
-            # editing an existing InventoryItem
-            product = self.instance.product
-        else:
-            # creating a new one—try to grab from the POST/GET
-            pid = self.data.get("product") or self.initial.get("product")
-            if pid:
-                try:
-                    product = Product.objects.get(pk=pid)
-                except Product.DoesNotExist:
-                    product = None
-
-        # if it’s not AMS, Printer or Dryer, remove the field
-        allowed = (AMS, Printer, Dryer)
-        if not (product and isinstance(product, allowed)):
-            self.fields.pop("serial_number", None)
-
-
 # ----- Polymorphic Child Admins -----
 
 
@@ -84,30 +63,71 @@ class ProductChildAdmin(PolymorphicChildModelAdmin):
 class FilamentAdmin(ProductChildAdmin):
     base_model = Filament
     show_in_index = True
+    fields = [
+        "product",
+        "location",
+        "shipment",
+        "status",
+        "date_depleted",
+        "material",
+        "material_type",
+        "color",
+        "hex_code",
+        "print_temp_min_degC",
+        "print_temp_max_degC",
+        "print_temp_ideal_degC",
+        "dry_temp_min_degC",
+        "dry_temp_max_degC",
+        "dry_temp_ideal_degC",
+        "dry_time_hrs",
+    ]
 
 
 @admin.register(Printer)
 class PrinterAdmin(ProductChildAdmin):
     base_model = Printer
     show_in_index = True
+    fields = [
+        "mfr",
+        "model",
+        "shipment",
+        "status",
+        "num_extruders",
+        "bed_length_mm",
+        "bed_width_mm",
+        "max_height_mm",
+        "print_volume_mm3",
+        "serial_number",
+    ]
 
 
 @admin.register(Hardware)
 class HardwareAdmin(ProductChildAdmin):
     base_model = Hardware
     show_in_index = True
+    field = [
+        "usage",
+        "kind",
+    ]
 
 
 @admin.register(Dryer)
 class DryerAdmin(ProductChildAdmin):
     base_model = Dryer
     show_in_index = True
+    field = ["mfr", "serial_number", "model", "num_slots", 'max_temp"degC']
 
 
 @admin.register(AMS)
 class AMSAdmin(ProductChildAdmin):
     base_model = AMS
     show_in_index = True
+    field = [
+        "mfr",
+        "serial_number",
+        "model",
+        "num_slots",
+    ]
 
 
 class OrderChildAdmin(PolymorphicChildModelAdmin):
@@ -148,7 +168,10 @@ class OrderParentAdmin(PolymorphicParentModelAdmin):
 
 @admin.register(InventoryItem)
 class InventoryItemAdmin(admin.ModelAdmin):
+    form = InventoryItemForm
+
     change_list_template = "admin/inventory/inventoryitem/change_list.html"
+
     # this controls which columns show up in the changelist
     list_display = (
         "product",
@@ -174,11 +197,73 @@ class InventoryItemAdmin(admin.ModelAdmin):
         "product__upc",  # or by UPC
         "location__name",  # or by Location name
         "product__polymorphic_ctype__model",  # or by class name
-        "serial_number",  # or by serial number
     ]
 
-    # Incorporate the custom form from above that removes the S/N field if the class doesn't support it
-    form = InventoryItemForm
+    readonly_fields = ("display_product_details",)
+
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "product",
+                    "shipment",
+                    "location",
+                    "status",
+                    "date_depleted",
+                    "serial_number",
+                    "display_product_details",
+                )
+            },
+        ),
+    )
+
+    def get_fields(self, request, obj=None):
+        fields = ["product", "shipment", "location", "status", "date_depleted"]
+        if obj and hasattr(obj.product, "serial_number"):
+            fields.append("serial_number")
+        fields.append("display_product_details")
+        return fields
+
+    def display_product_details(self, obj):
+        product = obj.product.get_real_instance()
+        details = []
+        if isinstance(product, Filament):
+            details.append(f"Material: {product.material}\n")
+            details.append(f"Color: {product.color} ({product.hex_code})\n")
+            details.append(f"SKU: {product.sku}\n")
+            details.append(f"UPC: {product.upc}\n")
+        elif isinstance(product, Printer):
+            details.append(f"MFR: {product.mfr}\n")
+            details.append(f"Model: {product.model}\n")
+            details.append(f"Serial Number: {product.serial_number}\n")
+        elif isinstance(product, Hardware):
+            details.append(f"Hardware: {product.hardware}\n")
+        elif isinstance(product, Dryer):
+            details.append(f"MFR: {product.mfr}\n")
+            details.append(f"Model: {product.model}\n")
+            details.append(f"Serial Number: {product.serial_number}\n")
+        elif isinstance(product, AMS):
+            details.append(f"MFR: {product.mfr}\n")
+            details.append(f"Model: {product.model}\n")
+            details.append(f"Serial Number: {product.serial_number}\n")
+        return " ".join(details)
+
+    display_product_details.short_description = "Product Details"
+
+    # def get_form(self, request, obj=None, **kwargs):
+    #     if obj and isinstance(obj.product, Printer):
+    #         self.form = PrinterForm
+    #     elif obj and isinstance(obj.product, AMS):
+    #         self.form = AMSForm
+    #     elif obj and isinstance(obj.product, Hardware):
+    #         self.form = HardwareForm
+    #     elif obj and isinstance(obj.product, Dryer):
+    #         self.form = DryerForm
+    #     elif obj and isinstance(obj.product, Filament):
+    #         self.form = FilamentForm
+    #     # Add additional conditions for other product types
+    #     return super().get_form(request, obj, **kwargs)
 
     class Media:
         css = {"all": ("inventory/css/admin-badges.css",)}
