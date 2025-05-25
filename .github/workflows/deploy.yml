@@ -16,5 +16,6 @@ jobs:
 
     steps:
       - name: Run NAS deployment script 
-        run: bash /mnt/scripts/deploy.sh
+        run: bash /volume1/docker/inventory_management/scripts/deploy.sh
+
 
