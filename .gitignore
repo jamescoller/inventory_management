@@ -11,7 +11,6 @@ __pycache__/
 Include/
 Lib*/
 Local/
-Scripts/
 pyvenv.cfg
 pip-selfcheck.json
 
@@ -31,6 +30,9 @@ media/
 staticfiles/
 inventory_management_site/staticfiles/
 static_root/
+
+# Development only files
+scripts/check-migrations.sh
 
 # Optional: logs
 *.log
