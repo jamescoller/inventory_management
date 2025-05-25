@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
+from django import forms
 from polymorphic.admin import (
     PolymorphicParentModelAdmin,
     PolymorphicChildModelAdmin,
@@ -7,18 +8,52 @@ from polymorphic.admin import (
 )
 from .models import *
 
-# ----- Polymorphic Child Admins -----
+
+# ----- Specialty Classes for Specific Views ----------
 
 
-class ProductChildAdmin(PolymorphicChildModelAdmin):
-    base_model = Product
-
-
+# This allows for the inventory item page in the admin view to show these fields all in the same line as a table
 class InventoryItemInline(admin.TabularInline):  # or admin.StackedInline
     model = InventoryItem
     extra = 0
     fields = ("shipment", "location", "status", "date_depleted")
     readonly_fields = ("date_depleted",)
+
+
+# This allows us to hide the serial number field for everything except the Printer, AMS, or Dryer.
+class InventoryItemForm(forms.ModelForm):
+    class Meta:
+        model = InventoryItem
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # figure out which product we're dealing with:
+        product = None
+        if self.instance and self.instance.pk:
+            # editing an existing InventoryItem
+            product = self.instance.product
+        else:
+            # creating a new one—try to grab from the POST/GET
+            pid = self.data.get("product") or self.initial.get("product")
+            if pid:
+                try:
+                    product = Product.objects.get(pk=pid)
+                except Product.DoesNotExist:
+                    product = None
+
+        # if it’s not AMS, Printer or Dryer, remove the field
+        allowed = (AMS, Printer, Dryer)
+        if not (product and isinstance(product, allowed)):
+            self.fields.pop("serial_number", None)
+
+
+# ----- Polymorphic Child Admins -----
+
+
+class ProductChildAdmin(PolymorphicChildModelAdmin):
+    base_model = Product
 
 
 @admin.register(Filament)
@@ -99,6 +134,9 @@ class InventoryItemAdmin(admin.ModelAdmin):
         "date_depleted",
     )
     list_filter = ("status", "location")
+
+    # Incorporate the custom form from above that removes the S/N field if the class doesn't support it
+    form = InventoryItemForm
 
     class Media:
         css = {"all": ("inventory/css/admin-badges.css",)}

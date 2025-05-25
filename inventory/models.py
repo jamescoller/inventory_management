@@ -142,6 +142,7 @@ class InventoryItem(models.Model):
     status = models.PositiveSmallIntegerField(
         choices=Status.choices, default=Status.NEW
     )
+    serial_number = models.CharField(max_length=100, blank=True, null=True)
 
     def __str__(self):
         return f"{self.product.upc} - {self.timestamp.strftime('%Y-%m-%d')}"
