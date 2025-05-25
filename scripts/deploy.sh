@@ -2,7 +2,7 @@
 set -e
 
 # Trust the mounted repo location
-git config --global --add safe.directory /mnt/inventory_management
+git config --global --add safe.directory /volume1/docker/inventory_management
 
 cd /volume1/docker/inventory_management || exit 1
 echo "Pulling latest code..."
