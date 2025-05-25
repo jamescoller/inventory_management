@@ -175,7 +175,6 @@ class InventoryItem(models.Model):
 
     last_modified = models.DateTimeField(auto_now=True)
     date_depleted = models.DateTimeField(null=True, blank=True)
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     location = models.ForeignKey(
         "Location", on_delete=models.SET_NULL, blank=True, null=True
     )
