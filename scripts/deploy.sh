@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+cd /mnt/inventory_management/
 echo "Pulling latest code..."
 git fetch origin master
 git reset --hard origin/master
