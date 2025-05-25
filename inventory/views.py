@@ -104,6 +104,7 @@ class inventoryEditView(LoginRequiredMixin, UpdateView):
         )
 
     def post(self, request, item_id):
+        item = get_object_or_404(InventoryItem, id=item_id)
         form = InventoryEditForm(request.POST, instance=item)
         if form.is_valid():
             form.save()
