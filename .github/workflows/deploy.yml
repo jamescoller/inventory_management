@@ -3,11 +3,11 @@ name: Deploy to Synology NAS
 on:
   push:
     branches:
-    - main
+    - master
     - release/*
   pull_request:
     branches:
-    - main
+    - master
   workflow_dispatch:
 
 jobs:
