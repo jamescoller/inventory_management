@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/4.1/ref/settings/
 from pathlib import Path
 from os.path import dirname, join
 from django.contrib.messages import constants as messages
+from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,10 +23,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-w07&5gwrdk==i^43uy8szu2ftmy_-izw!_-((jd!p-e5l)whj6"
+SECRET_KEY = config("DJANGO_SECRET_KEY", default=None)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config("DEBUG", default=None)
+
+ENABLE_BARCODE_PRINTING = config("ENABLE_BARCODE_PRINTING", default=True)
 
 ALLOWED_HOSTS = ["*"]
 
@@ -90,6 +93,9 @@ DATABASES = {
         "NAME": "inventory_db.sqlite3",
     }
 }
+
+# Location of local barcode printer
+PRINTER_MAC = config("PRINTER_MAC", default=None)
 
 # Designates IPs for internal user testing / dev testing
 INTERNAL_IPS = [

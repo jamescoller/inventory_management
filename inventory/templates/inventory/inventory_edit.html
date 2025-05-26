@@ -2,11 +2,49 @@
 {% block content %}
     <div class="container py-4">
         <h2>Edit Inventory Item</h2>
+
         <form method="post">
             {% csrf_token %}
             {{ form.as_p }}
-            <button type="submit">Save</button>
-            <a href="{% url 'inventory_search' %}">Cancel</a>
+
+            <button type="submit" class="btn btn-outline-primary">Save</button>
+            <a href="{% url 'inventory_search' %}" class="btn btn-outline-primary">Cancel</a>
         </form>
+
+        <hr>
+
+        <!-- ✅ This is the HTMX response target -->
+        <div id="print-result"></div>
+
+        <!-- ✅ HTMX Print Button (outside the main form!) -->
+        <form
+                hx-post="{% url 'print_barcode' item.id 'unique' %}"
+                hx-target="#print-result"
+                hx-swap="outerHTML"
+                method="POST"
+        >
+            {% csrf_token %}
+            <button type="submit" class="btn btn-secondary mt-3">
+                🖨️ Print Unique Label
+            </button>
+        </form>
+
+        <form
+                hx-post="{% url 'print_barcode' item.id 'upc' %}"
+                hx-target="#print-result"
+                hx-swap="outerHTML"
+                method="POST"
+        >
+            {% csrf_token %}
+            <button type="submit" class="btn btn-secondary mt-3">
+                🖨️ Print Generic Item Label
+            </button>
+        </form>
+
+        <!-- ✅ Optional direct GET fallback links (if needed) -->
+        {#    <div class="mt-3">#}
+        {#      <a href="{% url 'print_barcode' item.id 'upc' %}" class="btn btn-secondary">🖨️ Print UPC Label</a>#}
+        {#      <a href="{% url 'print_barcode' item.id 'unique' %}" class="btn btn-primary">🖨️ Print Item Label</a>#}
+        {#    </div>#}
     </div>
 {% endblock %}

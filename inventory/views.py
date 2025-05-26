@@ -12,20 +12,65 @@ from django.contrib.auth import authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from django.db.models import Count
-from django.db.models import Sum
-from django.contrib.contenttypes.models import ContentType
 from .forms import *
 from .models import *
 from .tables import *
 from django.shortcuts import render, get_object_or_404
 from decimal import Decimal
-import json
-from django_tables2 import SingleTableMixin
-from django_filters.views import FilterView
 import django_filters
 import openpyxl
 from django.http import HttpResponse
 from django.utils.timezone import localtime
+import io
+from django.template.loader import render_to_string
+from .barcode_utils import generate_and_print_barcode
+
+
+# ---- Barcode Writer Helpers --------
+
+
+class PrintBarcodeView(View):
+
+    def get(self, request, item_id, mode):
+        item = InventoryItem.objects.select_related("product").get(id=item_id)
+        try:
+            label_img = generate_and_print_barcode(item, mode)
+        except Exception as e:
+            return HttpResponse(str(e), status=500)
+
+        img_io = io.BytesIO()
+        label_img.save(img_io, format="PNG")
+        img_io.seek(0)
+
+        return HttpResponse(img_io.getvalue(), content_type="image/png")
+
+    def post(self, request, item_id, mode):
+        item = get_object_or_404(InventoryItem, id=item_id)
+        try:
+            generate_and_print_barcode(item, mode)
+        except Exception as e:
+            return HttpResponse(str(e), status=500)
+
+        if request.headers.get("HX-Request"):
+            html_body = render_to_string(
+                "inventory/partials/print_confirmations.html",
+                {
+                    "item": item,
+                    "mode": mode,
+                },
+            )
+            html_wrapped = f'<div id="print-result" class="alert alert-success mt-2">{html_body}</div>'
+            return HttpResponse(html_wrapped)
+
+        return redirect("inventory_edit", pk=item_id)
+
+
+class BarcodeRedirectView(View):
+    def get(self, request, value):
+        if value.startswith("INV-"):
+            item_id = value.replace("INV-", "")
+            return redirect("inventory_edit", pk=item_id)
+        return HttpResponse("Invalid barcode", status=400)
 
 
 class AboutView(TemplateView):
@@ -129,7 +174,6 @@ class addInventoryView(LoginRequiredMixin, CreateView):
             latest = InventoryItem.objects.order_by("-id").first()
             initial["shipment"] = latest.shipment
             initial["location"] = latest.location
-            initial["status"] = latest.status
         return initial
 
     def post(self, request, **kwargs):
@@ -143,7 +187,6 @@ class addInventoryView(LoginRequiredMixin, CreateView):
         sku = form.cleaned_data.get("sku")
         shipment = form.cleaned_data.get("shipment")
         location = form.cleaned_data.get("location")
-        status = form.cleaned_data.get("status")
 
         if not upc and not sku:
             messages.error(request, "You must provide either a UPC or SKU.")
@@ -163,9 +206,11 @@ class addInventoryView(LoginRequiredMixin, CreateView):
         # Try to find product by SKU
         if product is None and sku:
             for model in [Filament, Printer, Hardware, AMS, Dryer]:
-                model.objects.filter(sku=sku).first()
-                if product:
+                try:
+                    product = model.objects.filter(sku=sku).first()
                     break
+                except model.DoesNotExist:
+                    continue
 
         # If still no product found, redirect to 'add_product_choice'
         if product is None:
@@ -174,8 +219,7 @@ class addInventoryView(LoginRequiredMixin, CreateView):
                 "upc": upc,
                 "sku": sku,
                 "shipment": shipment,
-                "location_id": location.id,
-                "status": status,
+                "location_id": location.id if location else None,
             }
             messages.warning(
                 request,
@@ -191,22 +235,40 @@ class addInventoryView(LoginRequiredMixin, CreateView):
             f"Matched product: {product.name} (SKU: {product.sku}, UPC: {product.upc})",
         )
 
-        InventoryItem.objects.create(
+        new_item = InventoryItem.objects.create(
             product=product,
             shipment=shipment,
             location=location,
-            status=status,
         )
 
-        messages.success(request, f"Added {product.name} to inventory.")
+        messages.success(request, f"Added {product.name} to inventory")
+
+        try:
+            generate_and_print_barcode(new_item, mode="unique")
+        except Exception as e:
+            messages.warning(request, f"Label printing failed: {e}")
+
+        # After successful item creation and label printing
+        html = render_to_string(
+            "inventory/partials/print_confirmations.html",
+            {
+                "item": new_item,
+                "mode": "unique",
+            },
+        )
+        messages.success(request, html)
+
         return redirect("add_inventory")
 
-        # TODO Add a button to also print out a barcode label for the item
-        # TODO Design individual barcode stickers
-
     def form_valid(self, form):
-        form.instance.user = self.request.user
-        return super().form_valid(form)
+        response = super().form_valid(form)
+
+        try:
+            generate_and_print_barcode(self.object, mode="unique")
+        except Exception as e:
+            messages.error(self.request, f"Label print failed: {e}")
+
+        return response
 
 
 class Index(TemplateView):
@@ -379,7 +441,6 @@ class AddFilamentView(LoginRequiredMixin, CreateView):
                     product=self.object,
                     shipment=pending.get("shipment"),
                     location_id=pending.get("location_id"),
-                    user=self.request.user,
                 )
                 messages.success(
                     self.request, f"{self.object.name} and inventory item created."
@@ -411,7 +472,6 @@ class AddPrinterView(LoginRequiredMixin, CreateView):
                     product=self.object,
                     shipment=pending.get("shipment"),
                     location_id=pending.get("location_id"),
-                    user=self.request.user,
                 )
                 messages.success(
                     self.request, f"{self.object.name} and inventory item created."
@@ -443,7 +503,6 @@ class AddDryerView(LoginRequiredMixin, CreateView):
                     product=self.object,
                     shipment=pending.get("shipment"),
                     location_id=pending.get("location_id"),
-                    user=self.request.user,
                 )
                 messages.success(
                     self.request, f"{self.object.name} and inventory item created."
@@ -475,7 +534,6 @@ class AddHardwareView(LoginRequiredMixin, CreateView):
                     product=self.object,
                     shipment=pending.get("shipment"),
                     location_id=pending.get("location_id"),
-                    user=self.request.user,
                 )
                 messages.success(
                     self.request, f"{self.object.name} and inventory item created."
@@ -507,7 +565,6 @@ class AddAMSView(LoginRequiredMixin, CreateView):
                     product=self.object,
                     shipment=pending.get("shipment"),
                     location_id=pending.get("location_id"),
-                    user=self.request.user,
                 )
                 messages.success(
                     self.request, f"{self.object.name} and inventory item created."
@@ -574,12 +631,10 @@ class FilamentView(LoginRequiredMixin, View):
             "inventory/dashboard.html",
             {
                 "item_counts": item_counts,
-                "item_counts_by_type": item_counts_by_type,
                 "items": items,
                 "locations": Location.objects.all(),
                 "filament_chart_data": filament_chart_data,
                 "color_chart_data": color_chart_data,
-                "inventory_by_sku": inventory_by_sku,
             },
         )
 

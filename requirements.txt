@@ -23,3 +23,8 @@ django_tables2>=2.7.5
 django-extensions>=4.1
 django-debug-toolbar>=5.0.0
 pre-commit
+python-barcode
+brother_ql
+pillow>=10.0.0
+scapy
+python-decouple
