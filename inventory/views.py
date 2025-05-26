@@ -24,6 +24,7 @@ from django.utils.timezone import localtime
 import io
 from django.template.loader import render_to_string
 from .barcode_utils import generate_and_print_barcode
+from django.http import HttpResponse, Http404
 
 
 # ---- Barcode Writer Helpers --------
@@ -32,17 +33,25 @@ from .barcode_utils import generate_and_print_barcode
 class PrintBarcodeView(View):
 
     def get(self, request, item_id, mode):
-        item = InventoryItem.objects.select_related("product").get(id=item_id)
+        # 1. Get the item
+        item = get_object_or_404(
+            InventoryItem.objects.select_related("product"), id=item_id
+        )
+
         try:
-            barcode_img = generate_and_print_barcode(item, mode)
+            # 2. Generate and print the barcode (returns PIL image)
+            label_img = generate_and_print_barcode(item, mode)
+
+            # 3. Save image to in-memory buffer
+            img_io = io.BytesIO()
+            label_img.save(img_io, format="PNG")
+            img_io.seek(0)
+
+            # 4. Return as HTTP response
+            return HttpResponse(img_io.getvalue(), content_type="image/png")
+
         except Exception as e:
-            return HttpResponse(str(e), status=500)
-
-        img_io = io.BytesIO()
-        barcode_img.write(img_io, {'format': 'PNG'})
-        img_io.seek(0)
-
-        return HttpResponse(img_io.getvalue(), content_type="image/png")
+            return HttpResponse(f"Barcode generation failed: {str(e)}", status=500)
 
     def post(self, request, item_id, mode):
         item = get_object_or_404(InventoryItem, id=item_id)
