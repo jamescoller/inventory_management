@@ -18,14 +18,13 @@ class InventoryItemForm(forms.ModelForm):
 
     class Meta:
         model = InventoryItem
-        fields = ["shipment", "location", "status", "serial_number"]
+        fields = ["shipment", "location", "serial_number"]
         help_texts = {
             "shipment": "Scan or enter shipment tracking number, or enter arrival date if no tracking is available.",
         }
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            product = self.instance.product if self.instance else None
             if not (product and hasattr(product, "serial_number")):
                 self.fields.pop("serial_number", None)
 

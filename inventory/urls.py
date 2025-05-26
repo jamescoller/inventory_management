@@ -32,4 +32,12 @@ urlpatterns = [
     path("search/", InventorySearchView.as_view(), name="inventory_search"),
     path("edit/<int:item_id>/", inventoryEditView.as_view(), name="inventory_edit"),
     path("search/export/", InventoryExportView.as_view(), name="inventory_export"),
+    path(
+        "print_barcode/<int:item_id>/<str:mode>/",
+        PrintBarcodeView.as_view(),
+        name="print_barcode",
+    ),
+    path(
+        "barcode/<str:value>/", BarcodeRedirectView.as_view(), name="barcode_redirect"
+    ),
 ]
