@@ -39,7 +39,7 @@ class PrintBarcodeView(View):
             return HttpResponse(str(e), status=500)
 
         img_io = io.BytesIO()
-        label_img.save(img_io, format="PNG")
+        barcode_img.write(img_io, {'format': 'PNG'})
         img_io.seek(0)
 
         return HttpResponse(img_io.getvalue(), content_type="image/png")
