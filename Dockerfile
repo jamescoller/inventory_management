@@ -4,6 +4,9 @@ FROM python:3.12-slim
 LABEL authors="jcoller"
 LABEL name="inventory"
 
+# Install system packages
+RUN apt-get update && apt-get install -y net-tools
+
 # Set the working directory in the container
 WORKDIR /app
 
