@@ -28,3 +28,4 @@ brother_ql
 pillow>=10.0.0
 scapy
 python-decouple
+net-tools
