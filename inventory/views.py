@@ -34,7 +34,7 @@ class PrintBarcodeView(View):
     def get(self, request, item_id, mode):
         item = InventoryItem.objects.select_related("product").get(id=item_id)
         try:
-            label_img = generate_and_print_barcode(item, mode)
+            barcode_img = generate_and_print_barcode(item, mode)
         except Exception as e:
             return HttpResponse(str(e), status=500)
 
