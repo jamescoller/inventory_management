@@ -1,3 +1,5 @@
+[![Deploy to Synology NAS](https://github.com/jamescoller/inventory_management/actions/workflows/deploy.yml/badge.svg)](https://github.com/jamescoller/inventory_management/actions/workflows/deploy.yml)
+
 ## 1. Clone and Build
 ```bash
 git clone https://github.com/jamescoller/inventory_management

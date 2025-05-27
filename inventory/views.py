@@ -1,30 +1,23 @@
-from django.shortcuts import render, redirect
-from django.urls import reverse_lazy
-from django.views.generic import (
-    TemplateView,
-    View,
-    CreateView,
-    UpdateView,
-    DeleteView,
-    ListView,
-)
+from decimal import Decimal
+
+import django_filters
+import openpyxl
+from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib import messages
 from django.db.models import Count
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404, render
+from django.shortcuts import redirect
+from django.template.loader import render_to_string
+from django.urls import reverse_lazy
+from django.utils.timezone import localtime
+from django.views.generic import CreateView, TemplateView, UpdateView, View
+
+from .barcode_utils import generate_and_print_barcode
 from .forms import *
 from .models import *
 from .tables import *
-from django.shortcuts import render, get_object_or_404
-from decimal import Decimal
-import django_filters
-import openpyxl
-from django.http import HttpResponse
-from django.utils.timezone import localtime
-import io
-from django.template.loader import render_to_string
-from .barcode_utils import generate_and_print_barcode
-from django.http import HttpResponse, Http404
 
 
 # ---- Barcode Writer Helpers --------
@@ -40,15 +33,10 @@ class PrintBarcodeView(View):
 
         try:
             # 2. Generate and print the barcode (returns PIL image)
-            label_img = generate_and_print_barcode(item, mode)
+            response = generate_and_print_barcode(item, mode)
 
-            # 3. Save image to in-memory buffer
-            img_io = io.BytesIO()
-            label_img.save(img_io, format="PNG")
-            img_io.seek(0)
-
-            # 4. Return as HTTP response
-            return HttpResponse(img_io.getvalue(), content_type="image/png")
+            # 3. Return as HTTP response
+            return response
 
         except Exception as e:
             return HttpResponse(f"Barcode generation failed: {str(e)}", status=500)

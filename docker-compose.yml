@@ -3,6 +3,9 @@ services:
     build: .
     command: ["/app/entrypoint.sh"]
     restart: always
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     volumes:
       - .:/app
       - static_volume:/app/staticfiles  # ✅ Match STATIC_ROOT!

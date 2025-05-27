@@ -10,10 +10,11 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.1/ref/settings/
 """
 
-from pathlib import Path
 from os.path import dirname, join
-from django.contrib.messages import constants as messages
+from pathlib import Path
+
 from decouple import config
+from django.contrib.messages import constants as messages
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -96,6 +97,7 @@ DATABASES = {
 
 # Location of local barcode printer
 PRINTER_MAC = config("PRINTER_MAC", default=None)
+PRINTER_IP = config("PRINTER_IP", default=None)
 
 # Designates IPs for internal user testing / dev testing
 INTERNAL_IPS = [
@@ -176,3 +178,16 @@ LOW_QUANTITY = 3
 MESSAGE_TAGS = {
     messages.ERROR: "danger",
 }
+
+# LOGGING = {
+#     'version': 1,
+#     'handlers': {
+#         'console': {
+#             'class': 'logging.StreamHandler',
+#         },
+#     },
+#     'root': {
+#         'handlers': ['console'],
+#         'level': 'DEBUG',
+#     },
+# }
