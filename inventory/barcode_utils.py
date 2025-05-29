@@ -216,6 +216,7 @@ def print_img(img, item, mode):
     # Find printer on network
     # printer_mac = getattr(settings, "PRINTER_MAC", None)
     printer_ip = getattr(settings, "PRINTER_IP", None)
+
     # if not printer_mac:
     #     logger.error("Printer MAC address not configured in settings")
     #     raise ValueError("Printer MAC not configured")
@@ -256,7 +257,7 @@ def print_img(img, item, mode):
             mode,
         )
     except Exception as e:
-        logger.exception("Error printing barcode: %s", str(e))
+        logger.exception("Error printing barcode to %s: %s", printer_ip, str(e))
         # Continue execution to return the image even if printing fails
         logger.warning("Continuing to generate barcode image despite printing failure")
 
