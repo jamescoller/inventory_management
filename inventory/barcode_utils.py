@@ -157,7 +157,8 @@ def format_label(barcode_img, text, label_size=(54, 17)):
     )  # Margin will only be on top of the text
     barcode_aspect_ratio = barcode_img.width / barcode_img.height
     new_barcode_height = min(barcode_img.height, max_barcode_height)
-    new_barcode_width = int(new_barcode_height * barcode_aspect_ratio)
+    # new_barcode_width = int(new_barcode_height * barcode_aspect_ratio)
+    new_barcode_width = int(0.7 * canvas_width)
 
     barcode_resized = barcode_img.resize(
         (new_barcode_width, new_barcode_height),  # 2-tuple: width and height in pixels

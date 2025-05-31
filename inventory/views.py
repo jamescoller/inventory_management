@@ -1,3 +1,4 @@
+import re
 from decimal import Decimal
 
 import django_filters
@@ -6,6 +7,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Count
+from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.shortcuts import redirect
@@ -105,22 +107,38 @@ class InventorySearchView(LoginRequiredMixin, View):
         location = request.GET.get("location", "")
         serial_number = request.GET.get("serial_number", "")
 
+        # Check for INV_xxx pattern
+        inv_pattern = re.match(r"^INV-(\d+)$", name.strip())
+        if inv_pattern:
+            item_id = inv_pattern.group(1)
+            return redirect("inventory_edit", item_id=item_id)
+
         # Base queryset, excluding depleted items
         items = InventoryItem.objects.exclude(status=5).select_related(
             "product", "location"
         )
 
-        # Apply filters
-        if sku:
-            items = items.filter(product__sku=sku)
-        if upc:
-            items = items.filter(product__upc=upc)
-        if name:
-            items = items.filter(product__name__icontains=name)
-        if location:
-            items = items.filter(location__name__icontains=location)
-        if serial_number:
-            items = items.filter(serial_number=serial_number)
+        # If there's a simple search from the navbar, search across multiple fields
+        if name and not any([sku, upc, location, serial_number]):
+            items = items.filter(
+                Q(product__name__icontains=name)
+                | Q(product__sku__icontains=name)
+                | Q(product__upc__icontains=name)
+                | Q(location__name__icontains=name)
+                | Q(serial_number__icontains=name)
+            )
+        else:
+            # Apply specific filters
+            if sku:
+                items = items.filter(product__sku=sku)
+            if upc:
+                items = items.filter(product__upc=upc)
+            if name:
+                items = items.filter(product__name__icontains=name)
+            if location:
+                items = items.filter(location__name__icontains=location)
+            if serial_number:
+                items = items.filter(serial_number=serial_number)
 
         # Pass filtered items to the template
         context = {
@@ -139,10 +157,14 @@ class InventorySearchView(LoginRequiredMixin, View):
 
 class inventoryEditView(LoginRequiredMixin, UpdateView):
     def get(self, request, item_id):
-        item = get_object_or_404(InventoryItem, id=item_id)
+        item = get_object_or_404(
+            InventoryItem.objects.select_related("product"), id=item_id
+        )
         form = InventoryEditForm(instance=item)
         return render(
-            request, "inventory/inventory_edit.html", {"form": form, "item": item}
+            request,
+            "inventory/inventory_edit.html",
+            {"form": form, "item": item, "product": item.product},
         )
 
     def post(self, request, item_id):
@@ -155,7 +177,9 @@ class inventoryEditView(LoginRequiredMixin, UpdateView):
             form = InventoryEditForm(instance=item)
 
         return render(
-            request, "inventory/inventory_edit.html", {"form": form, "item": item}
+            request,
+            "inventory/inventory_edit.html",
+            {"form": form, "item": item, "product": item.product},
         )
 
 
@@ -242,6 +266,7 @@ class addInventoryView(LoginRequiredMixin, CreateView):
 
         try:
             generate_and_print_barcode(new_item, mode="unique")
+            generate_and_print_barcode(new_item, mode="upc")
         except Exception as e:
             messages.warning(request, f"Label printing failed: {e}")
 

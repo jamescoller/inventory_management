@@ -1,21 +1,25 @@
 <nav class="navbar navbar-expand-lg bg-primary" data-bs-theme="dark">
 	<div class="container-fluid">
 		<a class="navbar-brand" href="{% url 'index' %}">Inventory Manager</a>
-		<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+		<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+				aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
 			<span class="navbar-toggler-icon"></span>
 		</button>
 		<div class="collapse navbar-collapse justify-content-end" id="navbarNav">
+			<!-- Add search form here -->
+			<form class="d-flex me-auto" role="search" method="get" action="{% url 'inventory_search' %}">
+				<input class="form-control me-2" type="search" placeholder="Search" aria-label="Search" name="name">
+				<button class="btn btn-light" type="submit">Search</button>
+			</form>
+
 			<ul class="navbar-nav">
 				{% if user.is_authenticated %}
 					<li class="nav-item">
 						<a class="nav-link" href="#">{{ user.username }}</a>
 					</li>
-
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'admin:index' %}">Admin</a>
                     </li>
-
-
                     <li class="nav-item">
 						<a class="nav-link" href="{% url 'logout' %}">Sign Out</a>
 					</li>
@@ -23,12 +27,10 @@
 					<li class="nav-item">
 						<a class="nav-link" href="{% url 'login' %}">Sign In</a>
 					</li>
-
 					<li class="nav-item">
 						<a class="nav-link" href="{% url 'signup' %}">Sign Up</a>
 					</li>
 				{% endif %}
-
 			</ul>
 		</div>
 	</div>

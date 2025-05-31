@@ -1,50 +1,86 @@
 {% extends 'inventory/base.html' %}
 {% block content %}
-    <div class="container py-4">
+	<div class="container py-4">
+		<div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Edit Inventory Item</h2>
+			<!-- Print Buttons Group -->
+			<div class="btn-group">
+				<a href="{% url 'print_barcode' item.id 'upc' %}" class="btn btn-primary">
+					<i class="bi bi-printer"></i> Print Barcode
+				</a>
+				<a href="{% url 'print_barcode' item.id 'unique' %}" class="btn btn-outline-primary">
+					<i class="bi bi-tag"></i> Print Inventory Tag
+				</a>
+			</div>
+		</div>
 
-        <form method="post">
-            {% csrf_token %}
-            {{ form.as_p }}
+		<!-- Product Details Card -->
+		<div class="card mb-4">
+			<div class="card-header bg-light d-flex justify-content-between align-items-center">
+				<h5 class="card-title mb-0">Product Details</h5>
+			</div>
+			<div class="card-body">
+				<div class="row">
+					<div class="col-md-6">
+						<dl class="row">
+							<dt class="col-sm-4">Name</dt>
+							<dd class="col-sm-8">{{ product.name }}</dd>
 
-            <button type="submit" class="btn btn-outline-primary">Save</button>
-            <a href="{% url 'inventory_search' %}" class="btn btn-outline-primary">Cancel</a>
-        </form>
+							<dt class="col-sm-4">SKU</dt>
+							<dd class="col-sm-8">{{ product.sku }}</dd>
 
-        <hr>
+							<dt class="col-sm-4">UPC</dt>
+							<dd class="col-sm-8">{{ product.upc }}</dd>
+						</dl>
+					</div>
+					<div class="col-md-6">
+						<dl class="row">
+							<dt class="col-sm-4">Product Type</dt>
+							<dd class="col-sm-8">{{ item.product.polymorphic_ctype.name }}</dd>
 
-        <!-- ✅ This is the HTMX response target -->
-        <div id="print-result"></div>
+							<dt class="col-sm-4">Created</dt>
+							<dd class="col-sm-8">{{ item.date_added|date:"Y-m-d H:i:s" }}</dd>
 
-        <!-- ✅ HTMX Print Button (outside the main form!) -->
-        <form
-                hx-post="{% url 'print_barcode' item.id 'unique' %}"
-                hx-target="#print-result"
-                hx-swap="outerHTML"
-                method="POST"
-        >
-            {% csrf_token %}
-            <button type="submit" class="btn btn-secondary mt-3">
-                🖨️ Print Unique Label
-            </button>
-        </form>
+							<dt class="col-sm-4">Updated</dt>
+							<dd class="col-sm-8">{{ item.last_modified|date:"Y-m-d H:i:s" }}</dd>
+						</dl>
+					</div>
+				</div>
+			</div>
+		</div>
 
-        <form
-                hx-post="{% url 'print_barcode' item.id 'upc' %}"
-                hx-target="#print-result"
-                hx-swap="outerHTML"
-                method="POST"
-        >
-            {% csrf_token %}
-            <button type="submit" class="btn btn-secondary mt-3">
-                🖨️ Print Generic Item Label
-            </button>
-        </form>
+		<!-- Inventory Edit Form -->
+		<form method="post">
+			{% csrf_token %}
+			<div class="card">
+				<div class="card-header bg-light">
+					<h5 class="card-title mb-0">Inventory Details</h5>
+				</div>
+				<div class="card-body">
+					{% for field in form %}
+						<div class="mb-3">
+							<label for="{{ field.id_for_label }}" class="form-label">
+								{{ field.label }}
+							</label>
+							{{ field }}
+							{% if field.errors %}
+								<div class="alert alert-danger">
+									{{ field.errors }}
+								</div>
+							{% endif %}
+						</div>
+					{% endfor %}
+				</div>
+				<div class="card-footer d-flex justify-content-between">
+					<div>
+						<button type="submit" class="btn btn-primary">Save Changes</button>
+						<a href="{% url 'inventory_search' %}" class="btn btn-secondary">Cancel</a>
+					</div>
 
-        <!-- ✅ Optional direct GET fallback links (if needed) -->
-        {#    <div class="mt-3">#}
-        {#      <a href="{% url 'print_barcode' item.id 'upc' %}" class="btn btn-secondary">🖨️ Print UPC Label</a>#}
-        {#      <a href="{% url 'print_barcode' item.id 'unique' %}" class="btn btn-primary">🖨️ Print Item Label</a>#}
-        {#    </div>#}
-    </div>
+				</div>
+			</div>
+		</form>
+	</div>
+
+	<!-- Add Bootstrap Icons CSS in your base template if not already present -->
 {% endblock %}
