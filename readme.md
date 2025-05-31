@@ -1,4 +1,4 @@
-[![Deploy to Synology NAS](https://github.com/jamescoller/inventory_management/actions/workflows/deploy.yml/badge.svg)](https://github.com/jamescoller/inventory_management/actions/workflows/deploy.yml)
+[![Deploy to Synology NAS](https://github.com/jamescoller/inventory_management/actions/workflows/deploy.yml/badge.svg?event=push)](https://github.com/jamescoller/inventory_management/actions/workflows/deploy.yml)
 
 ## 1. Clone and Build
 ```bash
