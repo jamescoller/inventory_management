@@ -67,6 +67,7 @@ def format_label(barcode_img, text, label_size=(54, 17)):
     """
     canvas_height = None  # Printing Landscape, canvas height will be label width
     canvas_width = None  # Printing Landscape, canvas width will be label length
+    font_size = 30
 
     # Convert mm to printable pixels at 300 dpi (including req margins)
     for dim in label_size:
@@ -122,13 +123,13 @@ def format_label(barcode_img, text, label_size=(54, 17)):
     # === Load Font for Text ===
     try:
         font = ImageFont.truetype(
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size=32
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size=font_size
         )
     except Exception as e:
         logger.warning(
             "Could not load DejaVuSans font: %s. Using default font.", str(e)
         )
-        font = ImageFont.load_default(size=32)
+        font = ImageFont.load_default(size=font_size)
 
     # === Calculate Text Dimensions ===
     draw = ImageDraw.Draw(
@@ -146,12 +147,12 @@ def format_label(barcode_img, text, label_size=(54, 17)):
         align="center",  # text alignment, here center
     )  # returns a 4-tuple of the bounding box coordinates (left, top, right, bottom) in pixels
 
-    text_h = bbox[1] - bbox[3]  # Top - Bottom
+    text_h = bbox[3] - bbox[1]  # Top - Bottom
     text_w = bbox[2] - bbox[0]  # Right - Left
     text_margin = 3  # margin (in pixels) around the text
 
     # === Resize Barcode to Fit Label ===
-    max_barcode_height = canvas_height - (
+    max_barcode_height = bbox[3] - (
         text_h + text_margin
     )  # Margin will only be on top of the text
     barcode_aspect_ratio = barcode_img.width / barcode_img.height
@@ -174,13 +175,13 @@ def format_label(barcode_img, text, label_size=(54, 17)):
     draw.text(
         (
             canvas_width // 2,
-            canvas_height,
+            bbox[3],  # Bottom edge of text box already calculated
         ),  # anchor coordinates for the text, floating point division = bottom center
         text,  # text to be measured, can be multiline
         font=font,  # text font to be used
         anchor="md",  # anchor reference, here middle and descender (see docs)
         align="center",  # text alignment, here center
-        font_size=32,
+        font_size=font_size,
     )
 
     # === Rotate Label to Portrait ===
