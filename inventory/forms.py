@@ -23,10 +23,10 @@ class InventoryItemForm(forms.ModelForm):
             "shipment": "Scan or enter shipment tracking number, or enter arrival date if no tracking is available.",
         }
 
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            if not (product and hasattr(product, "serial_number")):
-                self.fields.pop("serial_number", None)
+        # def __init__(self, *args, **kwargs):
+        #     super().__init__(*args, **kwargs)
+        #     if not (product and hasattr(product, "serial_number")):
+        #         self.fields.pop("serial_number", None)
 
 
 class MoveItemForm(forms.ModelForm):
