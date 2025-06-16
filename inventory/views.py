@@ -711,3 +711,48 @@ class InventoryExportView(LoginRequiredMixin, View):
         response["Content-Disposition"] = f"attachment; filename={filename}"
         wb.save(response)
         return response
+
+
+class InUseOverviewView(TemplateView):
+    template_name = "inventory/in_use_overview.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        in_use_items = InventoryItem.objects.filter(
+            status=InventoryItem.Status.IN_USE
+        ).select_related("location", "product")
+        drying_items = InventoryItem.objects.filter(
+            status=InventoryItem.Status.DRYING
+        ).select_related("location", "product")
+        stored_items = InventoryItem.objects.filter(
+            status=InventoryItem.Status.STORED
+        ).select_related("location", "product")
+
+        grouped_by_location = {}
+        for item in in_use_items:
+            # TODO Add in additional views for | drying_items | stored_items
+            loc = item.location.name if item.location else "Unassigned"
+            item.product_type = str(
+                item.product.polymorphic_ctype.model
+            )  # Add model type
+
+            tooltip_lines = []
+            if item.serial_number:
+                tooltip_lines.append(f"<strong>Serial:</strong> {item.serial_number}")
+
+            if (
+                item.product_type == "filament"
+                and hasattr(item.product.filament, "color")
+                and item.product.filament.color
+            ):
+                tooltip_lines.append(
+                    f"<strong>Color:</strong> {item.product.filament.color}"
+                )
+            item.tooltip_html = "'{}'".format(
+                "<br>".join(tooltip_lines).replace('"', "&quot;")
+            )
+
+            grouped_by_location.setdefault(loc, []).append(item)
+
+        context["grouped_items"] = grouped_by_location
+        return context
