@@ -1,22 +1,11 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from django import forms
-from django.contrib.admin import AllValuesFieldListFilter
-from polymorphic.admin import (
-    PolymorphicParentModelAdmin,
-    PolymorphicChildModelAdmin,
-    PolymorphicChildModelFilter,
-)
-from django.contrib.contenttypes.models import ContentType
-from .models import *
+from polymorphic.admin import PolymorphicChildModelAdmin, PolymorphicParentModelAdmin
+
 from .forms import (
     InventoryItemForm,
-    PrinterForm,
-    AMSForm,
-    DryerForm,
-    HardwareForm,
-    FilamentForm,
 )
+from .models import *
 
 
 # ----- Specialty Classes for Specific Views ----------
@@ -63,12 +52,8 @@ class ProductChildAdmin(PolymorphicChildModelAdmin):
 class FilamentAdmin(ProductChildAdmin):
     base_model = Filament
     show_in_index = True
+    list_display = ["name", "material", "color", "hex_code", "get_sku"]
     fields = [
-        "product",
-        "location",
-        "shipment",
-        "status",
-        "date_depleted",
         "material",
         "material_type",
         "color",
@@ -81,6 +66,11 @@ class FilamentAdmin(ProductChildAdmin):
         "dry_temp_ideal_degC",
         "dry_time_hrs",
     ]
+
+    def get_sku(self, obj):
+        return obj.sku
+
+    get_sku.short_description = "SKU"  # Column header in admin
 
 
 @admin.register(Printer)
@@ -219,7 +209,11 @@ class InventoryItemAdmin(admin.ModelAdmin):
     )
 
     def get_fields(self, request, obj=None):
-        fields = ["product", "shipment", "location", "status", "date_depleted"]
+        fields = []
+        if isinstance(obj, InventoryItem):
+            fields.append(
+                ["product", "shipment", "location", "status", "date_depleted"]
+            )
         if obj and hasattr(obj.product, "serial_number"):
             fields.append("serial_number")
         fields.append("display_product_details")
@@ -229,14 +223,14 @@ class InventoryItemAdmin(admin.ModelAdmin):
         product = obj.product.get_real_instance()
         details = []
         if isinstance(product, Filament):
-            details.append(f"Material: {product.material}\n")
-            details.append(f"Color: {product.color} ({product.hex_code})\n")
+            details.append(f"Material: {product.filament.material}\n")
+            details.append(f"Color: {product.color} ({product.filament.hex_code})\n")
             details.append(f"SKU: {product.sku}\n")
             details.append(f"UPC: {product.upc}\n")
         elif isinstance(product, Printer):
-            details.append(f"MFR: {product.mfr}\n")
-            details.append(f"Model: {product.model}\n")
-            details.append(f"Serial Number: {product.serial_number}\n")
+            details.append(f"MFR: {product.printer.mfr}\n")
+            details.append(f"Model: {product.printer.model}\n")
+            details.append(f"Serial Number: {product.printer.serial_number}\n")
         elif isinstance(product, Hardware):
             details.append(f"Hardware: {product.hardware}\n")
         elif isinstance(product, Dryer):
@@ -250,20 +244,6 @@ class InventoryItemAdmin(admin.ModelAdmin):
         return " ".join(details)
 
     display_product_details.short_description = "Product Details"
-
-    # def get_form(self, request, obj=None, **kwargs):
-    #     if obj and isinstance(obj.product, Printer):
-    #         self.form = PrinterForm
-    #     elif obj and isinstance(obj.product, AMS):
-    #         self.form = AMSForm
-    #     elif obj and isinstance(obj.product, Hardware):
-    #         self.form = HardwareForm
-    #     elif obj and isinstance(obj.product, Dryer):
-    #         self.form = DryerForm
-    #     elif obj and isinstance(obj.product, Filament):
-    #         self.form = FilamentForm
-    #     # Add additional conditions for other product types
-    #     return super().get_form(request, obj, **kwargs)
 
     class Media:
         css = {"all": ("inventory/css/admin-badges.css",)}
@@ -291,9 +271,6 @@ class InventoryItemAdmin(admin.ModelAdmin):
 
     def get_product_type(self, obj):
         real = obj.product.get_real_instance()
-
-        # returns 'Printer', 'AMS', 'Dryer', etc.
-        # return real.__class__.__name__
         return real._meta.verbose_name.title()
 
     get_product_type.short_description = "Product Type"

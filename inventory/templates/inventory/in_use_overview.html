@@ -1,0 +1,75 @@
+{% extends "inventory/base.html" %}
+
+{% block content %}
+	<div class="container py-4">
+		<h1 class="mb-4">In Use</h1>
+		<div class="row row-cols-1 row-cols-sm-2 row-cols-md-2 g-4">
+			{% for location, items in grouped_items.items %}
+				<div class="col">
+					<div class="card mb-4 shadow-sm border-0 rounded-4">
+						<div class="card-header bg-primary text-white rounded-top-4">
+							<h5 class="mb-0"><i class="bi bi-badge-3d"></i> {{ location }}</h5>
+						</div>
+						<div class="card-body">
+							{% if items %}
+								<ul class="list-unstyled">
+									{% for item in items %}
+										<li class="mb-2 p-2 bg-light rounded border"
+											data-bs-toggle="tooltip"
+											data-bs-placement="top"
+											data-bs-html="true"
+											{% if item.tooltip_html %}title={{ item.tooltip_html|safe }}{% endif %}
+										>
+											<div class="d-flex align-items-stretch h-100">
+												<div class="flex-grow-1 pe-3">
+													<strong>{{ item.product.name }}</strong><br>
+													{% if item.product_type == 'filament' %}
+														<small>Color: {{ item.product.filament.color }}</small><br>
+														<small>Hex: {{ item.product.filament.hex_code }}</small><br>
+														<small>SKU: {{ item.product.sku }}</small><br>
+														<small>UPC: {{ item.product.upc }}</small>
+													{% endif %}
+												</div>
+												{% if item.product_type == 'filament' %}
+													<div class="d-flex align-items-center" style="width: 40%;">
+														<div class="w-100 text-center">
+                    <span class="badge rounded-circle border d-inline-block"
+						  style="background-color: {{ item.product.filament.hex_code }};
+								  width: 60px;
+								  height: 60px;
+								  border: 1px solid #ccc;">
+                    </span>
+															<div class="mt-2">
+																<small class="text-muted">{{ item.product_color }}</small>
+															</div>
+														</div>
+													</div>
+												{% endif %}
+											</div>
+										</li>
+									{% endfor %}
+								</ul>
+							{% else %}
+								<p class="text-muted">No items in use here.</p>
+							{% endif %}
+						</div>
+					</div>
+				</div>
+			{% endfor %}
+		</div>
+	</div>
+{% endblock %}
+
+
+{% block extra_scripts %}
+	<script>
+        window.addEventListener("load", function () {
+            const tooltips = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+            tooltips.forEach(function (el) {
+                new bootstrap.Tooltip(el);
+            });
+            console.log("Tooltips initialized:", tooltips.length);
+        });
+	</script>
+
+{% endblock %}
