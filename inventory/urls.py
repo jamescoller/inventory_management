@@ -42,4 +42,9 @@ urlpatterns = [
         "barcode/<str:value>/", BarcodeRedirectView.as_view(), name="barcode_redirect"
     ),
     path("in-use-overview/", InUseOverviewView.as_view(), name="in_use_overview"),
+    path(
+        "dry-storage-overview/",
+        DryStorageOverviewView.as_view(),
+        name="dry_storage_overview",
+    ),
 ]

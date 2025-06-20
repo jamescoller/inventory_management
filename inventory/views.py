@@ -756,3 +756,41 @@ class InUseOverviewView(TemplateView):
 
         context["grouped_items"] = grouped_by_location
         return context
+
+
+class DryStorageOverviewView(TemplateView):
+    template_name = "inventory/dry_storage_overview.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        stored_items = InventoryItem.objects.filter(
+            status=InventoryItem.Status.STORED
+        ).select_related("location", "product")
+
+        grouped_by_location = {}
+        for item in stored_items:
+            loc = item.location.name if item.location else "Unassigned"
+            item.product_type = str(
+                item.product.polymorphic_ctype.model
+            )  # Add model type
+
+            tooltip_lines = []
+            if item.serial_number:
+                tooltip_lines.append(f"<strong>Serial:</strong> {item.serial_number}")
+
+            if (
+                item.product_type == "filament"
+                and hasattr(item.product.filament, "color")
+                and item.product.filament.color
+            ):
+                tooltip_lines.append(
+                    f"<strong>Color:</strong> {item.product.filament.color}"
+                )
+            item.tooltip_html = "'{}'".format(
+                "<br>".join(tooltip_lines).replace('"', "&quot;")
+            )
+
+            grouped_by_location.setdefault(loc, []).append(item)
+
+        context["grouped_items"] = grouped_by_location
+        return context
