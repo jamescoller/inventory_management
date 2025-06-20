@@ -1,9 +1,11 @@
 {% extends "inventory/base.html" %}
+{% load static %}
+{% load inventory_tags %}
 
 {% block content %}
 	<div class="container py-4">
 		<h1 class="mb-4">In Use</h1>
-		<div class="row row-cols-1 row-cols-sm-2 row-cols-md-2 g-4">
+		<div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-4">
 			{% for location, items in grouped_items.items %}
 				<div class="col">
 					<div class="card mb-4 shadow-sm border-0 rounded-4">
@@ -33,15 +35,17 @@
 												{% if item.product_type == 'filament' %}
 													<div class="d-flex align-items-center" style="width: 40%;">
 														<div class="w-100 text-center">
-                    <span class="badge rounded-circle border d-inline-block"
-						  style="background-color: {{ item.product.filament.hex_code }};
-								  width: 60px;
-								  height: 60px;
-								  border: 1px solid #ccc;">
-                    </span>
+															{% filament_spool item.product.filament.hex_code %}
 															<div class="mt-2">
 																<small class="text-muted">{{ item.product_color }}</small>
 															</div>
+															<div class="mt-2">
+																<a href="{% url 'inventory_edit' item.id %}"
+																   class="btn btn-sm btn-outline-primary">
+																	<i class="bi bi-pencil"></i> Edit
+																</a>
+															</div>
+
 														</div>
 													</div>
 												{% endif %}
@@ -73,3 +77,5 @@
 	</script>
 
 {% endblock %}
+
+{# todo add dryers to this view#}

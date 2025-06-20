@@ -1,0 +1,62 @@
+{% extends "inventory/base.html" %}
+{% load static %}
+{% load inventory_tags %}
+
+{% block content %}
+	<div class="container py-4">
+		<h1 class="mb-4">Dry Storage Filament</h1>
+		<div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-4">
+			{% for location, items in grouped_items.items %}
+				{% for item in items %}
+					{% if item.product_type == 'filament' %}
+						<div class="col">
+							<div class="card mb-4 shadow-sm border-0 rounded-4">
+								<div class="card-header bg-primary text-white rounded-top-4">
+									<h5 class="mb-0"> {{ item.product.name }}</h5>
+								</div>
+								<div class="card-body">
+									<div class="d-flex align-items-stretch h-100">
+										<div class="flex-grow-1 pe-3">
+											{#                                            <strong>{{ item.product.name }}</strong><br>#}
+											<small>Color: {{ item.product.filament.color }}</small><br>
+											<small>Hex: {{ item.product.filament.hex_code }}</small><br>
+											<small>SKU: {{ item.product.sku }}</small><br>
+											<small>UPC: {{ item.product.upc }}</small><br>
+											<small class="text-muted">Location: {{ location }}</small>
+										</div>
+										<div class="d-flex align-items-center" style="width: 40%;">
+											<div class="w-100 text-center">
+												{% filament_spool item.product.filament.hex_code %}
+												<div class="mt-2">
+													<small class="text-muted">{{ item.product_color }}</small>
+												</div>
+												<div class="mt-2">
+													<a href="{% url 'inventory_edit' item.id %}"
+													   class="btn btn-sm btn-outline-primary">
+														<i class="bi bi-pencil"></i> Edit
+													</a>
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					{% endif %}
+				{% endfor %}
+			{% endfor %}
+		</div>
+	</div>
+{% endblock %}
+
+{% block extra_scripts %}
+	<script>
+        window.addEventListener("load", function () {
+            const tooltips = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+            tooltips.forEach(function (el) {
+                new bootstrap.Tooltip(el);
+            });
+            console.log("Tooltips initialized:", tooltips.length);
+        });
+	</script>
+{% endblock %}
