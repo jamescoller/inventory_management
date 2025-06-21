@@ -1,6 +1,6 @@
 asgiref==3.8.1
 crispy-bootstrap5==2025.4
-Django==4.2.22
+Django==4.2.23
 django-crispy-forms==2.4
 django-filter==25.1
 django-htmx==1.23.0
