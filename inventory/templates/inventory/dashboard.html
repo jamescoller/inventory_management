@@ -1,5 +1,7 @@
 {% extends 'inventory/base.html' %}
 
+{% load humanize %}
+
 {% block content %}
     <div class="container py-4">
         <h1 class="mb-4 text-center">Inventory Dashboard</h1>
@@ -26,7 +28,7 @@
                 <div class="card text-white bg-primary mb-3">
                     <div class="card-body text-center">
                         <h5 class="card-title">Total Value</h5>
-                        <p class="card-text display-6">${{ value|floatformat:2}}</p>
+						<p class="card-text display-6">${{ value|floatformat:2|intcomma }}</p>
                     </div>
                 </div>
             </div>
