@@ -1,3 +1,4 @@
+import logging
 import re
 from decimal import Decimal
 
@@ -21,6 +22,7 @@ from .forms import *
 from .models import *
 from .tables import *
 
+logger = logging.getLogger("inventory")
 
 # ---- Barcode Writer Helpers --------
 
@@ -48,6 +50,7 @@ class PrintBarcodeView(View):
         try:
             generate_and_print_barcode(item, mode)
         except Exception as e:
+            logger.error(f"Barcode generation failed: {str(e)}")
             return HttpResponse(str(e), status=500)
 
         if request.headers.get("HX-Request"):
@@ -263,12 +266,14 @@ class addInventoryView(LoginRequiredMixin, CreateView):
         )
 
         messages.success(request, f"Added {product.name} to inventory")
+        logger.info(f"Added {product.name} to inventory")
 
         try:
             generate_and_print_barcode(new_item, mode="unique")
             generate_and_print_barcode(new_item, mode="upc")
         except Exception as e:
             messages.warning(request, f"Label printing failed: {e}")
+            logger.error(f"Label printing failed: {e}")
 
         # After successful item creation and label printing
         html = render_to_string(
@@ -289,6 +294,7 @@ class addInventoryView(LoginRequiredMixin, CreateView):
             generate_and_print_barcode(self.object, mode="unique")
         except Exception as e:
             messages.error(self.request, f"Label print failed: {e}")
+            logger.error(f"label printing failed: {e}")
 
         return response
 
@@ -311,6 +317,7 @@ class SignUpView(View):
                 username=form.cleaned_data["username"],
                 password=form.cleaned_data["password1"],
             )
+            logger.info(f"User created: {user.username}")
 
             login(request, user)
             return redirect("index")

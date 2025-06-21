@@ -1,8 +1,8 @@
+from django.contrib.auth.models import User
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
-from django.contrib.auth.models import User
-from polymorphic.models import PolymorphicModel
 from django.utils.timezone import now
+from polymorphic.models import PolymorphicModel
 
 
 # Polymorphic Base Product
