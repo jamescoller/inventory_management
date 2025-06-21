@@ -13,6 +13,13 @@
     </div>
 {% endblock %}
 
+{% block object-tools %}
+	{{ block.super }}
+	<li>
+		<a href="{% url 'admin:inventory-log' %}" class="button">View Log</a>
+	</li>
+{% endblock %}
+
 {% block extrahead %}
     {{ block.super }}
     {{ media }}

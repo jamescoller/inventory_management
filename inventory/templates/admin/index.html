@@ -1,0 +1,15 @@
+{% extends "admin/index.html" %}
+
+{% block content %}
+	{{ block.super }}
+
+	<div class="app-inventory module">
+		<table>
+			<caption>Tools</caption>
+			<tr>
+				<th scope="row"><a href="{% url 'admin:inventory-log' %}">View Log</a></th>
+				<td>Latest inventory events and system log output</td>
+			</tr>
+		</table>
+	</div>
+{% endblock %}

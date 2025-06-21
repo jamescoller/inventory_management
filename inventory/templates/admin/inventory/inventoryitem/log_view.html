@@ -1,0 +1,53 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+
+	<style>
+        .log-table {
+            width: 80%;
+            font-family: monospace;
+            border-collapse: collapse;
+        }
+
+        .log-table th, .log-table td {
+            border: 1px solid #ffc107;
+            padding: 6px 10px;
+            color: #2c3e50;
+        }
+
+        .log-table th {
+            background-color: #ffc107;
+        }
+
+        .log-table tr {
+            background-color: #fff;
+        }
+
+        .log-table tr:nth-child(even) {
+            background-color: #ffffcc;
+        }
+
+        .log-line {
+            white-space: pre-wrap;
+            color: #2c3e50;
+        }
+	</style>
+
+	<table class="log-table">
+		<thead>
+		<tr>
+			<th>#</th>
+			<th>Log Entry</th>
+		</tr>
+		</thead>
+		<tbody>
+		{% for entry in log_lines %}
+			<tr>
+				<td>{{ entry.lineno }}</td>
+				<td class="log-line">{{ entry.line }}</td>
+			</tr>
+		{% endfor %}
+		</tbody>
+	</table>
+{% endblock %}
