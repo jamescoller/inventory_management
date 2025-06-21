@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.1/ref/settings/
 """
 
+import os
 from os.path import dirname, join
 from pathlib import Path
 
@@ -45,6 +46,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.humanize",
     "django_tables2",
     "django_filters",
     "django_htmx",
@@ -69,7 +71,7 @@ ROOT_URLCONF = "inventory_management_site.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -158,7 +160,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Use this to find app-level static files during development
 STATICFILES_DIRS = [
-    BASE_DIR / "inventory" / "static",
+    BASE_DIR / "inventory/static",
 ]
 
 
@@ -179,15 +181,40 @@ MESSAGE_TAGS = {
     messages.ERROR: "danger",
 }
 
-# LOGGING = {
-#     'version': 1,
-#     'handlers': {
-#         'console': {
-#             'class': 'logging.StreamHandler',
-#         },
-#     },
-#     'root': {
-#         'handlers': ['console'],
-#         'level': 'DEBUG',
-#     },
-# }
+LOGGING = {
+    "version": 1,  # The dictConfig version
+    "disable_existing_loggers": False,  # retain the default loggers
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "simple"},
+        "file": {
+            "class": "logging.FileHandler",
+            "filename": os.path.join(BASE_DIR, "inventory.log"),
+            "level": "DEBUG",
+            "formatter": "verbose",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "DEBUG",
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console", "file"],
+            "level": "WARNING",
+        },
+        "inventory": {
+            "handlers": ["console", "file"],
+            "level": "DEBUG",
+        },
+    },
+    "formatters": {
+        "verbose": {
+            "format": "{name} {levelname} {asctime} {module} {process:d} {thread:d} {message}",
+            "style": "{",
+        },
+        "simple": {
+            "format": "[{levelname}] {message}",
+            "style": "{",
+        },
+    },
+}

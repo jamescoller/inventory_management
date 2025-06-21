@@ -1,4 +1,8 @@
+import os
+
 from django.contrib import admin
+from django.template.response import TemplateResponse
+from django.urls import path
 from django.utils.html import format_html
 from polymorphic.admin import PolymorphicChildModelAdmin, PolymorphicParentModelAdmin
 
@@ -7,6 +11,7 @@ from .forms import (
 )
 from .models import *
 
+LOG_PATH = os.path.join(os.path.dirname(__file__), "../inventory.log")
 
 # ----- Specialty Classes for Specific Views ----------
 
@@ -278,6 +283,37 @@ class InventoryItemAdmin(admin.ModelAdmin):
     # Lets customize some of the admin actions that come in the drop down at the top of the admin screen
     # Explicitly declare the admin actions below
     actions = ["mark_depleted"]
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "view-log/",
+                self.admin_site.admin_view(self.view_log),
+                name="inventory-log",
+            ),
+        ]
+        return custom_urls + urls
+
+    def view_log(self, request):
+        try:
+            with open(LOG_PATH, "r") as f:
+                lines = f.readlines()[-200:]  # Show last 200 lines
+        except FileNotFoundError:
+            lines = ["Log file not found."]
+
+        formatted_lines = [
+            {"lineno": i + 1, "line": line.rstrip()} for i, line in enumerate(lines)
+        ]
+
+        context = {
+            "title": "Inventory Log",
+            "log_lines": formatted_lines,
+        }
+
+        return TemplateResponse(
+            request, "admin/inventory/inventoryitem/log_view.html", context
+        )
 
     @admin.action(description="Mark selected items as Depleted")
     def mark_depleted(self, request, queryset):
