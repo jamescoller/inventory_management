@@ -9,8 +9,8 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Count
 from django.db.models import Q
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, render
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import render
 from django.template.loader import render_to_string
 from django.urls import reverse_lazy
 from django.utils.timezone import localtime
@@ -171,8 +171,31 @@ class inventoryEditView(LoginRequiredMixin, UpdateView):
 
     def post(self, request, item_id):
         item = get_object_or_404(InventoryItem, id=item_id)
+        action = request.POST.get("action")
+
+        # Handle depleted/sold actions
+        if action in ["deplete", "sell"]:
+            if action == "deplete":
+                if hasattr(item, "mark_depleted"):
+                    item.mark_depleted()
+                    item.save()
+                    messages.success(
+                        request, f"Item '{item}' has been marked as depleted."
+                    )
+                else:
+                    messages.error(request, "This item cannot be marked as depleted.")
+            elif action == "sell":
+                if hasattr(item, "mark_sold"):
+                    item.mark_sold()
+                    item.save()
+                    messages.success(request, f"Item '{item}' has been marked as sold.")
+                else:
+                    messages.error(request, "This item cannot be marked as sold.")
+            return redirect("inventory_edit", item_id=item_id)
+
+        # Handle the regular form submission
         old_location = item.location
-        form = InventoryEditForm(request.POST, instance=item)
+        form = InventoryEditForm(request.POST, instance=item)  # Bind form with instance
 
         if form.is_valid():
             new_location = form.cleaned_data["location"]
@@ -212,13 +235,12 @@ class inventoryEditView(LoginRequiredMixin, UpdateView):
             form.save()
             return redirect("inventory_search")
         else:
-            form = InventoryEditForm(instance=item)
-
-        return render(
-            request,
-            "inventory/inventory_edit.html",
-            {"form": form, "item": item, "product": item.product},
-        )
+            # Form is not valid, render the page with errors
+            return render(
+                request,
+                "inventory/inventory_edit.html",
+                {"form": form, "item": item, "product": item.product},
+            )
 
 
 class addInventoryView(LoginRequiredMixin, CreateView):

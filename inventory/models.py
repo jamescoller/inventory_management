@@ -19,15 +19,15 @@ class Product(PolymorphicModel):
     product-type-specific extensions.
 
     Attributes:
-        name: The name of the product.
-        upc: The unique 13-digit barcode for the product.
-        sku: A six-character internal code specific to Bambu Lab. Can be blank.
-        price: The monetary value of the product stored with two decimal places.
-               Can be null or blank if not provided.
-        notes: Additional free-text information about the product. Optional.
-        polymorphic_ctype: A foreign key to ContentType for polymorphic
-                           behavior. Customizes the display of associated
-                           product types. Not editable by users.
+            name: The name of the product.
+            upc: The unique 13-digit barcode for the product.
+            sku: A six-character internal code specific to Bambu Lab. Can be blank.
+            price: The monetary value of the product stored with two decimal places.
+                       Can be null or blank if not provided.
+            notes: Additional free-text information about the product. Optional.
+            polymorphic_ctype: A foreign key to ContentType for polymorphic
+                                               behavior. Customizes the display of associated
+                                               product types. Not editable by users.
     """
 
     name = models.CharField(max_length=255)
@@ -76,13 +76,13 @@ class Filament(Product):
     Attributes
     ----------
     material : models.ForeignKey
-        A foreign key to the Material model. Can be null or unset.
+            A foreign key to the Material model. Can be null or unset.
     color : models.CharField
-        A human-readable color name with a max length of 50 characters.
+            A human-readable color name with a max length of 50 characters.
     hex_code : models.CharField
-        A hexadecimal color code string, typically in the format starting with '#' (e.g., "#FFFFFF").
+            A hexadecimal color code string, typically in the format starting with '#' (e.g., "#FFFFFF").
     weight : models.DecimalField
-        A decimal weight in kilograms with a maximum of 4 digits including 2 after the decimal point. This represents the weight of new spool of this filament.
+            A decimal weight in kilograms with a maximum of 4 digits including 2 after the decimal point. This represents the weight of new spool of this filament.
     """
 
     material = models.ForeignKey(
@@ -120,12 +120,12 @@ class Filament(Product):
         Raises
         ------
         AttributeError
-            If the `hex_code` attribute is not defined.
+                If the `hex_code` attribute is not defined.
 
         Returns
         -------
         str or None
-            The normalized hex code if the provided code is valid, otherwise None.
+                The normalized hex code if the provided code is valid, otherwise None.
         """
         rev_code = self.hex_code.strip().lower().lstrip("#")
         if re.fullmatch(r"^#(?:[0-9a-fA-F]{3}){1,2}$", rev_code):
@@ -216,11 +216,11 @@ class Filament(Product):
         before saving the object. An exception is raised if the hex code is invalid.
 
         Args:
-            *args: Additional positional arguments passed to the save method.
-            **kwargs: Additional keyword arguments passed to the save method.
+                *args: Additional positional arguments passed to the save method.
+                **kwargs: Additional keyword arguments passed to the save method.
 
         Raises:
-            ValueError: If the normalized hex code is invalid.
+                ValueError: If the normalized hex code is invalid.
         """
         self.normalize_hex_code()
 
@@ -253,13 +253,13 @@ class Printer(Product):
     the specifications of different printer models and handling their compatible settings.
 
     Attributes:
-        mfr (str): Manufacturer of the printer. Default is "Bambu Lab".
-        model (str): Model of the printer. Default is "X1 Carbon".
-        num_extruders (int): The number of extruders the printer has.
-        bed_length_mm (Optional[int]): Bed length in millimeters. Can be None.
-        bed_width_mm (Optional[int]): Bed width in millimeters. Can be None.
-        max_height_mm (Optional[int]): Maximum printable height in millimeters. Can be None.
-        print_volume_m3 (Optional[Decimal]): Calculated printable volume in cubic meters.
+            mfr (str): Manufacturer of the printer. Default is "Bambu Lab".
+            model (str): Model of the printer. Default is "X1 Carbon".
+            num_extruders (int): The number of extruders the printer has.
+            bed_length_mm (Optional[int]): Bed length in millimeters. Can be None.
+            bed_width_mm (Optional[int]): Bed width in millimeters. Can be None.
+            max_height_mm (Optional[int]): Maximum printable height in millimeters. Can be None.
+            print_volume_m3 (Optional[Decimal]): Calculated printable volume in cubic meters.
     """
 
     mfr = models.CharField(max_length=100, default="Bambu Lab")
@@ -291,7 +291,7 @@ class Printer(Product):
         is missing.
 
         :return: The 3D printer's print volume in cubic meters or None if dimensions
-                 are incomplete.
+                         are incomplete.
         :rtype: float or None
         """
         if self.bed_width_mm and self.bed_length_mm and self.max_height_mm:
@@ -309,14 +309,14 @@ class Printer(Product):
 
         Parameters:
         args: tuple
-            Positional arguments passed to the method.
+                Positional arguments passed to the method.
         kwargs: dict
-            Keyword arguments passed to the method.
+                Keyword arguments passed to the method.
 
         Raises:
         ValueError
-            If the calculated print volume is invalid or the bed dimensions are
-            missing or incorrect.
+                If the calculated print volume is invalid or the bed dimensions are
+                missing or incorrect.
         """
         self.print_volume_m3 = self.calculate_print_volume()
         if not self.print_volume_m3:
@@ -336,15 +336,15 @@ class Dryer(Product):
     inventory.
 
     Attributes:
-        mfr (CharField): Manufacturer of the dryer. Stores up to 100
-            characters.
-        model (CharField): Model number or name of the dryer. Stores
-            up to 100 characters.
-        num_slots (IntegerField): The number of slots available in the
-            dryer. Defaults to 1.
-        max_temp_degC (IntegerField | None): The maximum temperature in
-            degrees Celsius that the dryer can achieve. This value is
-            optional and can be left blank or null.
+            mfr (CharField): Manufacturer of the dryer. Stores up to 100
+                    characters.
+            model (CharField): Model number or name of the dryer. Stores
+                    up to 100 characters.
+            num_slots (IntegerField): The number of slots available in the
+                    dryer. Defaults to 1.
+            max_temp_degC (IntegerField | None): The maximum temperature in
+                    degrees Celsius that the dryer can achieve. This value is
+                    optional and can be left blank or null.
     """
 
     mfr = models.CharField(max_length=100)
@@ -406,20 +406,20 @@ class Hardware(Product):
     using predefined choices.
 
     Attributes:
-        qty (int or None): The quantity of the hardware item. Can be blank or null.
-        kind (int): Indicates the type of hardware using defined choices from
-            the HardwareType inner class. Default is HardwareType.HARDWARE.
+            qty (int or None): The quantity of the hardware item. Can be blank or null.
+            kind (int): Indicates the type of hardware using defined choices from
+                    the HardwareType inner class. Default is HardwareType.HARDWARE.
 
     Inner Classes:
-        HardwareType:
-            Enumerates the possible types of hardware as integer choices. Available
-            types include Accessory, Spare Part, Hardware, and Raw Material.
+            HardwareType:
+                    Enumerates the possible types of hardware as integer choices. Available
+                    types include Accessory, Spare Part, Hardware, and Raw Material.
 
     Meta:
-        verbose_name (str): A human-friendly singular name for the model, which
-            is "Hardware."
-        verbose_name_plural (str): A human-friendly plural name for the model,
-            which is "Hardware."
+            verbose_name (str): A human-friendly singular name for the model, which
+                    is "Hardware."
+            verbose_name_plural (str): A human-friendly plural name for the model,
+                    which is "Hardware."
     """
 
     qty = models.IntegerField(blank=True, null=True)
@@ -459,39 +459,39 @@ class InventoryItem(models.Model):
     specific states, mechanisms to update item statuses, and relevant timestamps.
 
     Attributes:
-        shipment (str): Tracking number of the shipment, optional.
-        date_added (datetime): Timestamp when the item was added, automatically set.
-        product (Product): Reference to the associated product.
-        serial_number (str): Serial number of the inventory item, optional.
-        last_modified (datetime): Timestamp of the last modification, automatically updated.
-        date_depleted (datetime or None): Timestamp when the item was marked as depleted, optional.
-        date_sold (datetime or None): Timestamp when the item was marked as sold, optional.
-        location (Location or None): Reference to the item's current location, optional.
-        sale_price (Decimal or None): Sale price of the item, optional.
-        percent_remaining (Decimal): Percentage of the item remaining,
-            defaults to 100 if not provided.
-        depleted (bool): Indicates whether the item is depleted.
-        in_use (bool): Indicates whether the item is currently in use.
-        sold (bool): Indicates whether the item is sold.
-        status (int): Current status of the inventory item, represented numerically.
+            shipment (str): Tracking number of the shipment, optional.
+            date_added (datetime): Timestamp when the item was added, automatically set.
+            product (Product): Reference to the associated product.
+            serial_number (str): Serial number of the inventory item, optional.
+            last_modified (datetime): Timestamp of the last modification, automatically updated.
+            date_depleted (datetime or None): Timestamp when the item was marked as depleted, optional.
+            date_sold (datetime or None): Timestamp when the item was marked as sold, optional.
+            location (Location or None): Reference to the item's current location, optional.
+            sale_price (Decimal or None): Sale price of the item, optional.
+            percent_remaining (Decimal): Percentage of the item remaining,
+                    defaults to 100 if not provided.
+            depleted (bool): Indicates whether the item is depleted.
+            in_use (bool): Indicates whether the item is currently in use.
+            sold (bool): Indicates whether the item is sold.
+            status (int): Current status of the inventory item, represented numerically.
 
-        Status:
-            - NEW (int): Represents a "new" status.
-            - IN_USE (int): Represents an "in use" status.
-            - DRYING (int): Represents a "drying" status.
-            - STORED (int): Represents a "stored" status.
-            - DEPLETED (int): Represents a "depleted" status.
-            - SOLD (int): Represents a "sold" status.
+            Status:
+                    - NEW (int): Represents a "new" status.
+                    - IN_USE (int): Represents an "in use" status.
+                    - DRYING (int): Represents a "drying" status.
+                    - STORED (int): Represents a "stored" status.
+                    - DEPLETED (int): Represents a "depleted" status.
+                    - SOLD (int): Represents a "sold" status.
 
     Meta:
-        verbose_name (str): Human-readable name for a single inventory item.
-        verbose_name_plural (str): Human-readable name for multiple inventory items.
+            verbose_name (str): Human-readable name for a single inventory item.
+            verbose_name_plural (str): Human-readable name for multiple inventory items.
 
     Example:
-        To create and save a new inventory item:
-            >>> product_instance = Product.objects.get(id=1)
-            >>> item = InventoryItem(product=product_instance, sale_price=99.99)
-            >>> item.save()
+            To create and save a new inventory item:
+                    >>> product_instance = Product.objects.get(id=1)
+                    >>> item = InventoryItem(product=product_instance, sale_price=99.99)
+                    >>> item.save()
     """
 
     # Attributes
@@ -538,19 +538,27 @@ class InventoryItem(models.Model):
         return f"{self.product.upc} - {self.date_added.strftime('%Y-%m-%d')}"
 
     def update_status(self):
-        self.status = self.location.default_status
-        return self.status
+        if self.location and hasattr(self.location, "default_status"):
+            if self.location.default_status in [
+                choice[0] for choice in self.Status.choices
+            ]:
+                self.status = self.location.default_status
+                self.save(update_fields=["status"])
+            return self.status
+        return self.Status.NEW  # Return default status instead of None
 
     def mark_depleted(self):
         self.depleted = True
         self.date_depleted = now()
         self.location = None
+        self.status = self.Status.DEPLETED
         return self.depleted
 
     def mark_sold(self):
         self.sold = True
         self.date_sold = now()
         self.location = None
+        self.status = self.Status.SOLD
         return self.sold
 
     def filament_drying_warning(self, new_location):
@@ -562,17 +570,17 @@ class InventoryItem(models.Model):
         location. It provides guidance on whether to dry the filament before use or storage.
 
         Attributes:
-            product: Represents the product associated with the filament to be evaluated.
-            status: Indicates the current status of the filament, which is used in the
-                evaluation process.
+                product: Represents the product associated with the filament to be evaluated.
+                status: Indicates the current status of the filament, which is used in the
+                        evaluation process.
 
         Parameters:
-            new_location (Location): The new destination where the filament is being moved.
+                new_location (Location): The new destination where the filament is being moved.
 
         Returns:
-            tuple: Returns a tuple containing the message type, the message itself, and
-                a boolean indicating whether skipping drying is acceptable.
-                Returns `None` if no warnings or errors need to be raised.
+                tuple: Returns a tuple containing the message type, the message itself, and
+                        a boolean indicating whether skipping drying is acceptable.
+                        Returns `None` if no warnings or errors need to be raised.
         """
 
         if not isinstance(self.product, Filament):
@@ -687,19 +695,19 @@ class Material(models.Model):
 
     Attributes:
     name (str): The name of the material, including type and subtype designations
-                (e.g., "ABS-CF" or "PLA-GF"). Must be unique.
+                            (e.g., "ABS-CF" or "PLA-GF"). Must be unique.
     mfr (str): The name of the manufacturer. Default is "Bambu Lab".
     print_temp_min_degC (int, optional): Minimum recommended print temperature in degrees
-                                         Celsius.
+                                                                             Celsius.
     print_temp_max_degC (int, optional): Maximum recommended print temperature in degrees
-                                         Celsius.
+                                                                             Celsius.
     print_temp_ideal_degC (int, optional): Ideal print temperature in degrees Celsius.
     dry_temp_min_degC (int, optional): Minimum drying temperature for the material in degrees
-                                       Celsius.
+                                                                       Celsius.
     dry_temp_max_degC (int, optional): Maximum drying temperature for the material in degrees
-                                       Celsius.
+                                                                       Celsius.
     dry_temp_ideal_degC (int, optional): Ideal drying temperature for the material in degrees
-                                         Celsius.
+                                                                             Celsius.
     dry_time_hrs (int, optional): Recommended drying time in hours.
     ams_capable (bool): Indicates if the material is compatible with AMS. Default is True.
     notes (str, optional): Additional notes or comments about the material.
@@ -746,27 +754,27 @@ class Order(PolymorphicModel):
     Attributes
     ----------
     order_num : str
-        A character field storing the unique identifier for the order.
+            A character field storing the unique identifier for the order.
 
     _item_list : list
-        A private attribute used to store the list of items associated
-        with the order.
+            A private attribute used to store the list of items associated
+            with the order.
 
     Meta : class
-        Internal Django class for database-specific options. Includes
-        configurations such as verbose names for the model.
+            Internal Django class for database-specific options. Includes
+            configurations such as verbose names for the model.
 
     Methods
     -------
     item_list
-        Getter and setter properties for the `_item_list` attribute. Ensures
-        that the value assigned to the `_item_list` is a list.
+            Getter and setter properties for the `_item_list` attribute. Ensures
+            that the value assigned to the `_item_list` is a list.
     append_to_list(item)
-        Adds an item to the `_item_list`.
+            Adds an item to the `_item_list`.
     remove_from_list(item)
-        Removes an item from the `_item_list`.
+            Removes an item from the `_item_list`.
     __str__()
-        Returns a string representation of the order using the `order_num` attribute.
+            Returns a string representation of the order using the `order_num` attribute.
     """
 
     order_num = models.CharField(max_length=100)
@@ -808,8 +816,8 @@ class Shipment(Order):
     readability in admin interfaces and string representation for display.
 
     Attributes:
-        tracking: A string field for storing shipment tracking information.
-            The maximum length of this field is 200 characters.
+            tracking: A string field for storing shipment tracking information.
+                    The maximum length of this field is 200 characters.
     """
 
     tracking = models.CharField(max_length=200)
