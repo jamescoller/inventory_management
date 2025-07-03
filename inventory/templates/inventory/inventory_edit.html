@@ -78,6 +78,22 @@
 					</div>
 
 				</div>
+				{% if warning_message %}
+					<div class="alert alert-{{ warning_level }}">
+						{{ warning_message }}
+					</div>
+				{% endif %}
+
+				{% if requires_ack %}
+					<input type="hidden" name="acknowledged" value="true">
+					<input type="hidden" name="location" value="{{ pending_location }}">
+					<button type="submit" class="btn btn-warning">
+						I'm bold. I accept the risk, and I promise I won’t be mad when this fails.
+					</button>
+					<a href="{% url 'inventory_edit' item.id %}" class="btn btn-secondary">Cancel</a>
+				{% else %}
+					<button type="submit" class="btn btn-primary">Save</button>
+				{% endif %}
 			</div>
 		</form>
 	</div>

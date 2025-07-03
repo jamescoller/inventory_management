@@ -1,5 +1,4 @@
 import logging
-import re
 from decimal import Decimal
 
 import django_filters
@@ -172,8 +171,44 @@ class inventoryEditView(LoginRequiredMixin, UpdateView):
 
     def post(self, request, item_id):
         item = get_object_or_404(InventoryItem, id=item_id)
+        old_location = item.location
         form = InventoryEditForm(request.POST, instance=item)
+
         if form.is_valid():
+            new_location = form.cleaned_data["location"]
+            warning = item.filament_drying_warning(new_location)
+
+            if warning:
+                level, message, needs_ack = warning
+
+                if level == "error":
+                    form.add_error("location", message)
+                    return render(
+                        request,
+                        "inventory/inventory_edit.html",
+                        {"form": form, "item": item, "product": item.product},
+                    )
+
+                if needs_ack and not request.POST.get("acknowledged"):
+                    return render(
+                        request,
+                        "inventory/inventory_edit.html",
+                        {
+                            "form": form,
+                            "item": item,
+                            "product": item.product,
+                            "warning_level": level,
+                            "warning_message": message,
+                            "requires_ack": True,
+                            "pending_location": new_location.id,
+                        },
+                    )
+
+                if level == "info":
+                    messages.info(request, message)
+                elif level == "warning":
+                    messages.warning(request, message)
+
             form.save()
             return redirect("inventory_search")
         else:
@@ -422,8 +457,8 @@ class Dashboard(LoginRequiredMixin, View):
             inventory_by_sku.append(row)
 
         # Get latest timestamp for summary
-        latest_item = InventoryItem.objects.order_by("-timestamp").first()
-        latest_timestamp = latest_item.timestamp if latest_item else None
+        latest_item = InventoryItem.objects.order_by("-last_modified").first()
+        latest_timestamp = latest_item.last_modified if latest_item else None
 
         grand_total = sum(item.product.inventory_count for item in items)
 

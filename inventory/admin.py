@@ -1,6 +1,7 @@
 import os
 
 from django.contrib import admin
+from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path
 from django.utils.html import format_html
@@ -57,25 +58,82 @@ class ProductChildAdmin(PolymorphicChildModelAdmin):
 class FilamentAdmin(ProductChildAdmin):
     base_model = Filament
     show_in_index = True
-    list_display = ["name", "material", "color", "hex_code", "get_sku"]
+    list_display = ["name", "material", "color", "hex_code", "get_sku", "color_family"]
+    list_filter = ["material", "color_family"]
+    search_fields = ["name", "notes", "color", "color_family", "hex_code", "get_sku"]
+    actions = ["bulk_update_material"]
     fields = [
-        "material",
-        "material_type",
         "color",
         "hex_code",
-        "print_temp_min_degC",
-        "print_temp_max_degC",
-        "print_temp_ideal_degC",
-        "dry_temp_min_degC",
-        "dry_temp_max_degC",
-        "dry_temp_ideal_degC",
-        "dry_time_hrs",
+        "material",
+        "weight",
+        "has_spool",
+        "notes",
+        "color_family",
     ]
 
     def get_sku(self, obj):
         return obj.sku
 
     get_sku.short_description = "SKU"  # Column header in admin
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "bulk-update-material/",
+                self.admin_site.admin_view(self.bulk_update_material_view),
+                name="bulk_update_material",
+            ),
+        ]
+        return custom_urls + urls
+
+    # @admin.action(description="Set filament material for selected items")
+    def bulk_update_material(self, request, queryset):
+        # Store selected items in session
+        selected = request.POST.getlist("_selected_action")
+        request.session["selected_filaments"] = selected
+        opts = self.model._meta
+
+        return HttpResponseRedirect("bulk-update-material/")
+
+    bulk_update_material.short_description = "Update material for selected filaments"
+
+    def bulk_update_material_view(self, request):
+        # Get the list of selected items from session
+        selected_filaments = request.session.get("selected_filaments", [])
+        queryset = self.model.objects.filter(pk__in=selected_filaments)
+
+        # Handle form submission
+        if request.method == "POST" and "apply" in request.POST:
+            material_id = request.POST.get("new_matl")
+            try:
+                material = Material.objects.get(pk=material_id)
+                queryset.update(new_matl=material)
+                self.message_user(
+                    request, f"Successfully updated {queryset.count()} filaments."
+                )
+                return HttpResponseRedirect("../")
+            except (Material.DoesNotExist, ValidationError) as e:
+                self.message_user(
+                    request, f"Error updating materials: {str(e)}", level="ERROR"
+                )
+
+        # Prepare context for template
+        context = {
+            "title": "Update Material",
+            "queryset": queryset,
+            "materials": Material.objects.all().order_by("name"),
+            "opts": self.model._meta,
+            "app_label": self.model._meta.app_label,
+        }
+
+        # Render form template
+        return TemplateResponse(
+            request,
+            "admin/inventory/filament/bulk_update_material.html",
+            context,
+        )
 
 
 @admin.register(Printer)
@@ -85,14 +143,13 @@ class PrinterAdmin(ProductChildAdmin):
     fields = [
         "mfr",
         "model",
-        "shipment",
-        "status",
+        "sku",
+        "upc",
         "num_extruders",
         "bed_length_mm",
         "bed_width_mm",
         "max_height_mm",
-        "print_volume_mm3",
-        "serial_number",
+        "print_volume_m3",
     ]
 
 
@@ -110,7 +167,7 @@ class HardwareAdmin(ProductChildAdmin):
 class DryerAdmin(ProductChildAdmin):
     base_model = Dryer
     show_in_index = True
-    field = ["mfr", "serial_number", "model", "num_slots", 'max_temp"degC']
+    field = ["mfr", "model", "num_slots", 'max_temp"degC']
 
 
 @admin.register(AMS)
@@ -119,7 +176,6 @@ class AMSAdmin(ProductChildAdmin):
     show_in_index = True
     field = [
         "mfr",
-        "serial_number",
         "model",
         "num_slots",
     ]
@@ -149,6 +205,7 @@ class ProductParentAdmin(PolymorphicParentModelAdmin):
         AMS,
     )
     inlines = [InventoryItemInline]
+    fields = ["sku", "upc"]
 
 
 @admin.register(Order)
@@ -171,7 +228,7 @@ class InventoryItemAdmin(admin.ModelAdmin):
     list_display = (
         "product",
         "shipment",
-        "timestamp",
+        "date_added",
         "status_badge",
         "location",
         "date_depleted",
@@ -182,6 +239,9 @@ class InventoryItemAdmin(admin.ModelAdmin):
     list_filter = (
         "status",
         "location",
+        "in_use",
+        "depleted",
+        "sold",
         ProductTypeFilter,
     )
 
@@ -326,3 +386,22 @@ class InventoryItemAdmin(admin.ModelAdmin):
 class LocationAdmin(admin.ModelAdmin):
     list_display = ["name", "default_status"]
     list_filter = ["default_status"]
+
+
+@admin.register(Material)
+class MaterialAdmin(admin.ModelAdmin):
+    list_display = [
+        "name",
+        "mfr",
+        "print_temp_min_degC",
+        "print_temp_max_degC",
+        "print_temp_ideal_degC",
+        "dry_temp_min_degC",
+        "dry_temp_max_degC",
+        "dry_temp_ideal_degC",
+        "dry_time_hrs",
+        "ams_capable",
+        "drying_required",
+        "notes",
+    ]
+    list_filter = ["mfr", "ams_capable", "drying_required"]
