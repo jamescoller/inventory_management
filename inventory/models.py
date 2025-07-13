@@ -538,14 +538,16 @@ class InventoryItem(models.Model):
         return f"{self.product.upc} - {self.date_added.strftime('%Y-%m-%d')}"
 
     def update_status(self):
+        """
+        Determines the appropriate status based on location.
+        Returns the new status value but does not save it.
+        """
         if self.location and hasattr(self.location, "default_status"):
             if self.location.default_status in [
                 choice[0] for choice in self.Status.choices
             ]:
-                self.status = self.location.default_status
-                self.save(update_fields=["status"])
-            return self.status
-        return self.Status.NEW  # Return default status instead of None
+                return self.location.default_status
+        return None  # Return None if no valid status can be determined
 
     def mark_depleted(self):
         self.depleted = True
@@ -621,18 +623,29 @@ class InventoryItem(models.Model):
 
     def save(self, *args, **kwargs):
         is_new = self.pk is None  # If there is no primary key, this is a new record
-        previous = None
 
-        if not is_new:
-            previous = InventoryItem.objects.get(pk=self.pk)
-
-        # Automatically update the status as location changes or if it is new
-        if previous.location != self.location:  # is it in a new place?
-            self.update_status()
+        if is_new:
+            # For new items, update status based on initial location
+            if self.location:
+                new_status = self.update_status()
+                if new_status:
+                    self.status = new_status
+        else:
+            try:
+                previous = InventoryItem.objects.get(pk=self.pk)
+                # Update status if location has changed
+                if previous.location != self.location:
+                    new_status = self.update_status()
+                    if new_status:
+                        self.status = new_status
+            except InventoryItem.DoesNotExist:
+                pass
 
         # set boolean for IN_USE
         if self.status == self.Status.IN_USE:
             self.in_use = True
+        else:
+            self.in_use = False  # Reset in_use if status is not IN_USE
 
         # if status becomes "DEPLETED", set boolean to be true for depleted, set date, and remove location
         if self.status == self.Status.DEPLETED:
