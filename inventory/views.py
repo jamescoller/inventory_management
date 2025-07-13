@@ -433,27 +433,29 @@ class Dashboard(LoginRequiredMixin, View):
 
         # Aggregate Filament items by material
         materials = (
-            Filament.objects.values("material")
+            Filament.objects.values(
+                "material__name"
+            )  # Use material__name to get the name field
             .annotate(count=Count("id"))
-            .order_by("-count")  # <-- This sorts it
+            .order_by("-count")
         )
 
         # Prepare data for the pie chart
         filament_chart_data = {
-            "labels": [item["material"] for item in materials],
+            "labels": [item["material__name"] for item in materials],
             "data": [item["count"] for item in materials],
         }
 
         # Aggregate Filament items by color
         colors = (
-            Filament.objects.values("color")
+            Filament.objects.values("color_family")
             .annotate(count=Count("id"))
             .order_by("-count")  # <-- this sorts it
         )
 
         # Prepare data for the pie chart
         color_chart_data = {
-            "labels": [item["color"] for item in colors],
+            "labels": [item["color_family"] for item in colors],
             "data": [item["count"] for item in colors],
         }
 
