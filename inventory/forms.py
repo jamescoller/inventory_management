@@ -44,9 +44,7 @@ class FilamentForm(forms.ModelForm):
             "sku",
             "price",
             "notes",
-            "category",
             "material",
-            "material_type",
             "color",
             "hex_code",
         ]
@@ -61,7 +59,6 @@ class AMSForm(forms.ModelForm):
             "sku",
             "price",
             "notes",
-            "category",
             "mfr",
             "model",
             "num_slots",
@@ -77,7 +74,6 @@ class DryerForm(forms.ModelForm):
             "sku",
             "price",
             "notes",
-            "category",
             "mfr",
             "model",
             "num_slots",
@@ -94,7 +90,6 @@ class PrinterForm(forms.ModelForm):
             "sku",
             "price",
             "notes",
-            "category",
             "mfr",
             "model",
             "num_extruders",
@@ -104,7 +99,7 @@ class PrinterForm(forms.ModelForm):
 class HardwareForm(forms.ModelForm):
     class Meta:
         model = Hardware
-        fields = ["name", "upc", "sku", "price", "notes", "category", "usage"]
+        fields = ["name", "upc", "sku", "price", "notes", "qty", "kind"]
 
 
 class InventoryEditForm(forms.ModelForm):

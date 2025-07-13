@@ -1,0 +1,45 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+	<div>
+		<form method="post">
+			{% csrf_token %}
+			<p>Select a material to apply to {{ queryset.count }} selected filament(s):</p>
+
+			<div style="margin-bottom: 20px;">
+				<select name="new_matl" required>
+					<option value="">---------</option>
+					{% for material in materials %}
+						<option value="{{ material.id }}">{{ material.name }}</option>
+					{% endfor %}
+				</select>
+			</div>
+
+			<table style="margin-bottom: 20px;">
+				<thead>
+				<tr>
+					<th>Name</th>
+					<th>Current Material</th>
+					<th>Color</th>
+					<th>SKU</th>
+				</tr>
+				</thead>
+				<tbody>
+				{% for item in queryset %}
+					<tr>
+						<td>{{ item.name }}</td>
+						<td>{{ item.material }}</td>
+						<td>{{ item.color }}</td>
+						<td>{{ item.sku }}</td>
+					</tr>
+				{% endfor %}
+				</tbody>
+			</table>
+
+			<div>
+				<input type="submit" name="apply" value="Update Material" class="default">
+				<a href="../" class="button cancel-link">Cancel</a>
+			</div>
+		</form>
+	</div>
+{% endblock %}

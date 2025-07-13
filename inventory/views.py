@@ -1,5 +1,4 @@
 import logging
-import re
 from decimal import Decimal
 
 import django_filters
@@ -10,8 +9,8 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Count
 from django.db.models import Q
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, render
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import render
 from django.template.loader import render_to_string
 from django.urls import reverse_lazy
 from django.utils.timezone import localtime
@@ -172,18 +171,76 @@ class inventoryEditView(LoginRequiredMixin, UpdateView):
 
     def post(self, request, item_id):
         item = get_object_or_404(InventoryItem, id=item_id)
-        form = InventoryEditForm(request.POST, instance=item)
+        action = request.POST.get("action")
+
+        # Handle depleted/sold actions
+        if action in ["deplete", "sell"]:
+            if action == "deplete":
+                if hasattr(item, "mark_depleted"):
+                    item.mark_depleted()
+                    item.save()
+                    messages.success(
+                        request, f"Item '{item}' has been marked as depleted."
+                    )
+                else:
+                    messages.error(request, "This item cannot be marked as depleted.")
+            elif action == "sell":
+                if hasattr(item, "mark_sold"):
+                    item.mark_sold()
+                    item.save()
+                    messages.success(request, f"Item '{item}' has been marked as sold.")
+                else:
+                    messages.error(request, "This item cannot be marked as sold.")
+            return redirect("inventory_edit", item_id=item_id)
+
+        # Handle the regular form submission
+        old_location = item.location
+        form = InventoryEditForm(request.POST, instance=item)  # Bind form with instance
+
         if form.is_valid():
+            new_location = form.cleaned_data["location"]
+            warning = item.filament_drying_warning(new_location)
+
+            if warning:
+                level, message, needs_ack = warning
+
+                if level == "error":
+                    form.add_error("location", message)
+                    return render(
+                        request,
+                        "inventory/inventory_edit.html",
+                        {"form": form, "item": item, "product": item.product},
+                    )
+
+                if needs_ack and not request.POST.get("acknowledged"):
+                    return render(
+                        request,
+                        "inventory/inventory_edit.html",
+                        {
+                            "form": form,
+                            "item": item,
+                            "product": item.product,
+                            "warning_level": level,
+                            "warning_message": message,
+                            "requires_ack": True,
+                            "pending_location": new_location.id,
+                        },
+                    )
+
+                if level == "info":
+                    messages.info(request, message)
+                elif level == "warning":
+                    messages.warning(request, message)
+
             form.save()
             return redirect("inventory_search")
         else:
-            form = InventoryEditForm(instance=item)
-
-        return render(
-            request,
-            "inventory/inventory_edit.html",
-            {"form": form, "item": item, "product": item.product},
-        )
+            # Form is not valid, render the page with errors
+            return render(
+                request,
+                "inventory/inventory_edit.html",
+                {"form": form, "item": item, "product": item.product},
+            )
 
 
 class addInventoryView(LoginRequiredMixin, CreateView):
@@ -376,27 +433,29 @@ class Dashboard(LoginRequiredMixin, View):
 
         # Aggregate Filament items by material
         materials = (
-            Filament.objects.values("material")
+            Filament.objects.values(
+                "material__name"
+            )  # Use material__name to get the name field
             .annotate(count=Count("id"))
-            .order_by("-count")  # <-- This sorts it
+            .order_by("-count")
         )
 
         # Prepare data for the pie chart
         filament_chart_data = {
-            "labels": [item["material"] for item in materials],
+            "labels": [item["material__name"] for item in materials],
             "data": [item["count"] for item in materials],
         }
 
         # Aggregate Filament items by color
         colors = (
-            Filament.objects.values("color")
+            Filament.objects.values("color_family")
             .annotate(count=Count("id"))
             .order_by("-count")  # <-- this sorts it
         )
 
         # Prepare data for the pie chart
         color_chart_data = {
-            "labels": [item["color"] for item in colors],
+            "labels": [item["color_family"] for item in colors],
             "data": [item["count"] for item in colors],
         }
 
@@ -422,8 +481,8 @@ class Dashboard(LoginRequiredMixin, View):
             inventory_by_sku.append(row)
 
         # Get latest timestamp for summary
-        latest_item = InventoryItem.objects.order_by("-timestamp").first()
-        latest_timestamp = latest_item.timestamp if latest_item else None
+        latest_item = InventoryItem.objects.order_by("-last_modified").first()
+        latest_timestamp = latest_item.last_modified if latest_item else None
 
         grand_total = sum(item.product.inventory_count for item in items)
 

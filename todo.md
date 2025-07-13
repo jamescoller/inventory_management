@@ -1,57 +1,22 @@
-
-# 🛠️ Inventory Management Project Recommendations
-
-Below is an organized and prioritized list of recommended actions based on your stated project goals and the current state of your Django-based Inventory Management system.
+# Inventory Management Project Recommendations
 
 ---
 
-## 🎯 1. Deployment Automation
+## Setting status based on location
 
-**Objective**: Automate deployment to your Synology NAS using GitHub Actions.
-
-- **Set up GitHub Actions Runner**
-  - Install Docker on your Synology NAS.
-  - Use [`myoung34/github-runner`](https://hub.docker.com/r/myoung34/github-runner).
-  - Register as a self-hosted runner.
-
-- **GitHub Actions Workflow**
-  ```yaml
-  name: Deploy Inventory App
-
-  on:
-    push:
-      branches:
-        - master
-
-  jobs:
-    deploy:
-      runs-on: self-hosted
-      steps:
-        - uses: actions/checkout@v4
-        - uses: docker/setup-buildx-action@v3
-        - run: |
-            docker-compose build
-            docker-compose up -d
-  ```
-
+* When a product's location is changed, the status should be updated accordingly.
+  * Receiving -> New
+  * Dryers -> Drying
+  * Dry Storage -> Stored
+  * [Printer] -> In-Use
 ---
 
-## 🎯 2. User Experience Enhancements
+## Improve Depleated status action
 
-**Objective**: Simplify inventory tasks using barcode scanning.
+* Create a binary for depleated and for sold
+* Binary single button on the inventory edit view to move item
 
-- **Optimized Workflow**
-  - Receiving: shipment barcode → UPC scanning.
-  - Transfers: item barcode → location barcode.
-
-- **Frontend Improvements**
-  - Auto-focus barcode fields.
-  - Auto-submit on barcode scan completion.
-  - Immediate visual feedback on scans.
-
----
-
-## 🎯 3. Inventory Analytics Dashboard
+## Inventory Analytics Dashboard
 
 - **Real-Time Dashboard**
   - Product counts by type/location.
@@ -62,32 +27,7 @@ Below is an organized and prioritized list of recommended actions based on your 
 
 ---
 
-## 🎯 4. Barcode Generation & Printing
-
-- **Barcode Generation (Python)**
-  ```python
-  import barcode
-  from barcode.writer import ImageWriter
-
-  def generate_barcode(sku, path):
-      ean = barcode.get('code128', sku, writer=ImageWriter())
-      ean.save(path)
-  ```
-
-- **Automated Printing (Brother QL-810)**
-  ```python
-  from brother_ql.raster import BrotherQLRaster
-  from brother_ql.backends.helpers import send
-
-  def print_label(image_path):
-      qlr = BrotherQLRaster('QL-810W')
-      instructions = qlr.convert([image_path], label='62', rotate='90')
-      send(instructions, printer_identifier='usb://0x04f9:0x209b', backend_identifier='pyusb')
-  ```
-
----
-
-## 🎯 5. Documentation with Sphinx & GitHub Pages
+## Documentation with Sphinx & GitHub Pages
 
 - **Sphinx Setup**
   ```bash
@@ -115,7 +55,7 @@ Below is an organized and prioritized list of recommended actions based on your 
 
 ---
 
-## 🎯 6. Best Practices & Learning
+## Best Practices & Learning
 
 - **Django Development**
   - Class-based views, modular apps, optimized queries.
@@ -125,12 +65,5 @@ Below is an organized and prioritized list of recommended actions based on your 
 
 - **Continuous Learning**
   - Maintain documentation, code reviews, experiments.
-
----
-
-## 🎯 7. Version Control & Issue Tracking
-
-- Clear commit history.
-- Utilize GitHub Issues, Projects, and Milestones.
 
 ---
