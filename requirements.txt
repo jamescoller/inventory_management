@@ -3,7 +3,7 @@ crispy-bootstrap5==2025.6
 Django==4.2.23
 django-crispy-forms==2.4
 django-filter==25.1
-django-htmx==1.23.0
+django-htmx==1.23.2
 django-polymorphic==4.1.0
 django-tables2==2.7.5
 et_xmlfile==2.0.0
