@@ -22,7 +22,7 @@ services:
       - "8080:80"
     volumes:
       - static_volume:/static  # ✅ Match nginx.conf alias!
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - /volume1/docker/inventory_management/nginx/nginx.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       - web
 
