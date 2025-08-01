@@ -16,4 +16,4 @@ jobs:
 
     steps:
       - name: Run NAS deployment script
-        run: bash inventory_management/scripts/deploy.sh
+        run: bash scripts/deploy.sh
