@@ -1,11 +1,20 @@
 import logging
 import re
 import subprocess
+import warnings
 from io import BytesIO
 
 from PIL import Image, ImageDraw, ImageFont
 from barcode import Code128
 from barcode.writer import ImageWriter
+
+# Suppress the specific deprecation warning from brother_ql
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    message=".*brother_ql.devicedependent is deprecated.*",
+)
+
 from brother_ql.backends.network import BrotherQLBackendNetwork
 from brother_ql.conversion import convert
 from brother_ql.raster import BrotherQLRaster
