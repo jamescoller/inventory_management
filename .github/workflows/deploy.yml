@@ -3,11 +3,11 @@ name: Deploy to Synology NAS
 on:
   push:
     branches:
-    - master
-    - release/*
+      - master
+      - release/*
   pull_request:
     branches:
-    - master
+      - master
   workflow_dispatch:
 
 jobs:
@@ -15,6 +15,9 @@ jobs:
     runs-on: self-hosted
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name:
           Debug: Print current directory
         run: |
