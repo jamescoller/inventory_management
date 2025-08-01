@@ -1,0 +1,12 @@
+version: "3.8"
+services:
+  github-runner:
+    build:
+      context: .
+      dockerfile: github-runner/Dockerfile
+    environment:
+      GITHUB_PAT: ${GITHUB_PAT}
+      REPO_URL: https://github.com/jamescoller/inventory_management
+      RUNNER_LABELS: inventory-runner
+    restart: unless-stopped
+    container_name: github-runner
