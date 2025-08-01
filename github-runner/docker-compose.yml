@@ -11,5 +11,6 @@ services:
       RUNNER_LABELS: inventory-runner
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - /volume1/docker/inventory_management/.env:/home/runner/_work/inventory_management/inventory_management/.env
     restart: unless-stopped
     container_name: github-runner
