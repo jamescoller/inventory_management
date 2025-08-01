@@ -18,20 +18,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name:
-          Debug: Print current directory
-        run: |
+      - name: Debug - Print current directory
+        run:
           echo "Current dir: $(pwd)"
 
-      - name:
-          Debug: List files in current directory
-        run: |
-          ls -al
+      - name: Debug - List files in current directory
+        run: ls -al
 
-      - name:
-          Debug: Recursively list all files
-        run: |
-          ls -alR
+      - name: Debug - Recursively list all files
+        run: ls -alR
 
       - name: Run deployment script
         run: bash scripts/deploy.sh
