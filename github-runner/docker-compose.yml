@@ -4,7 +4,7 @@ services:
   github-runner:
     build:
       context: .
-      dockerfile: github-runner/Dockerfile
+      dockerfile: Dockerfile
     environment:
       GITHUB_PAT: ${GITHUB_PAT}
       REPO_URL: https://github.com/jamescoller/inventory_management
