@@ -327,7 +327,7 @@ class addInventoryView(LoginRequiredMixin, CreateView):
 
         try:
             generate_and_print_barcode(new_item, mode="unique")
-            generate_and_print_barcode(new_item, mode="upc")
+            # generate_and_print_barcode(new_item, mode="upc")
         except Exception as e:
             messages.warning(request, f"Label printing failed: {e}")
             logger.error(f"Label printing failed: {e}")
