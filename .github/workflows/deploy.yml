@@ -15,5 +15,5 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - name: Run NAS deployment script
+      - name: Run deployment script
         run: bash scripts/deploy.sh
