@@ -17,15 +17,18 @@ jobs:
     steps:
       - name:
           Debug: Print current directory
-        run: pwd
+        run: |
+          echo "Current dir: $(pwd)"
 
       - name:
-          Debug: List contents of current directory
-        run: ls -al
+          Debug: List files in current directory
+        run: |
+          ls -al
 
       - name:
-          Debug: Recursively list everything
-        run: ls -alR
+          Debug: Recursively list all files
+        run: |
+          ls -alR
 
       - name: Run deployment script
         run: bash scripts/deploy.sh
