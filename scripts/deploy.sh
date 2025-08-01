@@ -1,10 +1,17 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
-# Trust the mounted repo location
-git config --global --add safe.directory /volume1/docker/inventory_management
+# Navigate to the project root
+cd "$(dirname "$0")/.." || exit 1
 
-cd /volume1/docker/inventory_management || exit 1
+echo "Current directory: $(pwd)"
+echo "Running deployment tasks..."
+
+# your deployment commands here
+
+# Trust the mounted repo location
+git config --global --add safe.directory "$(pwd)"
+
 echo "Pulling latest code..."
 git fetch origin master
 git reset --hard origin/master
