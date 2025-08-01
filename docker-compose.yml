@@ -7,7 +7,7 @@ services:
       - NET_ADMIN
       - NET_RAW
     volumes:
-      - .:/app
+      - /volume1/docker/inventory_management:/app
       - static_volume:/app/staticfiles  # ✅ Match STATIC_ROOT!
     expose:
       - "8000"
