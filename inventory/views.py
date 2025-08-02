@@ -108,6 +108,7 @@ class InventorySearchView(LoginRequiredMixin, View):
         name = request.GET.get("name", "")
         location = request.GET.get("location", "")
         serial_number = request.GET.get("serial_number", "")
+        item_id = request.GET.get("item_id", "")
 
         # Check for INV_xxx pattern
         inv_pattern = re.match(r"^INV-(\d+)$", name.strip())
@@ -121,13 +122,14 @@ class InventorySearchView(LoginRequiredMixin, View):
         )
 
         # If there's a simple search from the navbar, search across multiple fields
-        if name and not any([sku, upc, location, serial_number]):
+        if name and not any([sku, upc, location, serial_number, item_id]):
             items = items.filter(
                 Q(product__name__icontains=name)
                 | Q(product__sku__icontains=name)
                 | Q(product__upc__icontains=name)
                 | Q(location__name__icontains=name)
                 | Q(serial_number__icontains=name)
+                | Q(id__icontains=name)
             )
         else:
             # Apply specific filters
@@ -141,6 +143,8 @@ class InventorySearchView(LoginRequiredMixin, View):
                 items = items.filter(location__name__icontains=location)
             if serial_number:
                 items = items.filter(serial_number=serial_number)
+            if item_id:
+                items = items.filter(id=item_id)
 
         # Pass filtered items to the template
         context = {
@@ -151,6 +155,7 @@ class InventorySearchView(LoginRequiredMixin, View):
                 "name": name,
                 "location": location,
                 "serial_number": serial_number,
+                "item_id": item_id,
             },
         }
 

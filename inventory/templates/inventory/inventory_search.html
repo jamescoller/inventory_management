@@ -37,7 +37,13 @@
                        value="{{ search_values.serial_number }}">
             </div>
 
-            <div class="col-12 text-end">
+			<div class="col-md-4">
+				<label for="item_id" class="form-label">Inventory ID</label>
+				<input type="text" name="item_id" id="item_id" class="form-control"
+					   value="{{ search_values.item_id }}">
+			</div>
+
+			<div class="col-12 text-end">
                 <button type="submit" class="btn btn-primary mt-2">Search</button>
             </div>
         </form>
@@ -66,6 +72,7 @@
                     <th>Status</th>
                     <th>Location</th>
                     <th>Serial Number</th>
+					<th>Item ID</th>
                     <th>Action</th>
                 </tr>
                 </thead>
@@ -80,6 +87,7 @@
                             <td>{{ item.get_status_display }}</td>
                             <td>{{ item.location.name }}</td>
                             <td>{{ item.serial_number }}</td>
+							<td>{{ item.id }}</td>
                             <td>
                                 <a href="{% url 'inventory_edit' item.id %}"
                                    class="btn btn-sm btn-outline-primary">Edit</a>
@@ -96,6 +104,7 @@
                         <td></td>
                         <td></td>
                         <td></td>
+						<td></td>
                     </tr>
 
                 {% endif %}
@@ -125,6 +134,7 @@
                     {title: "Status"},
                     {title: "Location"},
                     {title: "Serial Number"},
+                    {title: "Item ID"},
                     {title: "Action", orderable: false}
                 ]
             });

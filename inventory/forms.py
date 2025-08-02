@@ -47,6 +47,8 @@ class FilamentForm(forms.ModelForm):
             "material",
             "color",
             "hex_code",
+            "weight",
+            "has_spool",
         ]
 
 
