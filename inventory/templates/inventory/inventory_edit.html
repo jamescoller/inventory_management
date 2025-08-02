@@ -31,6 +31,10 @@
 
 							<dt class="col-sm-4">UPC</dt>
 							<dd class="col-sm-8">{{ product.upc }}</dd>
+
+							<dt class="col-sm-4">ID</dt>
+							<dd class="col-sm-8">{{ item.id }}</dd>
+
 						</dl>
 					</div>
 					<div class="col-md-6">
@@ -43,6 +47,9 @@
 
 							<dt class="col-sm-4">Updated</dt>
 							<dd class="col-sm-8">{{ item.last_modified|date:"Y-m-d H:i:s" }}</dd>
+
+							<dt class="col-sm-4">Serial Number</dt>
+							<dd class="col-sm-8">{{ item.serial_number }}</dd>
 						</dl>
 					</div>
 				</div>

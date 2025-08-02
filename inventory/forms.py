@@ -47,6 +47,8 @@ class FilamentForm(forms.ModelForm):
             "material",
             "color",
             "hex_code",
+            "weight",
+            "has_spool",
         ]
 
 
@@ -105,9 +107,8 @@ class HardwareForm(forms.ModelForm):
 class InventoryEditForm(forms.ModelForm):
     class Meta:
         model = InventoryItem
-        fields = ["serial_number", "location", "status", "date_depleted"]
+        fields = ["serial_number", "location", "date_depleted"]
         widgets = {
-            "status": forms.Select(attrs={"class": "form-select"}),
             "location": forms.Select(attrs={"class": "form-select"}),
             "serial_number": forms.TextInput(attrs={"class": "form-control"}),
             "date_depleted": forms.DateInput(
