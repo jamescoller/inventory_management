@@ -21,6 +21,15 @@ from django.contrib.messages import constants as messages
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Ignore the stupid brother_ql depreciation warning
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    message=".*brother_ql.devicedependent is deprecated.*",
+)
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
@@ -31,7 +40,9 @@ SECRET_KEY = config("DJANGO_SECRET_KEY", default=None)
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config("DEBUG", default=None)
 
-ENABLE_BARCODE_PRINTING = config("ENABLE_BARCODE_PRINTING", default=True)
+ENABLE_BARCODE_PRINTING = config("ENABLE_BARCODE_PRINTING", default=True, cast=bool)
+BARCODE_FONT_PATH = BASE_DIR / "fonts" / "DejaVuSans.ttf"
+BARCODE_FONT_SIZE = 22  # or 12 / 16 etc.
 
 ALLOWED_HOSTS = ["*"]
 
@@ -206,6 +217,7 @@ LOGGING = {
         "inventory": {
             "handlers": ["console", "file"],
             "level": "DEBUG",
+            "propagate": False,
         },
     },
     "formatters": {
