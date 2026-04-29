@@ -1,6 +1,6 @@
 asgiref==3.9.1
 crispy-bootstrap5==2025.6
-Django==4.2.23
+Django==4.2.30
 django-crispy-forms==2.4
 django-filter==25.1
 django-htmx==1.23.2
@@ -11,12 +11,12 @@ gunicorn==23.0.0
 numpy==2.0.2
 openpyxl==3.1.5
 packaging==25.0
-pandas==2.3.1
+pandas==2.3.3
 python-dateutil==2.9.0.post0
 pytz==2025.2
 six==1.17.0
-sqlparse==0.5.3
-typing_extensions==4.14.1
+sqlparse==0.5.4
+typing_extensions==4.15.0
 tzdata==2025.2
 setuptools>=65.0.0
 django_tables2>=2.7.5
