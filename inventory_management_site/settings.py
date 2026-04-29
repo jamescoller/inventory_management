@@ -44,7 +44,13 @@ ENABLE_BARCODE_PRINTING = config("ENABLE_BARCODE_PRINTING", default=True, cast=b
 BARCODE_FONT_PATH = BASE_DIR / "fonts" / "DejaVuSans.ttf"
 BARCODE_FONT_SIZE = 22  # or 12 / 16 etc.
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = [
+    "inventory.local",
+    "knowledge.local",
+    "10.10.20.12",
+    "10.10.20.3",
+    "10.10.20.2",
+]
 
 # Application definition
 
@@ -147,6 +153,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:8080",
     "http://localhost:8080",
     "http://knowledge.local:8080",
+    # Via NGINX
+    "http://inventory.local",
 ]
 
 
