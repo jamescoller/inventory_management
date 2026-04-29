@@ -45,7 +45,7 @@ BARCODE_FONT_PATH = BASE_DIR / "fonts" / "DejaVuSans.ttf"
 BARCODE_FONT_SIZE = 22  # or 12 / 16 etc.
 
 ALLOWED_HOSTS = [
-    "inventory.local",
+    "inventory.home",
     "knowledge.local",
     "10.10.20.12",
     "10.10.20.3",
@@ -154,7 +154,7 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8080",
     "http://knowledge.local:8080",
     # Via NGINX
-    "http://inventory.local",
+    "http://inventory.home",
 ]
 
 
