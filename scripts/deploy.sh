@@ -19,7 +19,7 @@ git reset --hard origin/master
 # deploy.sh
 
 ENV_DEST="./.env"
-ENV_SOURCE="/home/runner/.env_shared"
+ENV_SOURCE="/home/jcoller/.env_shared"
 
 echo "Linking .env from shared volume"
 ln -sf "$ENV_SOURCE" "$ENV_DEST"
