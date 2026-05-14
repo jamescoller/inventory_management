@@ -25,5 +25,5 @@ echo "Linking .env from shared volume"
 ln -sf "$ENV_SOURCE" "$ENV_DEST"
 
 echo "Restarting Docker Compose stack..."
-docker-compose down
-docker-compose up -d --build
+docker compose down
+docker compose up -d --build

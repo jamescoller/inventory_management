@@ -1,6 +1,6 @@
 asgiref==3.9.1
 crispy-bootstrap5==2025.6
-Django==4.2.30
+Django>=5.2,<6.0
 django-crispy-forms==2.4
 django-filter==25.1
 django-htmx==1.23.2
@@ -19,12 +19,10 @@ sqlparse==0.5.4
 typing_extensions==4.15.0
 tzdata==2025.2
 setuptools>=65.0.0
-django_tables2>=2.7.5
 django-extensions>=4.1
 django-debug-toolbar>=5.0.0
 pre-commit
 python-barcode
 brother_ql
 pillow>=10.0.0
-scapy
 python-decouple
