@@ -7,22 +7,19 @@ cd "$(dirname "$0")/.." || exit 1
 echo "Current directory: $(pwd)"
 echo "Running deployment tasks..."
 
-# your deployment commands here
-
-# Trust the mounted repo location
+# Trust the runner workspace
 git config --global --add safe.directory "$(pwd)"
 
 echo "Pulling latest code..."
 git fetch origin master
 git reset --hard origin/master
 
-# deploy.sh
-
-ENV_DEST="./.env"
-ENV_SOURCE="/home/jcoller/.env_shared"
-
-echo "Linking .env from shared volume"
-ln -sf "$ENV_SOURCE" "$ENV_DEST"
+# .env is gitignored and lives in the workspace root — git reset --hard
+# does not touch untracked/ignored files, so it persists across deploys.
+if [ ! -f ".env" ]; then
+  echo "ERROR: .env file not found in $(pwd). Copy .env.example and fill in values."
+  exit 1
+fi
 
 echo "Restarting Docker Compose stack..."
 docker compose down
