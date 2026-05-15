@@ -1,0 +1,75 @@
+{% extends "inventory/base.html" %}
+{% load inventory_tags %}
+
+{% block content %}
+<style>
+  /* Force background colors and SVG fills to print */
+  @media print {
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    .color-guide-header { display: none !important; }
+    .print-header { display: block !important; }
+    .family-section { page-break-inside: avoid; }
+    .swatch-grid { row-gap: 1.5rem; }
+    .swatch-item { break-inside: avoid; }
+  }
+</style>
+
+<div class="container py-4">
+
+  <!-- Screen header -->
+  <div class="color-guide-header d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h1 class="mb-0">Filament Color Guide</h1>
+      <p class="text-muted mb-0">{{ total_filaments }} spool{{ total_filaments|pluralize }} on hand</p>
+    </div>
+    <button class="btn btn-outline-secondary" onclick="window.print()">
+      <i class="bi bi-printer"></i> Print / Save PDF
+    </button>
+  </div>
+
+  <!-- Print-only header -->
+  <div class="print-header" style="display:none;">
+    <h1 class="h2 mb-0">Filament Color Guide</h1>
+    <p class="text-muted">{{ total_filaments }} spool{{ total_filaments|pluralize }} on hand</p>
+    <hr>
+  </div>
+
+  {% for family, filaments in grouped_filaments.items %}
+  <div class="family-section mb-5">
+    <h2 class="h5 text-uppercase letter-spacing-1 border-bottom pb-2 mb-3">
+      {{ family|lower|capfirst }}
+      <small class="text-muted fw-normal">({{ filaments|length }})</small>
+    </h2>
+    <div class="row row-cols-3 row-cols-sm-4 row-cols-md-6 row-cols-lg-8 g-3 swatch-grid">
+      {% for filament in filaments %}
+      <div class="col swatch-item">
+        <div class="text-center">
+          {% if filament.hex_code %}
+            {% filament_spool filament.hex_code %}
+          {% else %}
+            <div class="mx-auto" style="width:60px;height:60px;border-radius:50%;background:#ccc;border:1px solid #aaa;"></div>
+          {% endif %}
+          <div class="mt-2 small fw-semibold lh-sm">{{ filament.color }}</div>
+          {% if filament.hex_code %}
+            <div class="small text-muted font-monospace">{{ filament.hex_code }}</div>
+          {% endif %}
+          {% if filament.material %}
+            <div class="small text-muted">{{ filament.material.name }}</div>
+          {% endif %}
+          <div class="mt-1">
+            <span class="badge bg-secondary">{{ filament.active_count }} on hand</span>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% empty %}
+  <p class="text-muted">No filament currently in stock.</p>
+  {% endfor %}
+
+</div>
+{% endblock %}

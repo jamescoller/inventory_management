@@ -1,9 +1,11 @@
 import logging
 import re
+from datetime import timedelta
 from decimal import Decimal
 
 import django_filters
 import openpyxl
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -14,7 +16,7 @@ from django.shortcuts import render
 from django.template.loader import render_to_string
 from django.urls import reverse_lazy
 from django.utils.html import escape
-from django.utils.timezone import localtime
+from django.utils.timezone import localtime, now as timezone_now
 from django.views.generic import CreateView, TemplateView, UpdateView, View
 
 from .barcode_utils import generate_and_print_barcode
@@ -40,6 +42,35 @@ from .models import (
 )
 
 logger = logging.getLogger("inventory")
+
+# InventoryItem statuses that count as "active" (not consumed or sold)
+_ACTIVE_STATUSES = [
+    InventoryItem.Status.NEW,
+    InventoryItem.Status.IN_USE,
+    InventoryItem.Status.DRYING,
+    InventoryItem.Status.STORED,
+]
+
+# Representative hex color for each filament color family
+COLOR_FAMILY_HEX = {
+    "RED": "#e74c3c",
+    "ORANGE": "#e67e22",
+    "YELLOW": "#f1c40f",
+    "GREEN": "#27ae60",
+    "BLUE": "#2980b9",
+    "PURPLE": "#8e44ad",
+    "PINK": "#fd79a8",
+    "BROWN": "#8B4513",
+    "BLACK": "#2c3e50",
+    "GRAY": "#95a5a6",
+    "WHITE": "#ecf0f1",
+    "TRANSLUCENT": "#dfe6e9",
+}
+
+FAMILY_ORDER = [
+    "RED", "ORANGE", "YELLOW", "GREEN", "BLUE", "PURPLE",
+    "PINK", "BROWN", "BLACK", "GRAY", "WHITE", "TRANSLUCENT",
+]
 
 # ---- Barcode Writer Helpers --------
 
@@ -393,6 +424,117 @@ class SignUpView(View):
         return render(request, "inventory/signup.html", {"form": form})
 
 
+def _build_low_stock_alerts():
+    """Return low-stock alert rows, sorted by urgency.
+
+    Two DB queries:
+    1. Active (non-depleted, non-sold) items grouped by product SKU — filtered to < LOW_QUANTITY.
+    2. Items depleted in the last 30 days grouped by product SKU — used as "recently consumed" signal.
+
+    Products with zero active items that were recently depleted are included as "Out of Stock".
+    """
+    low_qty = getattr(settings, "LOW_QUANTITY", 3)
+    thirty_days_ago = timezone_now() - timedelta(days=30)
+
+    # Products with some active inventory that is running low
+    active_map = {
+        row["product__sku"]: {
+            "product__name": row["product__name"],
+            "product_type": row["product__polymorphic_ctype__model"].title(),
+            "active_count": row["active_count"],
+            "in_use_count": row["in_use_count"],
+        }
+        for row in InventoryItem.objects.exclude(
+            status__in=[InventoryItem.Status.DEPLETED, InventoryItem.Status.SOLD]
+        )
+        .values("product__sku", "product__name", "product__polymorphic_ctype__model")
+        .annotate(
+            active_count=Count("id"),
+            in_use_count=Count("id", filter=Q(status=InventoryItem.Status.IN_USE)),
+        )
+        .filter(active_count__lt=low_qty)
+    }
+
+    # Products depleted in the last 30 days (captures active consumption)
+    depleted_map = {
+        row["product__sku"]: row
+        for row in InventoryItem.objects.filter(
+            status=InventoryItem.Status.DEPLETED,
+            date_depleted__gte=thirty_days_ago,
+        )
+        .values("product__sku", "product__name", "product__polymorphic_ctype__model")
+        .annotate(recently_depleted=Count("id"))
+    }
+
+    # Alert candidates: low active stock + products that ran out recently
+    out_of_stock_skus = set(depleted_map) - set(active_map)
+    alert_skus = set(active_map) | out_of_stock_skus
+
+    urgency_rank = {"danger": 0, "warning": 1, "secondary": 2}
+    alerts = []
+    for sku in alert_skus:
+        if sku in active_map:
+            row = {"product__sku": sku, **active_map[sku]}
+        else:
+            d = depleted_map[sku]
+            row = {
+                "product__sku": sku,
+                "product__name": d["product__name"],
+                "product_type": d["product__polymorphic_ctype__model"].title(),
+                "active_count": 0,
+                "in_use_count": 0,
+            }
+        row["recently_depleted"] = depleted_map.get(sku, {}).get("recently_depleted", 0)
+
+        if row["active_count"] == 0 and row["recently_depleted"] > 0:
+            row["urgency"] = "danger"
+            row["urgency_label"] = "Out of Stock"
+        elif row["recently_depleted"] > 0:
+            row["urgency"] = "warning"
+            row["urgency_label"] = "Running Low"
+        else:
+            row["urgency"] = "secondary"
+            row["urgency_label"] = "Low Stock"
+
+        alerts.append(row)
+
+    alerts.sort(key=lambda r: (urgency_rank[r["urgency"]], r["active_count"], r["product__name"]))
+    return alerts
+
+
+class FilamentColorGuideView(LoginRequiredMixin, TemplateView):
+    template_name = "inventory/filament_color_guide.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        filaments = list(
+            Filament.objects.annotate(
+                active_count=Count(
+                    "inventory_items",
+                    filter=Q(inventory_items__status__in=_ACTIVE_STATUSES),
+                )
+            )
+            .filter(active_count__gt=0)
+            .select_related("material")
+            .order_by("color_family", "color")
+        )
+
+        grouped = {}
+        for f in filaments:
+            grouped.setdefault(f.color_family or "OTHER", []).append(f)
+
+        # Preserve defined family order; append any unlisted families at the end
+        ordered = {k: grouped[k] for k in FAMILY_ORDER if k in grouped}
+        for k, v in grouped.items():
+            if k not in ordered:
+                ordered[k] = v
+
+        context["grouped_filaments"] = ordered
+        context["total_filaments"] = len(filaments)
+        return context
+
+
 class Dashboard(LoginRequiredMixin, View):
     def get(self, request):
         item_counts_by_type = [
@@ -420,14 +562,15 @@ class Dashboard(LoginRequiredMixin, View):
             "data": [row["count"] for row in materials],
         }
 
-        colors = (
+        colors = list(
             Filament.objects.values("color_family")
             .annotate(count=Count("id"))
             .order_by("-count")
         )
         color_chart_data = {
-            "labels": [row["color_family"] for row in colors],
+            "labels": [row["color_family"] or "Unknown" for row in colors],
             "data": [row["count"] for row in colors],
+            "colors": [COLOR_FAMILY_HEX.get(row["color_family"] or "", "#cccccc") for row in colors],
         }
 
         inventory_by_sku = [
@@ -445,6 +588,8 @@ class Dashboard(LoginRequiredMixin, View):
             .annotate(total_quantity=Count("id"))
             .order_by("-total_quantity")
         ]
+
+        low_stock_alerts = _build_low_stock_alerts()
 
         grand_total = InventoryItem.objects.count()
         distinct_products = InventoryItem.objects.values("product").distinct().count()
@@ -464,6 +609,8 @@ class Dashboard(LoginRequiredMixin, View):
                 "filament_chart_data": filament_chart_data,
                 "color_chart_data": color_chart_data,
                 "inventory_by_sku": inventory_by_sku,
+                "low_stock_alerts": low_stock_alerts,
+                "low_qty_threshold": getattr(settings, "LOW_QUANTITY", 3),
             },
         )
 

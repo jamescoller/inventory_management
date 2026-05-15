@@ -13,6 +13,7 @@ from .views import (
     BarcodeRedirectView,
     Dashboard,
     DryStorageOverviewView,
+    FilamentColorGuideView,
     Index,
     InventoryEditView,
     InventoryExportView,
@@ -58,6 +59,7 @@ urlpatterns = [
         "barcode/<str:value>/", BarcodeRedirectView.as_view(), name="barcode_redirect"
     ),
     path("in-use-overview/", InUseOverviewView.as_view(), name="in_use_overview"),
+    path("filament-color-guide/", FilamentColorGuideView.as_view(), name="filament_color_guide"),
     path(
         "dry-storage-overview/",
         DryStorageOverviewView.as_view(),
