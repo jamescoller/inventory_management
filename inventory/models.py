@@ -128,7 +128,7 @@ class Filament(Product):
                 The normalized hex code if the provided code is valid, otherwise None.
         """
         rev_code = self.hex_code.strip().lower().lstrip("#")
-        if re.fullmatch(r"^#(?:[0-9a-fA-F]{3}){1,2}$", rev_code):
+        if re.fullmatch(r"(?:[0-9a-fA-F]{3}){1,2}", rev_code):
             self.hex_code = f"#{rev_code}"
             return self.hex_code
         else:
@@ -233,7 +233,8 @@ class Filament(Product):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.material.name} {self.color}"
+        material_name = self.material.name if self.material else "Unknown"
+        return f"{material_name} {self.color}"
 
     class Meta:
         # abstract = True
@@ -588,7 +589,7 @@ class InventoryItem(models.Model):
         if not isinstance(self.product, Filament):
             return None
 
-        if self.status == "NEW":
+        if self.status == self.Status.NEW:
             if (
                 new_location.name.lower() == "dry storage"
                 and self.product.filament.material.drying_required

@@ -1,4 +1,5 @@
 import logging
+import re
 from decimal import Decimal
 
 import django_filters
@@ -13,6 +14,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.shortcuts import render
 from django.template.loader import render_to_string
 from django.urls import reverse_lazy
+from django.utils.html import escape
 from django.utils.timezone import localtime
 from django.views.generic import CreateView, TemplateView, UpdateView, View
 
@@ -26,7 +28,7 @@ logger = logging.getLogger("inventory")
 # ---- Barcode Writer Helpers --------
 
 
-class PrintBarcodeView(View):
+class PrintBarcodeView(LoginRequiredMixin, View):
 
     def get(self, request, item_id, mode):
         # 1. Get the item
@@ -63,14 +65,14 @@ class PrintBarcodeView(View):
             html_wrapped = f'<div id="print-result" class="alert alert-success mt-2">{html_body}</div>'
             return HttpResponse(html_wrapped)
 
-        return redirect("inventory_edit", pk=item_id)
+        return redirect("inventory_edit", item_id=item_id)
 
 
-class BarcodeRedirectView(View):
+class BarcodeRedirectView(LoginRequiredMixin, View):
     def get(self, request, value):
         if value.startswith("INV-"):
             item_id = value.replace("INV-", "")
-            return redirect("inventory_edit", pk=item_id)
+            return redirect("inventory_edit", item_id=item_id)
         return HttpResponse("Invalid barcode", status=400)
 
 
@@ -770,7 +772,7 @@ class InventoryExportView(LoginRequiredMixin, View):
                     item.product.sku,
                     item.product.upc,
                     localtime(item.date_added).strftime("%Y-%m-%d %H:%M:%S"),
-                    item.location.name,
+                    item.location.name if item.location else "",
                 ]
             )
 
@@ -784,7 +786,7 @@ class InventoryExportView(LoginRequiredMixin, View):
         return response
 
 
-class InUseOverviewView(TemplateView):
+class InUseOverviewView(LoginRequiredMixin, TemplateView):
     template_name = "inventory/in_use_overview.html"
 
     def get_context_data(self, **kwargs):
@@ -809,7 +811,7 @@ class InUseOverviewView(TemplateView):
 
             tooltip_lines = []
             if item.serial_number:
-                tooltip_lines.append(f"<strong>Serial:</strong> {item.serial_number}")
+                tooltip_lines.append(f"<strong>Serial:</strong> {escape(item.serial_number)}")
 
             if (
                 item.product_type == "filament"
@@ -817,7 +819,7 @@ class InUseOverviewView(TemplateView):
                 and item.product.filament.color
             ):
                 tooltip_lines.append(
-                    f"<strong>Color:</strong> {item.product.filament.color}"
+                    f"<strong>Color:</strong> {escape(item.product.filament.color)}"
                 )
             item.tooltip_html = "'{}'".format(
                 "<br>".join(tooltip_lines).replace('"', "&quot;")
@@ -829,7 +831,7 @@ class InUseOverviewView(TemplateView):
         return context
 
 
-class DryStorageOverviewView(TemplateView):
+class DryStorageOverviewView(LoginRequiredMixin, TemplateView):
     template_name = "inventory/dry_storage_overview.html"
 
     def get_context_data(self, **kwargs):
@@ -847,7 +849,7 @@ class DryStorageOverviewView(TemplateView):
 
             tooltip_lines = []
             if item.serial_number:
-                tooltip_lines.append(f"<strong>Serial:</strong> {item.serial_number}")
+                tooltip_lines.append(f"<strong>Serial:</strong> {escape(item.serial_number)}")
 
             if (
                 item.product_type == "filament"
@@ -855,7 +857,7 @@ class DryStorageOverviewView(TemplateView):
                 and item.product.filament.color
             ):
                 tooltip_lines.append(
-                    f"<strong>Color:</strong> {item.product.filament.color}"
+                    f"<strong>Color:</strong> {escape(item.product.filament.color)}"
                 )
             item.tooltip_html = "'{}'".format(
                 "<br>".join(tooltip_lines).replace('"', "&quot;")

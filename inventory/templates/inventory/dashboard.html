@@ -93,6 +93,8 @@
             });
         </script>
 
+        {{ filament_chart_data.labels|json_script:"filament-labels" }}
+        {{ filament_chart_data.data|json_script:"filament-data" }}
         <script>
             document.addEventListener('DOMContentLoaded', function () {
                 const ctx = document.getElementById('filamentPieChart').getContext('2d');
@@ -102,9 +104,9 @@
                 }
 
                 const chartData = {
-                    labels: {{ filament_chart_data.labels|safe }},
+                    labels: JSON.parse(document.getElementById('filament-labels').textContent),
                     datasets: [{
-                        data: {{ filament_chart_data.data|safe }},
+                        data: JSON.parse(document.getElementById('filament-data').textContent),
                         backgroundColor: [
                             '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f',
                             '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ab'
