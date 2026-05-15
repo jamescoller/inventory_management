@@ -1,14 +1,9 @@
-FROM python:3.9
+FROM python:3.12-slim
 
-# Install required system packages, including network tools and font packages
 RUN apt-get update && apt-get install -y \
-    net-tools \
-    iproute2 \
-    iputils-ping \
     fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
-# ... rest of your Dockerfile content ...
 LABEL authors="jcoller"
 LABEL name="inventory"
 
