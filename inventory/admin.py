@@ -1,6 +1,8 @@
 import os
+import subprocess
 
 from django.contrib import admin
+from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
@@ -8,10 +10,18 @@ from django.urls import path
 from django.utils.html import format_html
 from polymorphic.admin import PolymorphicChildModelAdmin, PolymorphicParentModelAdmin
 
-from .forms import (
-    InventoryItemForm,
+from .forms import InventoryItemForm
+from .models import (
+    AMS,
+    Dryer,
+    Filament,
+    Hardware,
+    InventoryItem,
+    Location,
+    Material,
+    Printer,
+    Product,
 )
-from .models import *
 
 LOG_PATH = os.path.join(os.path.dirname(__file__), "../inventory.log")
 
@@ -158,8 +168,8 @@ class PrinterAdmin(ProductChildAdmin):
 class HardwareAdmin(ProductChildAdmin):
     base_model = Hardware
     show_in_index = True
-    field = [
-        "usage",
+    fields = [
+        "qty",
         "kind",
     ]
 
@@ -168,14 +178,14 @@ class HardwareAdmin(ProductChildAdmin):
 class DryerAdmin(ProductChildAdmin):
     base_model = Dryer
     show_in_index = True
-    field = ["mfr", "model", "num_slots", 'max_temp"degC']
+    fields = ["mfr", "model", "num_slots", "max_temp_degC"]
 
 
 @admin.register(AMS)
 class AMSAdmin(ProductChildAdmin):
     base_model = AMS
     show_in_index = True
-    field = [
+    fields = [
         "mfr",
         "model",
         "num_slots",
@@ -269,25 +279,30 @@ class InventoryItemAdmin(admin.ModelAdmin):
         product = obj.product.get_real_instance()
         details = []
         if isinstance(product, Filament):
-            details.append(f"Material: {product.filament.material}\n")
-            details.append(f"Color: {product.color} ({product.filament.hex_code})\n")
-            details.append(f"SKU: {product.sku}\n")
-            details.append(f"UPC: {product.upc}\n")
+            details.append(f"Material: {product.material}")
+            details.append(f"Color: {product.color} ({product.hex_code})")
+            details.append(f"SKU: {product.sku}")
+            details.append(f"UPC: {product.upc}")
         elif isinstance(product, Printer):
-            details.append(f"MFR: {product.printer.mfr}\n")
-            details.append(f"Model: {product.printer.model}\n")
-            details.append(f"Serial Number: {product.printer.serial_number}\n")
+            details.append(f"MFR: {product.mfr}")
+            details.append(f"Model: {product.model}")
+            if obj.serial_number:
+                details.append(f"Serial: {obj.serial_number}")
         elif isinstance(product, Hardware):
-            details.append(f"Hardware: {product.hardware}\n")
+            details.append(f"Kind: {product.get_kind_display()}")
+            if product.qty:
+                details.append(f"Qty: {product.qty}")
         elif isinstance(product, Dryer):
-            details.append(f"MFR: {product.mfr}\n")
-            details.append(f"Model: {product.model}\n")
-            details.append(f"Serial Number: {product.serial_number}\n")
+            details.append(f"MFR: {product.mfr}")
+            details.append(f"Model: {product.model}")
+            if obj.serial_number:
+                details.append(f"Serial: {obj.serial_number}")
         elif isinstance(product, AMS):
-            details.append(f"MFR: {product.mfr}\n")
-            details.append(f"Model: {product.model}\n")
-            details.append(f"Serial Number: {product.serial_number}\n")
-        return " ".join(details)
+            details.append(f"MFR: {product.mfr}")
+            details.append(f"Model: {product.model}")
+            if obj.serial_number:
+                details.append(f"Serial: {obj.serial_number}")
+        return " | ".join(details)
 
     display_product_details.short_description = "Product Details"
 
@@ -338,13 +353,15 @@ class InventoryItemAdmin(admin.ModelAdmin):
 
     def view_log(self, request):
         try:
-            with open(LOG_PATH, "r") as f:
-                lines = f.readlines()[-200:]  # Show last 200 lines
-        except FileNotFoundError:
-            lines = ["Log file not found."]
+            output = subprocess.check_output(
+                ["tail", "-n", "200", LOG_PATH], text=True, stderr=subprocess.DEVNULL
+            )
+            raw_lines = output.splitlines()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            raw_lines = ["Log file not found."]
 
         formatted_lines = [
-            {"lineno": i + 1, "line": line.rstrip()} for i, line in enumerate(lines)
+            {"lineno": i + 1, "line": line} for i, line in enumerate(raw_lines)
         ]
 
         context = {
@@ -358,9 +375,12 @@ class InventoryItemAdmin(admin.ModelAdmin):
 
     @admin.action(description="Mark selected items as Depleted")
     def mark_depleted(self, request, queryset):
-        updated = queryset.update(status=InventoryItem.Status.DEPLETED)
-        self.message_user(request, f"{updated} items marked as Depleted.")
-        pass
+        count = 0
+        for item in queryset:
+            item.mark_depleted()
+            item.save()
+            count += 1
+        self.message_user(request, f"{count} items marked as Depleted.")
 
 
 @admin.register(Location)

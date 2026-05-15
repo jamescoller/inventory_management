@@ -3,6 +3,7 @@ import re
 
 from django.contrib.auth.models import User
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.timezone import now
 from polymorphic.models import PolymorphicModel
@@ -208,28 +209,17 @@ class Filament(Product):
 
         return None
 
+    def clean(self):
+        if self.hex_code:
+            if self.normalize_hex_code() is None:
+                raise ValidationError(
+                    {"hex_code": "Invalid hex color code. Use 3 or 6 hex digits (e.g. #F0F or #FF00FF)."}
+                )
+
     def save(self, *args, **kwargs):
-        """
-        Save the object to the database after normalizing the hex code.
-
-        The function normalizes the hexadecimal color code and verifies its validity
-        before saving the object. An exception is raised if the hex code is invalid.
-
-        Args:
-                *args: Additional positional arguments passed to the save method.
-                **kwargs: Additional keyword arguments passed to the save method.
-
-        Raises:
-                ValueError: If the normalized hex code is invalid.
-        """
-        self.normalize_hex_code()
-
-        if not self.hex_code:
-            raise ValueError("Invalid hex code")
-
-        # Set color family
-        self.color_family = self.get_color_family()
-
+        if self.hex_code:
+            self.normalize_hex_code()
+            self.color_family = self.get_color_family()
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -303,25 +293,12 @@ class Printer(Product):
         else:
             return None
 
+    def clean(self):
+        if not (self.bed_length_mm and self.bed_width_mm and self.max_height_mm):
+            raise ValidationError("Bed dimensions (length, width, height) are all required.")
+
     def save(self, *args, **kwargs):
-        """
-        Calculates and saves the print volume in cubic meters for the object. Ensures that the calculated
-        value is valid and raises an error if bed dimensions are invalid or missing.
-
-        Parameters:
-        args: tuple
-                Positional arguments passed to the method.
-        kwargs: dict
-                Keyword arguments passed to the method.
-
-        Raises:
-        ValueError
-                If the calculated print volume is invalid or the bed dimensions are
-                missing or incorrect.
-        """
         self.print_volume_m3 = self.calculate_print_volume()
-        if not self.print_volume_m3:
-            raise ValueError("Invalid or missing bed dimensions")
         super().save(*args, **kwargs)
 
 
@@ -530,6 +507,12 @@ class InventoryItem(models.Model):
         choices=Status.choices, default=Status.NEW, blank=True
     )
 
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        instance._original_location_id = instance.location_id
+        return instance
+
     @property
     def depleted(self):
         return self.status == self.Status.DEPLETED
@@ -626,34 +609,26 @@ class InventoryItem(models.Model):
             return None
 
     def save(self, *args, **kwargs):
-        is_new = self.pk is None  # If there is no primary key, this is a new record
+        is_new = self.pk is None
 
         if is_new:
-            # For new items, update status based on initial location
             if self.location:
                 new_status = self.update_status()
                 if new_status:
                     self.status = new_status
         else:
-            try:
-                previous = InventoryItem.objects.get(pk=self.pk)
-                # Update status if location has changed
-                if previous.location != self.location:
-                    new_status = self.update_status()
-                    if new_status:
-                        self.status = new_status
-            except InventoryItem.DoesNotExist:
-                pass
+            original_location_id = getattr(self, "_original_location_id", None)
+            if original_location_id != self.location_id:
+                new_status = self.update_status()
+                if new_status:
+                    self.status = new_status
 
-        # if status becomes "DEPLETED", set date and remove location
         if self.status == self.Status.DEPLETED:
             self.mark_depleted()
 
-        # if status becomes "SOLD", set boolean to be true for sold, set date, and remove location
         if self.status == self.Status.SOLD:
             self.mark_sold()
 
-        # Update last modified to be now
         self.last_modified = now()
 
         super().save(*args, **kwargs)

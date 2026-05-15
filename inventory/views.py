@@ -7,8 +7,7 @@ import openpyxl
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Count
-from django.db.models import Q
+from django.db.models import Count, F, Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.shortcuts import render
@@ -39,7 +38,6 @@ from .models import (
     Printer,
     Product,
 )
-from polymorphic.models import PolymorphicModel
 
 logger = logging.getLogger("inventory")
 
@@ -182,7 +180,7 @@ class InventorySearchView(LoginRequiredMixin, View):
         return render(request, "inventory/inventory_search.html", context)
 
 
-class inventoryEditView(LoginRequiredMixin, UpdateView):
+class InventoryEditView(LoginRequiredMixin, UpdateView):
     def get(self, request, item_id):
         item = get_object_or_404(
             InventoryItem.objects.select_related("product"), id=item_id
@@ -268,7 +266,7 @@ class inventoryEditView(LoginRequiredMixin, UpdateView):
             )
 
 
-class addInventoryView(LoginRequiredMixin, CreateView):
+class AddInventoryView(LoginRequiredMixin, CreateView):
     model = InventoryItem
     form_class = InventoryItemForm
     template_name = "inventory/item_form.html"
@@ -300,23 +298,11 @@ class addInventoryView(LoginRequiredMixin, CreateView):
 
         product = None
 
-        # Try to find product by UPC
         if upc:
-            for model in [Filament, Printer, Hardware, AMS, Dryer]:
-                try:
-                    product = model.objects.get(upc=upc)
-                    break
-                except model.DoesNotExist:
-                    continue
+            product = Product.objects.filter(upc=upc).first()
 
-        # Try to find product by SKU
         if product is None and sku:
-            for model in [Filament, Printer, Hardware, AMS, Dryer]:
-                try:
-                    product = model.objects.filter(sku=sku).first()
-                    break
-                except model.DoesNotExist:
-                    continue
+            product = Product.objects.filter(sku=sku).first()
 
         # If still no product found, redirect to 'add_product_choice'
         if product is None:
@@ -409,117 +395,68 @@ class SignUpView(View):
 
 class Dashboard(LoginRequiredMixin, View):
     def get(self, request):
+        item_counts_by_type = [
+            {
+                "class_name": row["product__polymorphic_ctype__model"].title(),
+                "count": row["count"],
+            }
+            for row in InventoryItem.objects.values("product__polymorphic_ctype__model")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+        ]
 
-        # This will list how many of each subclass, i.e. AMS, Hardware, Filament, etc.
-        item_counts_by_type = []
-
-        # This ensures we get the actual subclass instance of the product
-        for item in InventoryItem.objects.select_related("product").all():
-            real_product = item.product
-            if isinstance(real_product, PolymorphicModel):
-                real_product = real_product.get_real_instance_class()
-                class_name = real_product.__name__
-            else:
-                class_name = real_product.__class__.__name__
-
-            match = next(
-                (
-                    entry
-                    for entry in item_counts_by_type
-                    if entry["class_name"] == class_name
-                ),
-                None,
-            )
-            if match:
-                match["count"] += 1
-            else:
-                item_counts_by_type.append({"class_name": class_name, "count": 1})
-
-        item_counts = InventoryItem.objects.values("product", "product__sku").annotate(
-            count=Count("id")
+        total_value = (
+            InventoryItem.objects.aggregate(total=Sum("product__price"))["total"]
+            or Decimal("0.00")
         )
 
-        # Get actual product instances
-        items = []
-        for entry in item_counts:
-            inv = InventoryItem.objects.filter(product_id=entry["product"]).first()
-            if inv:
-                inv.product.inventory_count = entry["count"]  # inject count
-                inv.product.class_name = inv.product.get_real_instance_class().__name__
-                items.append(inv)
-
-        total_value = Decimal("0.00")
-        # Calculate total value
-        for item in items:
-            if item.product.price:
-                total_value += item.product.price * Decimal(
-                    str(item.product.inventory_count)
-                )
-
-        # Aggregate Filament items by material
         materials = (
-            Filament.objects.values(
-                "material__name"
-            )  # Use material__name to get the name field
+            Filament.objects.values("material__name")
             .annotate(count=Count("id"))
             .order_by("-count")
         )
-
-        # Prepare data for the pie chart
         filament_chart_data = {
-            "labels": [item["material__name"] for item in materials],
-            "data": [item["count"] for item in materials],
+            "labels": [row["material__name"] for row in materials],
+            "data": [row["count"] for row in materials],
         }
 
-        # Aggregate Filament items by color
         colors = (
             Filament.objects.values("color_family")
             .annotate(count=Count("id"))
-            .order_by("-count")  # <-- this sorts it
+            .order_by("-count")
         )
-
-        # Prepare data for the pie chart
         color_chart_data = {
-            "labels": [item["color_family"] for item in colors],
-            "data": [item["count"] for item in colors],
+            "labels": [row["color_family"] for row in colors],
+            "data": [row["count"] for row in colors],
         }
 
-        raw_inventory_by_sku = (
-            InventoryItem.objects.select_related("product")
-            .values("product__sku", "product__name")
+        inventory_by_sku = [
+            {
+                "product__name": row["product__name"],
+                "product__sku": row["product__sku"],
+                "product__class_name": row["product__polymorphic_ctype__model"].title(),
+                "total_quantity": row["total_quantity"],
+            }
+            for row in InventoryItem.objects.values(
+                "product__sku",
+                "product__name",
+                "product__polymorphic_ctype__model",
+            )
             .annotate(total_quantity=Count("id"))
             .order_by("-total_quantity")
-        )
+        ]
 
-        # Inject class name via a mapping step
-        sku_class_lookup = {}
-        for item in InventoryItem.objects.select_related("product"):
-            sku = item.product.sku
-            if sku not in sku_class_lookup:
-                sku_class_lookup[sku] = item.product.get_real_instance_class().__name__
-
-        inventory_by_sku = []
-        for row in raw_inventory_by_sku:
-            row["product__class_name"] = sku_class_lookup.get(
-                row["product__sku"], "Unknown"
-            )
-            inventory_by_sku.append(row)
-
-        # Get latest timestamp for summary
+        grand_total = InventoryItem.objects.count()
+        distinct_products = InventoryItem.objects.values("product").distinct().count()
         latest_item = InventoryItem.objects.order_by("-last_modified").first()
         latest_timestamp = latest_item.last_modified if latest_item else None
-
-        grand_total = sum(item.product.inventory_count for item in items)
-
-        # print(json.dumps(color_chart_data))
 
         return render(
             request,
             "inventory/dashboard.html",
             {
-                "items": items,
+                "distinct_products": distinct_products,
                 "latest_timestamp": latest_timestamp,
-                "item_counts": item_counts,
                 "item_counts_by_type": item_counts_by_type,
                 "locations": Location.objects.all(),
                 "grand_total": grand_total,
@@ -531,159 +468,75 @@ class Dashboard(LoginRequiredMixin, View):
         )
 
 
-class AddFilamentView(LoginRequiredMixin, CreateView):
+class BaseAddProductView(LoginRequiredMixin, CreateView):
+    template_name = "inventory/add_product.html"
+    success_url = reverse_lazy("add_inventory")
+    form_title = ""
+    submit_label = "Save"
+
+    def get_initial(self):
+        initial = super().get_initial()
+        pending = self.request.session.get("pending_inventory")
+        if pending:
+            initial["upc"] = pending.get("upc")
+        return initial
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["form_title"] = self.form_title
+        context["submit_label"] = self.submit_label
+        return context
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        if self.request.GET.get("from_inventory"):
+            pending = self.request.session.pop("pending_inventory", None)
+            if pending:
+                InventoryItem.objects.create(
+                    product=self.object,
+                    shipment=pending.get("shipment"),
+                    location_id=pending.get("location_id"),
+                )
+                messages.success(
+                    self.request, f"{self.object.name} and inventory item created."
+                )
+                return redirect("add_inventory")
+        return response
+
+
+class AddFilamentView(BaseAddProductView):
     model = Filament
     form_class = FilamentForm
-    template_name = "inventory/add_filament.html"
-    success_url = reverse_lazy("add_inventory")
-
-    def get_initial(self):
-        initial = super().get_initial()
-        pending = self.request.session.get("pending_inventory")
-        if pending:
-            initial["upc"] = pending.get("upc")
-        return initial
-
-    def form_valid(self, form):
-        response = super().form_valid(form)
-        if self.request.GET.get("from_inventory"):
-            # Use pending inventory data to create InventoryItem
-            pending = self.request.session.pop("pending_inventory", None)
-            if pending:
-                InventoryItem.objects.create(
-                    product=self.object,
-                    shipment=pending.get("shipment"),
-                    location_id=pending.get("location_id"),
-                )
-                messages.success(
-                    self.request, f"{self.object.name} and inventory item created."
-                )
-                return redirect("add_inventory")
-        return response
+    form_title = "Add New Filament"
+    submit_label = "Save Filament"
 
 
-class AddPrinterView(LoginRequiredMixin, CreateView):
+class AddPrinterView(BaseAddProductView):
     model = Printer
     form_class = PrinterForm
-    template_name = "inventory/add_printer.html"
-    success_url = reverse_lazy("add_inventory")
-
-    def get_initial(self):
-        initial = super().get_initial()
-        pending = self.request.session.get("pending_inventory")
-        if pending:
-            initial["upc"] = pending.get("upc")
-        return initial
-
-    def form_valid(self, form):
-        response = super().form_valid(form)
-        if self.request.GET.get("from_inventory"):
-            # Use pending inventory data to create InventoryItem
-            pending = self.request.session.pop("pending_inventory", None)
-            if pending:
-                InventoryItem.objects.create(
-                    product=self.object,
-                    shipment=pending.get("shipment"),
-                    location_id=pending.get("location_id"),
-                )
-                messages.success(
-                    self.request, f"{self.object.name} and inventory item created."
-                )
-                return redirect("add_inventory")
-        return response
+    form_title = "Add New Printer"
+    submit_label = "Save Printer"
 
 
-class AddDryerView(LoginRequiredMixin, CreateView):
+class AddDryerView(BaseAddProductView):
     model = Dryer
     form_class = DryerForm
-    template_name = "inventory/add_dryer.html"
-    success_url = reverse_lazy("add_inventory")
-
-    def get_initial(self):
-        initial = super().get_initial()
-        pending = self.request.session.get("pending_inventory")
-        if pending:
-            initial["upc"] = pending.get("upc")
-        return initial
-
-    def form_valid(self, form):
-        response = super().form_valid(form)
-        if self.request.GET.get("from_inventory"):
-            # Use pending inventory data to create InventoryItem
-            pending = self.request.session.pop("pending_inventory", None)
-            if pending:
-                InventoryItem.objects.create(
-                    product=self.object,
-                    shipment=pending.get("shipment"),
-                    location_id=pending.get("location_id"),
-                )
-                messages.success(
-                    self.request, f"{self.object.name} and inventory item created."
-                )
-                return redirect("add_inventory")
-        return response
+    form_title = "Add New Dryer"
+    submit_label = "Save Dryer"
 
 
-class AddHardwareView(LoginRequiredMixin, CreateView):
+class AddHardwareView(BaseAddProductView):
     model = Hardware
     form_class = HardwareForm
-    template_name = "inventory/add_hardware.html"
-    success_url = reverse_lazy("add_inventory")
-
-    def get_initial(self):
-        initial = super().get_initial()
-        pending = self.request.session.get("pending_inventory")
-        if pending:
-            initial["upc"] = pending.get("upc")
-        return initial
-
-    def form_valid(self, form):
-        response = super().form_valid(form)
-        if self.request.GET.get("from_inventory"):
-            # Use pending inventory data to create InventoryItem
-            pending = self.request.session.pop("pending_inventory", None)
-            if pending:
-                InventoryItem.objects.create(
-                    product=self.object,
-                    shipment=pending.get("shipment"),
-                    location_id=pending.get("location_id"),
-                )
-                messages.success(
-                    self.request, f"{self.object.name} and inventory item created."
-                )
-                return redirect("add_inventory")
-        return response
+    form_title = "Add New Hardware"
+    submit_label = "Save Hardware"
 
 
-class AddAMSView(LoginRequiredMixin, CreateView):
+class AddAMSView(BaseAddProductView):
     model = AMS
     form_class = AMSForm
-    template_name = "inventory/add_ams.html"
-    success_url = reverse_lazy("add_inventory")
-
-    def get_initial(self):
-        initial = super().get_initial()
-        pending = self.request.session.get("pending_inventory")
-        if pending:
-            initial["upc"] = pending.get("upc")
-        return initial
-
-    def form_valid(self, form):
-        response = super().form_valid(form)
-        if self.request.GET.get("from_inventory"):
-            # Use pending inventory data to create InventoryItem
-            pending = self.request.session.pop("pending_inventory", None)
-            if pending:
-                InventoryItem.objects.create(
-                    product=self.object,
-                    shipment=pending.get("shipment"),
-                    location_id=pending.get("location_id"),
-                )
-                messages.success(
-                    self.request, f"{self.object.name} and inventory item created."
-                )
-                return redirect("add_inventory")
-        return response
+    form_title = "Add New AMS"
+    submit_label = "Save AMS"
 
 
 class InventoryExportView(LoginRequiredMixin, View):

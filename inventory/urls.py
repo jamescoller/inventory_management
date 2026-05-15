@@ -1,7 +1,26 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from .views import *
+from .views import (
+    AboutView,
+    AddAMSView,
+    AddDryerView,
+    AddFilamentView,
+    AddHardwareView,
+    AddInventoryView,
+    AddPrinterView,
+    AddProductChoiceView,
+    BarcodeRedirectView,
+    Dashboard,
+    DryStorageOverviewView,
+    Index,
+    InventoryEditView,
+    InventoryExportView,
+    InventorySearchView,
+    InUseOverviewView,
+    PrintBarcodeView,
+    SignUpView,
+)
 
 urlpatterns = [
     path("about/", AboutView.as_view(), name="about"),
@@ -18,7 +37,7 @@ urlpatterns = [
         auth_views.LogoutView.as_view(template_name="inventory/logout.html"),
         name="logout",
     ),
-    path("addinventory/", addInventoryView.as_view(), name="add_inventory"),
+    path("addinventory/", AddInventoryView.as_view(), name="add_inventory"),
     path(
         "add-product-choice/", AddProductChoiceView.as_view(), name="add_product_choice"
     ),
@@ -28,7 +47,7 @@ urlpatterns = [
     path("add-hardware/", AddHardwareView.as_view(), name="add_hardware"),
     path("add-dryer/", AddDryerView.as_view(), name="add_dryer"),
     path("search/", InventorySearchView.as_view(), name="inventory_search"),
-    path("edit/<int:item_id>/", inventoryEditView.as_view(), name="inventory_edit"),
+    path("edit/<int:item_id>/", InventoryEditView.as_view(), name="inventory_edit"),
     path("search/export/", InventoryExportView.as_view(), name="inventory_export"),
     path(
         "print_barcode/<int:item_id>/<str:mode>/",
