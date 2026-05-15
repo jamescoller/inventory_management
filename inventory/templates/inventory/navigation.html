@@ -15,6 +15,11 @@
 			<ul class="navbar-nav">
 				{% if user.is_authenticated %}
 					<li class="nav-item">
+						<a class="nav-link" href="{% url 'filament_color_guide' %}">
+							<i class="bi bi-palette2"></i> Colors
+						</a>
+					</li>
+					<li class="nav-item">
 						<a class="nav-link" href="#">{{ user.username }}</a>
 					</li>
                     <li class="nav-item">

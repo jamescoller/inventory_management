@@ -137,11 +137,10 @@ Safe to delete without any user-visible impact.
   - *Highest-value automation:* on print completion, auto-update which spool is in which AMS slot and optionally decrement estimated remaining weight.
   - Reference: HACS bambu_lab integration source for the MQTT topic structure.
 
-- [ ] **Improved data visualizations** — Existing dashboard uses Chart.js already. Ideas:
-  - Filament usage over time (requires logging consumption events)
-  - Stock levels by material/color family with low-stock alerts
-  - Spool weight distribution (how much of each color/material is on hand by weight)
-  - Printer utilization (requires BambuLab integration)
+- [x] **Improved data visualizations** — Dashboard now has 3 charts (product type, filament by material, filament by color family with real hex colors); low-stock alert table with urgency tiers (Out of Stock / Running Low / Low Stock) cross-referenced against 30-day depletion history; new `/filament-color-guide/` page showing all on-hand filament spools grouped by color family, printable as PDF.
+  - [ ] Filament usage over time (requires logging consumption events)
+  - [ ] Spool weight distribution (how much of each color/material is on hand by weight)
+  - [ ] Printer utilization (requires BambuLab integration)
 
 - [ ] **Status-based location assignment** ✅ *(Already implemented in `InventoryItem.save()` via `Location.default_status` — the original todo item is done)*
 
