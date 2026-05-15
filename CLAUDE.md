@@ -14,17 +14,19 @@ Default branch: `master`
 
 ## Hardware & topology
 
-- **App host (current):** Synology DS923+ NAS at `10.10.20.3`, Docker Compose stack
+- **App host:** Synology DS923+ NAS at `10.10.20.3`, Docker Compose stack
   at `/volume1/docker/inventory_management`
 - **App URLs:** `http://inventory.home` (via NGINX + PiHole), `http://knowledge.local:8080`,
   `http://10.10.20.3:8080`
 - **Database:** SQLite at `inventory_db.sqlite3` — not version-controlled, lives on
   the NAS volume mount
+- **Claude Code LXC:** Debian 12 on Proxmox at `10.10.20.17` — this is where Claude
+  Code runs and where all code editing happens. Not the same machine as the app host.
 - **Network:** server VLAN (`10.10.20.x`)
 - **Co-located on the same VLAN:**
   - Home Assistant Green (`10.10.20.2`)
   - Proxmox host — Minisforum UM790 Pro, Ryzen 9 7940HS, 32 GB DDR5 (running LXCs)
-  - This Claude Code LXC (Debian 12 on Proxmox)
+  - This Claude Code LXC (`10.10.20.17`, Debian 12 on Proxmox)
   - Raspberry Pi 5
   - Mac Mini M2
 
