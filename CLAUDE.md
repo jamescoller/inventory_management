@@ -202,6 +202,27 @@ All critical bugs and security issues from Phase 1 were fixed in a single PR:
   building `tooltip_html` strings (stored XSS in tooltip).
 - Added `LoginRequiredMixin` to four unprotected views.
 
+### Phase 2 — what was done (May 2026, PRs #80, #81)
+
+Dead code removal and structural cleanup. Hotfix PR #81 followed immediately
+to repair a 502 caused by a missed transitive import (see step 7 above).
+
+- Deleted `tables.py` + removed `django-tables2` from requirements/INSTALLED_APPS.
+- Deleted `FilamentView` and `filament_view.html` (no URL route).
+- Deleted `Order` and `Shipment` models + admin registrations; migration 0020
+  drops their DB tables.
+- Deleted 4 dead templates: `bulkadd`, `delete_item`, `search_results`, `movement`.
+- Deleted `format_label()` and `generate_barcode()` from `barcode_utils.py`.
+- Replaced hardcoded stale printer IP with correct LAN address `10.10.40.2`.
+- Removed `numpy` and `pandas` from requirements (no longer needed).
+- Replaced `from .models import *` / `from .forms import *` / `from .tables import *`
+  in views.py and forms.py with explicit named imports.
+- Wired up `inventory.signals` in `apps.py` `ready()`; switched `post_save` →
+  `pre_save` to fix old-state read; fixed `StatusChoices` → `Status` typo.
+- Converted `depleted`, `in_use`, `sold` from `BooleanField` to `@property`;
+  columns dropped in migration 0020; admin `list_filter` updated.
+- Added missing `from django.core.exceptions import ValidationError` to admin.py.
+
 ## Environment notes
 
 - Django is **not** installed in this Claude Code LXC. `python3 manage.py check`
