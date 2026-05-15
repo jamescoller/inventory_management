@@ -4,14 +4,14 @@ services:
     command: ["/app/entrypoint.sh"]
     restart: always
     volumes:
-      - .:/app
-      - static_volume:/app/staticfiles  # ✅ Match STATIC_ROOT!
+      - ${HOME}/inventory_db.sqlite3:/app/inventory_db.sqlite3
+      - static_volume:/app/staticfiles
     expose:
       - "8000"
     environment:
       - DEBUG=0
     env_file:
-      - .env
+      - ${HOME}/.env_inventory
 
   nginx:
     image: nginx:latest
