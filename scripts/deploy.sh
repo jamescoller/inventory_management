@@ -14,14 +14,15 @@ echo "Pulling latest code..."
 git fetch origin master
 git reset --hard origin/master
 
-# .env lives outside the workspace at a fixed path so the actions/checkout
-# clean step can't wipe it. Copy it into the workspace before starting Docker.
-ENV_SOURCE="${HOME}/.env_inventory"
-if [ ! -f "$ENV_SOURCE" ]; then
-  echo "ERROR: $ENV_SOURCE not found. Create it from .env.example on the runner host."
+if [ ! -f "${HOME}/.env_inventory" ]; then
+  echo "ERROR: ${HOME}/.env_inventory not found. Create it from .env.example on the runner host."
   exit 1
 fi
-cp "$ENV_SOURCE" .env
+
+if [ ! -f "${HOME}/inventory_db.sqlite3" ]; then
+  echo "ERROR: ${HOME}/inventory_db.sqlite3 not found. Copy the database to the runner host."
+  exit 1
+fi
 
 echo "Restarting Docker Compose stack..."
 docker compose down
