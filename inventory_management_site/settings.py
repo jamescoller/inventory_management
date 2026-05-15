@@ -36,7 +36,7 @@ warnings.filterwarnings(
 SECRET_KEY = config("DJANGO_SECRET_KEY", default=None)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config("DEBUG", default=None)
+DEBUG = config("DEBUG", default=False, cast=bool)
 
 ENABLE_BARCODE_PRINTING = config("ENABLE_BARCODE_PRINTING", default=True, cast=bool)
 BARCODE_FONT_PATH = BASE_DIR / "fonts" / "DejaVuSans.ttf"
@@ -69,11 +69,12 @@ INSTALLED_APPS = [
     "django_htmx",
     "polymorphic",
     "django_extensions",
-    "debug_toolbar",
 ]
 
+if DEBUG:
+    INSTALLED_APPS += ["debug_toolbar"]
+
 MIDDLEWARE = [
-    "debug_toolbar.middleware.DebugToolbarMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -82,6 +83,9 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+if DEBUG:
+    MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
 
 ROOT_URLCONF = "inventory_management_site.urls"
 

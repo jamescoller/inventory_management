@@ -11,27 +11,23 @@ These are confirmed crashes or security holes in currently-reachable code.
 
 ### Bugs
 
-- [ ] **Search crashes on every request** — `views.py:114` uses `re.match` but `re` is never imported in views.py. Add `import re` at the top of the file. *(Issue #33 may also be related)*
-- [ ] **Barcode print redirect broken** — `views.py:66` calls `redirect("inventory_edit", pk=item_id)` but the URL pattern expects kwarg `item_id`, not `pk`. Causes `NoReverseMatch` after every successful print.
-- [ ] **Every new Printer crashes on save** — `PrinterForm` (forms.py) omits `bed_length_mm`, `bed_width_mm`, `max_height_mm`, but `Printer.save()` raises `ValueError` when any are missing. Add the three fields to `PrinterForm.Meta.fields`.
-- [ ] **Admin dropdowns crash when any Filament has no Material** — `Filament.__str__` (models.py ~line 236) calls `self.material.name` unconditionally; `material` is nullable (`SET_NULL`). Add null guard: `self.material.name if self.material else "Unknown"`.
-- [ ] **Bulk update material admin action broken** — `admin.py:112` references removed field `new_matl` (renamed to `material` in migration 0017). Change to `queryset.update(material=material)`.
-- [ ] **Hex code normalization silently broken** — `Filament.normalize_hex_code()` strips `#` from the input then runs a regex that requires `#` — regex never matches, normalization never runs. Fix the regex to match the stripped value.
-- [ ] **Filament drying warning never fires** — `models.py:591` compares `self.status == "NEW"` (string) but `status` is `IntegerChoices`. Change to `self.status == self.Status.NEW`.
-- [ ] **Fix `DEBUG` env var cast** — `settings.py` reads `DEBUG = config("DEBUG", default=None)` without `cast=bool`. The string `"False"` is truthy in Python, so `DEBUG=False` in `.env` silently turns debug mode ON. Change to `config("DEBUG", default=False, cast=bool)`.
-- [ ] **Excel export broken** — `InventoryExportView` (views.py ~line 735). Investigate and fix. *(GitHub Issue #33)*
-- [ ] **`import_products.py` is orphaned and broken** — file lives at `inventory/import_products.py` instead of `inventory/management/commands/import_products.py`; references removed fields (`category`, `print_temp_degC`); hardcoded file path. Either fix and relocate or delete. If deleted, `numpy` and `pandas` can also be removed from requirements (~50 MB).
+- [x] **Search crashes on every request** — added `import re` to views.py.
+- [x] **Barcode print redirect broken** — fixed kwarg from `pk=` to `item_id=` in `PrintBarcodeView.post` and `BarcodeRedirectView.get`.
+- [x] **Every new Printer crashes on save** — added `bed_length_mm`, `bed_width_mm`, `max_height_mm` to `PrinterForm.Meta.fields`.
+- [x] **Admin dropdowns crash when any Filament has no Material** — added null guard in `Filament.__str__`.
+- [x] **Bulk update material admin action broken** — changed `queryset.update(new_matl=material)` to `queryset.update(material=material)`.
+- [x] **Hex code normalization silently broken** — fixed regex in `normalize_hex_code()` to match stripped (no-`#`) value.
+- [x] **Filament drying warning never fires** — changed `self.status == "NEW"` to `self.status == self.Status.NEW`.
+- [x] **Fix `DEBUG` env var cast** — added `cast=bool` to `config("DEBUG", ...)`.
+- [x] **Excel export broken** — fixed `item.location.name` crash when location is None.
+- [x] **`import_products.py` is orphaned and broken** — deleted. `numpy`/`pandas` removal deferred to Phase 3.
 
 ### Security
 
-- [ ] **Debug toolbar exposed in production** — `DebugToolbarMiddleware` and `debug_toolbar_urls()` are loaded unconditionally. Wrap both in `if DEBUG:` guards (settings.py middleware list and root urls.py).
-- [ ] **Stored XSS via chart labels** — `dashboard.html:105` uses `{{ labels|safe }}` where labels come from DB-stored material/color names. Replace with `json_script` filter or `|escapejs`. Same pattern in any other template using `|safe` on DB strings.
-- [ ] **Stored XSS via tooltip HTML** — `in_use_overview.html:23` renders `item.tooltip_html|safe` where `tooltip_html` is built from `serial_number` + `color` without full HTML escaping. Run each `tooltip_lines` entry through `django.utils.html.escape()` in the view before building the string.
-- [ ] **Missing `LoginRequiredMixin`** on the following views:
-  - `PrintBarcodeView` — unauthenticated users can trigger label printing
-  - `BarcodeRedirectView` — reveals item existence by ID
-  - `InUseOverviewView`
-  - `DryStorageOverviewView`
+- [x] **Debug toolbar exposed in production** — wrapped `debug_toolbar` in `if DEBUG:` guards in `settings.py` (INSTALLED_APPS + MIDDLEWARE) and `urls.py`.
+- [x] **Stored XSS via chart labels** — replaced `{{ filament_chart_data.labels|safe }}` / `{{ filament_chart_data.data|safe }}` with `json_script` filter + `JSON.parse` in dashboard.html.
+- [x] **Stored XSS via tooltip HTML** — run `serial_number` and `color` through `django.utils.html.escape()` before building `tooltip_html` in both `InUseOverviewView` and `DryStorageOverviewView`.
+- [x] **Missing `LoginRequiredMixin`** — added to `PrintBarcodeView`, `BarcodeRedirectView`, `InUseOverviewView`, `DryStorageOverviewView`.
 
 ---
 

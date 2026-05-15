@@ -95,6 +95,9 @@ class PrinterForm(forms.ModelForm):
             "mfr",
             "model",
             "num_extruders",
+            "bed_length_mm",
+            "bed_width_mm",
+            "max_height_mm",
         ]
 
 

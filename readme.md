@@ -1,39 +1,74 @@
 [![Deploy to inventory-manager LXC](https://github.com/jamescoller/inventory_management/actions/workflows/deploy.yml/badge.svg?event=push)](https://github.com/jamescoller/inventory_management/actions/workflows/deploy.yml)
 
-## 1. Clone and Build
+## What this is
+
+A Django web application for tracking 3D printer consumables — filament spools,
+hardware, printers, AMS units, and drying equipment. Deployed as a Docker Compose
+stack (Gunicorn + Nginx) on a Synology NAS. Integrates with a Brother QL label
+printer for barcode generation.
+
+---
+
+## Local development
+
+### Prerequisites
+
+- Docker and Docker Compose
+- A `.env_inventory` file in your home directory (see Environment below)
+
+### Build and run
+
 ```bash
 git clone https://github.com/jamescoller/inventory_management
 cd inventory_management
-docker compose build
+docker compose up --build -d
 ```
 
-## 2. Run the App
-```bash
-docker compose up -d
-```
-or, to rebuild it first [same as below]
-```bash
-docker compose up --build --remove-orphans
-```
+Access at `http://localhost:8080`. Migrations and `collectstatic` run automatically
+at container start via `entrypoint.sh`.
 
-### Alternative: Deploy via PyCharm
+### Stop
 
-You can deploy directly from PyCharm, in which case the port will be 8000.
-
-## 3. Access it
-- Open your browser at: `http://localhost:8080`
-
-## 4. Migrations and Collectstatic
-Handled automatically by `entrypoint.sh` during container startup.
-
-## 5. Stopping the App
 ```bash
 docker compose down
 ```
 
 ---
 
-> For updates, rebuild with:
-> ```bash
-> docker compose up --build -d
-> ```
+## Production deployment
+
+Pushes to `master` trigger an automatic deploy via GitHub Actions on the
+self-hosted runner hosted on the NAS. The workflow runs `scripts/deploy.sh`,
+which does a hard reset to `origin/master` and rebuilds the Docker Compose stack.
+
+**Live URLs:** `http://inventory.home` (via NGINX + PiHole) or `http://10.10.20.3:8080`
+
+---
+
+## Environment
+
+The app reads configuration from `.env_inventory` (via `python-decouple`).
+Required variables:
+
+| Variable | Description |
+|---|---|
+| `DJANGO_SECRET_KEY` | Django secret key |
+| `DEBUG` | `True` / `False` (use `False` in production) |
+| `ENABLE_BARCODE_PRINTING` | `True` / `False` — enables Brother QL printing |
+| `PRINTER_IP` | IP address of the label printer |
+| `PRINTER_MAC` | MAC address of the label printer |
+
+On the NAS the file lives at `$HOME/.env_inventory` and is referenced by `docker-compose.yml`.
+
+---
+
+## Migrations
+
+Migrations are applied automatically by `entrypoint.sh` on container start.
+To generate a new migration after a model change:
+
+```bash
+docker exec -it <container> python manage.py makemigrations
+```
+
+Include the resulting migration file in your PR.

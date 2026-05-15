@@ -109,7 +109,7 @@ class FilamentAdmin(ProductChildAdmin):
             material_id = request.POST.get("new_matl")
             try:
                 material = Material.objects.get(pk=material_id)
-                queryset.update(new_matl=material)
+                queryset.update(material=material)
                 self.message_user(
                     request, f"Successfully updated {queryset.count()} filaments."
                 )
