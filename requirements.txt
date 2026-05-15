@@ -1,9 +1,9 @@
 asgiref==3.9.1
-crispy-bootstrap5==2025.6
+crispy-bootstrap5==2026.3
 Django>=6.0,<7.0
 django-crispy-forms==2.4
 django-filter==25.1
-django-htmx==1.23.2
+django-htmx==1.27.0
 django-polymorphic==4.1.0
 django-tables2==2.7.5
 et_xmlfile==2.0.0
@@ -15,12 +15,12 @@ pandas==2.3.3
 python-dateutil==2.9.0.post0
 pytz==2025.2
 six==1.17.0
-sqlparse==0.5.4
+sqlparse==0.5.5
 typing_extensions==4.15.0
 tzdata==2025.2
 setuptools>=65.0.0
 django-extensions>=4.1
-django-debug-toolbar>=5.0.0
+django-debug-toolbar>=6.3.0
 pre-commit
 python-barcode
 brother_ql
