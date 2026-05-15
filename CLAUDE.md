@@ -14,11 +14,12 @@ Default branch: `master`
 
 ## Hardware & topology
 
-- **App host:** Proxmox LXC at `10.10.20.17`, Docker Compose stack
-  at `/volume1/docker/inventory_management` (previously on the NAS)
+- **App host:** Proxmox LXC at `10.10.20.17` — Docker Compose stack, GitHub Actions
+  self-hosted runner, and SQLite database all live here. Nothing for this app is on
+  the NAS anymore.
 - **App URLs:** `http://inventory.home` (via NGINX + PiHole), `http://10.10.20.17:8080`
 - **Database:** SQLite at `inventory_db.sqlite3` — not version-controlled, lives on
-  the LXC volume mount
+  the app LXC
 - **Claude Code LXC:** Debian 12 on Proxmox at `10.10.20.16` — this is where Claude
   Code runs and where all code editing happens. Not the same machine as the app host.
 - **Network:** server VLAN (`10.10.20.x`)
@@ -51,12 +52,12 @@ Host synology
 
 ## CI/CD pipeline
 
-1. Code changes happen in this repo, on the `claude-code` LXC, via Claude Code.
+1. Code changes happen in this repo, on the Claude Code LXC (`10.10.20.16`), via Claude Code.
 2. Pre-commit hooks run (configured in `.pre-commit-config.yaml`).
 3. Push to GitHub. GitHub Actions runs the deploy workflow.
-4. The workflow runs on the self-hosted runner on the NAS.
-5. `scripts/deploy.sh` does a hard reset to `origin/master`, links `.env` from
-   `/home/runner/.env_shared`, then runs `docker-compose down && docker-compose up -d --build`.
+4. The workflow runs on the self-hosted runner on the app LXC (`10.10.20.17`).
+5. `scripts/deploy.sh` does a hard reset to `origin/master`, links the env file,
+   then runs `docker-compose down && docker-compose up -d --build`.
 6. Gunicorn restarts inside the rebuilt container; migrations run at container start
    via `entrypoint.sh`.
 
