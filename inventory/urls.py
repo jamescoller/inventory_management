@@ -7,9 +7,6 @@ urlpatterns = [
     path("about/", AboutView.as_view(), name="about"),
     path("", Index.as_view(), name="index"),
     path("dashboard/", Dashboard.as_view(), name="dashboard"),
-    # path('edit-item/<int:pk>', EditItem.as_view(), name='edit-item'),
-    # path('delete-item/<int:pk>', DeleteItem.as_view(), name='delete-item'),
-    # path('move-item/', MoveItem.as_view(), name='move-item'),
     path("signup/", SignUpView.as_view(), name="signup"),
     path(
         "login/",

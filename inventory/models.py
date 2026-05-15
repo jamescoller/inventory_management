@@ -517,11 +517,6 @@ class InventoryItem(models.Model):
         null=True, blank=True, decimal_places=2, max_digits=5, default=100
     )
 
-    # Boolean Status Filters
-    depleted = models.BooleanField(default=False)
-    in_use = models.BooleanField(default=False)
-    sold = models.BooleanField(default=False)
-
     # Statuses of an inventory item
     class Status(models.IntegerChoices):
         NEW = 1, "new"
@@ -534,6 +529,18 @@ class InventoryItem(models.Model):
     status = models.PositiveSmallIntegerField(
         choices=Status.choices, default=Status.NEW, blank=True
     )
+
+    @property
+    def depleted(self):
+        return self.status == self.Status.DEPLETED
+
+    @property
+    def in_use(self):
+        return self.status == self.Status.IN_USE
+
+    @property
+    def sold(self):
+        return self.status == self.Status.SOLD
 
     def __str__(self):
         return f"{self.product.upc} - {self.date_added.strftime('%Y-%m-%d')}"
@@ -551,18 +558,14 @@ class InventoryItem(models.Model):
         return None  # Return None if no valid status can be determined
 
     def mark_depleted(self):
-        self.depleted = True
         self.date_depleted = now()
         self.location = None
         self.status = self.Status.DEPLETED
-        return self.depleted
 
     def mark_sold(self):
-        self.sold = True
         self.date_sold = now()
         self.location = None
         self.status = self.Status.SOLD
-        return self.sold
 
     def filament_drying_warning(self, new_location):
         """
@@ -642,13 +645,7 @@ class InventoryItem(models.Model):
             except InventoryItem.DoesNotExist:
                 pass
 
-        # set boolean for IN_USE
-        if self.status == self.Status.IN_USE:
-            self.in_use = True
-        else:
-            self.in_use = False  # Reset in_use if status is not IN_USE
-
-        # if status becomes "DEPLETED", set boolean to be true for depleted, set date, and remove location
+        # if status becomes "DEPLETED", set date and remove location
         if self.status == self.Status.DEPLETED:
             self.mark_depleted()
 
@@ -753,92 +750,3 @@ class Material(models.Model):
     def __str__(self):
         return self.name
 
-
-class Order(PolymorphicModel):
-    """
-    Represents an order with a unique order number and an item list.
-
-    This class is designed to handle operations related to an order, such as
-    managing a list of items associated with the order. It features attributes
-    for an order number and provides methods for managing the item list,
-    including appending and removing items. The class inherits from
-    PolymorphicModel and serves as a base for creating more specific types
-    of orders in a polymorphic environment.
-
-    Attributes
-    ----------
-    order_num : str
-            A character field storing the unique identifier for the order.
-
-    _item_list : list
-            A private attribute used to store the list of items associated
-            with the order.
-
-    Meta : class
-            Internal Django class for database-specific options. Includes
-            configurations such as verbose names for the model.
-
-    Methods
-    -------
-    item_list
-            Getter and setter properties for the `_item_list` attribute. Ensures
-            that the value assigned to the `_item_list` is a list.
-    append_to_list(item)
-            Adds an item to the `_item_list`.
-    remove_from_list(item)
-            Removes an item from the `_item_list`.
-    __str__()
-            Returns a string representation of the order using the `order_num` attribute.
-    """
-
-    order_num = models.CharField(max_length=100)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._my_list = []
-
-    @property
-    def item_list(self):
-        return self._item_list
-
-    @item_list.setter
-    def item_list(self, value):
-        if not isinstance(value, list):
-            raise ValueError("item_list must be a list")
-        self._item_list = value
-
-    def append_to_list(self, item):
-        self._item_list.append(item)
-
-    def remove_from_list(self, item):
-        self._item_list.remove(item)
-
-    class Meta:
-        verbose_name = "Order"
-        verbose_name_plural = "Orders"
-
-    def __str__(self):
-        return self.order_num
-
-
-class Shipment(Order):
-    """
-    Represents a shipment entity in the system, inheriting from the Order class.
-
-    This class is primarily used to store and manage shipment-specific details,
-    such as tracking information. It provides customization of verbose name for
-    readability in admin interfaces and string representation for display.
-
-    Attributes:
-            tracking: A string field for storing shipment tracking information.
-                    The maximum length of this field is 200 characters.
-    """
-
-    tracking = models.CharField(max_length=200)
-
-    class Meta:
-        verbose_name = "Shipment"
-        verbose_name_plural = "Shipments"
-
-    def __str__(self):
-        return self.tracking

@@ -5,13 +5,10 @@ django-crispy-forms==2.4
 django-filter==25.1
 django-htmx==1.27.0
 django-polymorphic==4.1.0
-django-tables2==2.7.5
 et_xmlfile==2.0.0
 gunicorn==23.0.0
-numpy==2.0.2
 openpyxl==3.1.5
 packaging==25.0
-pandas==2.3.3
 python-dateutil==2.9.0.post0
 pytz==2025.2
 six==1.17.0
