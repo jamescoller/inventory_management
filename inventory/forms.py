@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 
-from .models import *
+from .models import AMS, Dryer, Filament, Hardware, InventoryItem, Printer
 
 
 class UserRegisterForm(UserCreationForm):

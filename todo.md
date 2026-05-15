@@ -37,34 +37,32 @@ Safe to delete without any user-visible impact.
 
 ### Delete entirely
 
-- [ ] `tables.py` — `InventoryItemTable` is never used in any view. Remove file and remove `django-tables2` from requirements.
-- [ ] `FilamentView` in views.py + `inventory/templates/inventory/filament_view.html` — view crashes on first hit and has no URL route.
-- [ ] `Order` and `Shipment` models in models.py — no views, no admin wiring, no foreign keys from live models.
-- [ ] `inventory/import_products.py` — see Phase 1. If not fixed, delete.
-- [ ] `inventory/templates/inventory/bulkadd.html` — contains a broken `{% url '' %}` and no route.
-- [ ] `inventory/templates/inventory/delete_item.html` — URL route commented out in urls.py.
-- [ ] `inventory/templates/inventory/search_results.html` — `InventorySearchView` renders `inventory_search.html` instead; this template is never rendered.
-- [ ] `inventory/templates/inventory/movement.html` — no view or URL route.
-- [ ] Commented-out URL patterns in `inventory/urls.py` (lines 10-12).
-- [ ] `format_label` and `generate_barcode` functions in `barcode_utils.py` — in `__all__` but unused anywhere in the project.
-- [ ] The hardcoded fallback printer IP `"192.168.68.93"` in `barcode_utils.py:49` — should be `None` and fail loudly rather than targeting a random LAN device.
+- [x] `tables.py` — deleted; `django-tables2` removed from requirements and INSTALLED_APPS.
+- [x] `FilamentView` in views.py + `filament_view.html` — deleted.
+- [x] `Order` and `Shipment` models — deleted from models.py and admin.py; migration 0020 drops their DB tables.
+- [x] `inventory/import_products.py` — deleted in Phase 1.
+- [x] `inventory/templates/inventory/bulkadd.html` — deleted.
+- [x] `inventory/templates/inventory/delete_item.html` — deleted.
+- [x] `inventory/templates/inventory/search_results.html` — deleted.
+- [x] `inventory/templates/inventory/movement.html` — deleted.
+- [x] Commented-out URL patterns in `inventory/urls.py` — removed.
+- [x] `format_label` and `generate_barcode` in `barcode_utils.py` — deleted and removed from `__all__`.
+- [x] Hardcoded fallback printer IP `"192.168.68.93"` — replaced with correct LAN address `"10.10.40.2"`.
 
 ### Fix `from X import *` antipattern
 
-- [ ] Replace `from .models import *` in views.py with explicit imports.
-- [ ] Replace `from .forms import *` in views.py with explicit imports.
-- [ ] Replace `from .models import *` in forms.py with explicit imports.
+- [x] Replace `from .models import *` in views.py with explicit imports.
+- [x] Replace `from .forms import *` in views.py with explicit imports.
+- [x] Replace `from .models import *` in forms.py with explicit imports.
 
 ### Wire up or fix signals.py
 
-- [ ] `inventory/apps.py` `ready()` method is a no-op — signals.py is never loaded. Either:
-  - Add `import inventory.signals` inside `ready()` and fix the `InventoryItem.StatusChoices` typo (should be `InventoryItem.Status`), OR
-  - Delete signals.py if the logging it provides isn't needed.
-- [ ] The `post_save` signal in signals.py queries `InventoryItem.objects.get(pk=instance.pk)` to get "old" state — but post_save fires after the save, so it always returns the new state. Switch to `pre_save` or store `__original_status` in `from_db`.
+- [x] `inventory/apps.py` `ready()` now imports `inventory.signals`.
+- [x] Fixed `StatusChoices` typo → `Status`; switched from `post_save` to `pre_save` so old state is read from DB before the write.
 
 ### Redundant boolean fields
 
-- [ ] `depleted`, `in_use`, `sold` on `InventoryItem` are redundant with `status` and can drift if code calls `queryset.update(status=...)` directly (bypassing `save()`). Either remove the boolean fields and derive them as `@property`, or replace all `queryset.update()` calls with per-instance saves.
+- [x] `depleted`, `in_use`, `sold` converted to `@property` on `InventoryItem`; DB columns dropped in migration 0020; admin `list_filter` updated.
 
 ---
 

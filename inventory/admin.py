@@ -1,6 +1,7 @@
 import os
 
 from django.contrib import admin
+from django.core.exceptions import ValidationError
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path
@@ -181,16 +182,6 @@ class AMSAdmin(ProductChildAdmin):
     ]
 
 
-class OrderChildAdmin(PolymorphicChildModelAdmin):
-    base_model = Order
-
-
-@admin.register(Shipment)
-class ShipmentAdmin(ProductChildAdmin):
-    base_model = Shipment
-    show_in_index = True
-
-
 # ----- Polymorphic Parent Admin -----
 
 
@@ -206,13 +197,6 @@ class ProductParentAdmin(PolymorphicParentModelAdmin):
     )
     inlines = [InventoryItemInline]
     fields = ["sku", "upc"]
-
-
-@admin.register(Order)
-class OrderParentAdmin(PolymorphicParentModelAdmin):
-    base_model = Order
-    child_models = (Shipment,)
-    show_in_index = True
 
 
 # ----- InventoryItem Admin -----
@@ -239,9 +223,6 @@ class InventoryItemAdmin(admin.ModelAdmin):
     list_filter = (
         "status",
         "location",
-        "in_use",
-        "depleted",
-        "sold",
         ProductTypeFilter,
     )
 

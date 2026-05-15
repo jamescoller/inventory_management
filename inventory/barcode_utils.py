@@ -46,7 +46,7 @@ DEFAULT_DPI = int(os.environ.get("BROTHER_QL_DPI", "300"))
 
 # Try a couple of environment variable names for the printer host.
 BROTHER_QL_HOST = (
-    os.environ.get("BROTHER_QL_HOST") or os.environ.get("PRINTER_IP") or "192.168.68.93"
+    os.environ.get("BROTHER_QL_HOST") or os.environ.get("PRINTER_IP") or "10.10.40.2"
 )
 
 BROTHER_QL_MODEL = os.environ.get("BROTHER_QL_MODEL", "QL-810W")
@@ -592,61 +592,6 @@ def generate_and_print_barcode(
     return response
 
 
-# ---------------------------------------------------------------------------
-# Backward-compatible-ish helpers
-# ---------------------------------------------------------------------------
-
-
-def generate_barcode(data: str) -> Image.Image:
-    """
-    Legacy helper: generate a standalone barcode image (no label layout).
-
-    This uses the DEFAULT_PROFILE's barcode area to size the barcode.
-    Useful if you want to export a barcode PNG or composite your own layout.
-    """
-    profile = DEFAULT_PROFILE
-    canvas_width, canvas_height = profile.canvas_size_px
-    barcode_height_px = int(canvas_height * profile.barcode_area_ratio)
-    max_barcode_width_px = canvas_width - 2 * profile.side_margin_px
-
-    img = generate_barcode_to_fit(
-        data=data,
-        max_width_px=max_barcode_width_px,
-        target_height_px=barcode_height_px,
-        dpi=profile.dpi,
-    )
-    return img
-
-
-def format_label(
-    barcode_img: Image.Image,
-    label_size: Tuple[float, float] = (DEFAULT_LABEL_WIDTH_MM, DEFAULT_LABEL_HEIGHT_MM),
-    text: Optional[str] = None,
-) -> Image.Image:
-    """
-    Legacy-ish helper compatible with older code:
-
-        barcode_img = generate_barcode("INV-739")
-        label_img = format_label(barcode_img, (54, 17), text="INV-739")
-
-    For robustness, we *ignore* the passed-in barcode_img's geometry and
-    re-generate the barcode at the right size for the requested label, using
-    `text` (or data) as the encoded string.
-    """
-    profile = _profile_from_mm(label_size, dpi=DEFAULT_DPI)
-
-    if text is None:
-        logger.warning(
-            "format_label() called without text; using placeholder data. "
-            "Prefer create_label_image() or generate_and_print_label()."
-        )
-        data = "UNKNOWN"
-    else:
-        data = text
-
-    return create_label_image(data=data, text=text, profile=profile)
-
-
 __all__ = [
     "LabelProfile",
     "DEFAULT_PROFILE",
@@ -655,6 +600,4 @@ __all__ = [
     "print_label_image",
     "generate_and_print_label",
     "generate_and_print_barcode",
-    "generate_barcode",
-    "format_label",
 ]

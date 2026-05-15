@@ -19,9 +19,27 @@ from django.utils.timezone import localtime
 from django.views.generic import CreateView, TemplateView, UpdateView, View
 
 from .barcode_utils import generate_and_print_barcode
-from .forms import *
-from .models import *
-from .tables import *
+from .forms import (
+    AMSForm,
+    DryerForm,
+    FilamentForm,
+    HardwareForm,
+    InventoryEditForm,
+    InventoryItemForm,
+    PrinterForm,
+    UserRegisterForm,
+)
+from .models import (
+    AMS,
+    Dryer,
+    Filament,
+    Hardware,
+    InventoryItem,
+    Location,
+    Printer,
+    Product,
+)
+from polymorphic.models import PolymorphicModel
 
 logger = logging.getLogger("inventory")
 
@@ -666,72 +684,6 @@ class AddAMSView(LoginRequiredMixin, CreateView):
                 )
                 return redirect("add_inventory")
         return response
-
-
-class FilamentView(LoginRequiredMixin, View):
-    def get(self, request):
-
-        item_counts = Filament.objects.values("product", "product__name").annotate(
-            count=Count("id")
-        )
-
-        # Get actual product instances
-        items = []
-        for entry in item_counts:
-            inv = InventoryItem.objects.filter(product_id=entry["filament"]).first()
-            if inv:
-                inv.product.inventory_count = entry["count"]  # inject count
-                inv.product.class_name = inv.product.get_real_instance_class().__name__
-                items.append(inv)
-
-        total_value = Decimal("0.00")
-
-        # Calculate total value
-        for item in items:
-            if item.product.price:
-                total_value += item.product.price * Decimal(
-                    str(item.product.inventory_count)
-                )
-
-        # Aggregate Filament items by material
-        materials = (
-            Filament.objects.values("material")
-            .annotate(count=Count("id"))
-            .order_by("-count")  # <-- This sorts it
-        )
-
-        # Prepare data for the pie chart
-        filament_chart_data = {
-            "labels": [item["material"] for item in materials],
-            "data": [item["count"] for item in materials],
-        }
-
-        # Aggregate Filament items by color
-        colors = (
-            Filament.objects.values("color")
-            .annotate(count=Count("id"))
-            .order_by("-count")  # <-- this sorts it
-        )
-
-        # Prepare data for the pie chart
-        color_chart_data = {
-            "labels": [item["color"] for item in colors],
-            "data": [item["count"] for item in colors],
-        }
-
-        num_filament_rolls = sum(item.product.inventory_count for item in items)
-
-        return render(
-            request,
-            "inventory/dashboard.html",
-            {
-                "item_counts": item_counts,
-                "items": items,
-                "locations": Location.objects.all(),
-                "filament_chart_data": filament_chart_data,
-                "color_chart_data": color_chart_data,
-            },
-        )
 
 
 class InventoryExportView(LoginRequiredMixin, View):
