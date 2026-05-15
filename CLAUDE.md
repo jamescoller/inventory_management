@@ -176,6 +176,11 @@ phase, bugs come before enhancements. Before starting any phase:
    installed in this LXC — `manage.py check` requires the full Docker environment).
 5. Mark items `[x]` in `todo.md` as they are completed.
 6. Open one PR per phase unless a single item is a natural standalone fix.
+7. **When replacing wildcard imports (`from .x import *`) with explicit ones,**
+   check what the source module itself imports at the top level — those names were
+   also available transitively and must be re-imported directly. Example: models.py
+   imports `User` from `django.contrib.auth.models`; forms.py used it via the
+   wildcard without realising. Missing it caused a `NameError` at startup → 502.
 
 ### Phase 1 — what was done (May 2025, PR #79)
 
@@ -201,6 +206,8 @@ All critical bugs and security issues from Phase 1 were fixed in a single PR:
 
 - Django is **not** installed in this Claude Code LXC. `python3 manage.py check`
   will fail. Use `python3 -c "import ast; ast.parse(open('file.py').read())"` for
-  syntax validation. Full checks require SSH + `docker exec` on the NAS.
-- The app's env file is `.env_inventory` at `$HOME` on the NAS (see docker-compose.yml).
-  CLAUDE.md says `.env_shared` in some places — the compose file is authoritative.
+  syntax validation. Full checks require SSH + `docker exec` on the app LXC (`.17`).
+- The app's env file is `.env_inventory` at `$HOME` on the app LXC (see docker-compose.yml).
+- `ast.parse` only catches syntax errors, not runtime `NameError`s from missing
+  imports. After replacing wildcards with explicit imports, manually scan for names
+  the module uses but doesn't import directly.
