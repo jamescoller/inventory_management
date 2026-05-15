@@ -1,0 +1,24 @@
+{% load inventory_tags %}
+<div class="d-flex align-items-stretch h-100">
+    <div class="flex-grow-1 pe-3">
+        {% if show_name %}<strong>{{ item.product.name }}</strong><br>{% endif %}
+        <small>Color: {{ item.product.filament.color }}</small><br>
+        <small>Hex: {{ item.product.filament.hex_code }}</small><br>
+        <small>SKU: {{ item.product.sku }}</small><br>
+        <small>UPC: {{ item.product.upc }}</small>
+        {% if show_location %}<br><small class="text-muted">Location: {{ location }}</small>{% endif %}
+    </div>
+    <div class="d-flex align-items-center" style="width: 40%;">
+        <div class="w-100 text-center">
+            {% filament_spool item.product.filament.hex_code %}
+            <div class="mt-2">
+                <small class="text-muted">{{ item.product_color }}</small>
+            </div>
+            <div class="mt-2">
+                <a href="{% url 'inventory_edit' item.id %}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-pencil"></i> Edit
+                </a>
+            </div>
+        </div>
+    </div>
+</div>

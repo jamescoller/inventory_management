@@ -86,7 +86,7 @@ Safe to delete without any user-visible impact.
 - [x] **Consolidate the 5 near-identical add-product templates** — replaced with single `add_product.html` that uses `{{ form_title }}` / `{{ submit_label }}` context vars.
 - [x] **Fix JS load order in `base.html`** — moved all JS library `<script>` tags before `{% block extra_scripts %}` so child template scripts always have jQuery/Bootstrap/Chart.js available.
 - [x] **Deduplicate DataTables CSS** — removed duplicate `<link>` (was in both `<head>` and after content block).
-- [ ] **`in_use_overview.html` and `dry_storage_overview.html`** are heavily duplicated. Extract shared card + tooltip pattern into a partial.
+- [x] **`in_use_overview.html` and `dry_storage_overview.html`** — extracted shared filament card body into `includes/filament_item_body.html` (show_name/show_location flags); tooltip init into `includes/tooltip_init.html`.
 
 ### Admin
 
