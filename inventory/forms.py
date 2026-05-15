@@ -1,3 +1,5 @@
+import re
+
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
@@ -51,6 +53,17 @@ class FilamentForm(forms.ModelForm):
             "weight",
             "has_spool",
         ]
+
+    def clean_hex_code(self):
+        hex_code = self.cleaned_data.get("hex_code", "")
+        if not hex_code:
+            return hex_code
+        rev_code = hex_code.strip().lower().lstrip("#")
+        if not re.fullmatch(r"(?:[0-9a-fA-F]{3}){1,2}", rev_code):
+            raise forms.ValidationError(
+                "Invalid hex color code. Use 3 or 6 hex digits (e.g. #F0F or #FF00FF)."
+            )
+        return f"#{rev_code}"
 
 
 class AMSForm(forms.ModelForm):

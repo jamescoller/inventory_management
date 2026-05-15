@@ -223,6 +223,28 @@ to repair a 502 caused by a missed transitive import (see step 7 above).
   columns dropped in migration 0020; admin `list_filter` updated.
 - Added missing `from django.core.exceptions import ValidationError` to admin.py.
 
+### Phase 3 — what was done (May 2026, PR #82)
+
+Code quality and architecture improvements across all layers.
+
+- Replaced `from .models import *` in admin.py with explicit imports + `ContentType`.
+- Fixed `field` → `fields` typo in `HardwareAdmin`, `DryerAdmin`, `AMSAdmin` (was silently ignored by Django, showing all fields).
+- Fixed `DryerAdmin` bogus field name `'max_temp"degC'` → `'max_temp_degC'`.
+- Fixed `display_product_details` in `InventoryItemAdmin` — was using wrong reverse accessors (`product.filament.material`, `product.printer.mfr`) on instances that are already the real subclass; serial number now read from `obj` (InventoryItem) rather than the product.
+- Fixed `mark_depleted` admin action to iterate queryset and call `instance.mark_depleted() + save()` — previously used `queryset.update()` which bypassed `save()` and left `date_depleted`/`location` out of sync.
+- Fixed `view_log` to use `subprocess + tail -n 200` — previously `f.readlines()[-200:]` read the entire file.
+- Moved hex validation from `Filament.save()` into `Filament.clean()` + `FilamentForm.clean_hex_code()` — invalid hex now shows as a form validation error instead of a 500.
+- Moved printer dimension validation from `Printer.save()` into `Printer.clean()` — missing dims are now a form error.
+- Added `InventoryItem.from_db()` that stores `_original_location_id`; `save()` now compares against it for location-change detection instead of doing an extra `SELECT` on every save.
+- Extracted `BaseAddProductView` mixin; 5 `AddXxxView` classes each reduced from ~30 lines to 5 lines.
+- Renamed `inventoryEditView` → `InventoryEditView`, `addInventoryView` → `AddInventoryView` (PascalCase).
+- Replaced 10-line per-subclass UPC lookup loop with `Product.objects.filter(upc=upc).first()`.
+- Replaced `from .views import *` in urls.py with explicit named imports.
+- Fixed Dashboard N+1: replaced 3 Python-side table scans with DB aggregations; removed ~70 lines of loop logic.
+- Consolidated 5 near-identical add-product templates into `add_product.html` using context vars.
+- Fixed `base.html`: moved `{% block extra_scripts %}` after all JS library `<script>` tags; removed duplicate DataTables CSS.
+- Created `requirements-dev.txt` (pre-commit, django-debug-toolbar); removed them + setuptools from `requirements.txt`; pinned python-barcode, brother_ql, python-decouple to minimum versions.
+
 ## Environment notes
 
 - Django is **not** installed in this Claude Code LXC. `python3 manage.py check`

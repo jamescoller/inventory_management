@@ -70,40 +70,40 @@ Safe to delete without any user-visible impact.
 
 ### Views
 
-- [ ] **Consolidate the 5 Add Product views** — `AddFilamentView`, `AddPrinterView`, `AddDryerView`, `AddHardwareView`, `AddAMSView` are nearly identical (~150 lines). Extract a `BaseAddProductView` mixin; reduce to ~30 lines each.
-- [ ] **Fix Dashboard N+1 queries** — `Dashboard.get()` does 3 full Python-side table scans over `InventoryItem`. Replace with `values().annotate(Count(...))` aggregation queries.
-- [ ] **Move UPC lookup logic out of `addInventoryView.post()`** — the "try each product subclass" loop is unnecessary; `Product.objects.get(upc=upc)` returns the polymorphic instance directly. Also extract session management for the pending-inventory flow into a helper.
-- [ ] **Standardize CBV naming** — `inventoryEditView`, `addInventoryView` should be `InventoryEditView`, `AddInventoryView` (PascalCase per PEP 8).
+- [x] **Consolidate the 5 Add Product views** — extracted `BaseAddProductView` mixin; each of the 5 subclasses is now ~5 lines.
+- [x] **Fix Dashboard N+1 queries** — replaced Python-side table scans with `values().annotate(Count(...))` DB aggregations.
+- [x] **Move UPC lookup logic out of `AddInventoryView.post()`** — replaced 10-line subclass loop with `Product.objects.filter(upc=upc).first()` (polymorphic queryset returns real instance directly).
+- [x] **Standardize CBV naming** — `inventoryEditView` → `InventoryEditView`, `addInventoryView` → `AddInventoryView`.
 
 ### Models / Forms
 
-- [ ] **Move hex validation to `Filament.clean()` + `FilamentForm.clean_hex_code()`** so invalid hex shows as a form error instead of a 500.
-- [ ] **Move printer dimension validation to `Printer.clean()`** — remove `ValueError` from `Printer.save()`.
-- [ ] **Fix `InventoryItem.save()` location-change detection** — the current approach does an extra SELECT on every save. Store `__original_location` in `from_db()` instead.
+- [x] **Move hex validation to `Filament.clean()` + `FilamentForm.clean_hex_code()`** — invalid hex now shows as a form field error instead of a 500.
+- [x] **Move printer dimension validation to `Printer.clean()`** — removed `ValueError` from `Printer.save()`.
+- [x] **Fix `InventoryItem.save()` location-change detection** — added `from_db()` to store `_original_location_id`; `save()` compares against it instead of doing an extra SELECT.
 
 ### Templates
 
-- [ ] **Consolidate the 5 near-identical add-product templates** into one shared partial that accepts a title variable.
-- [ ] **Fix JS load order in `base.html`** — jQuery, Bootstrap, Chart.js, HTMX are loaded at the bottom of `<body>` after `{% block content %}`. Inline scripts in child templates race against them. Move to `<head>` with `defer` or use `{% block extra_scripts %}` at the bottom.
-- [ ] **Deduplicate DataTables CSS** — loaded twice in base.html (lines 17 and 44).
+- [x] **Consolidate the 5 near-identical add-product templates** — replaced with single `add_product.html` that uses `{{ form_title }}` / `{{ submit_label }}` context vars.
+- [x] **Fix JS load order in `base.html`** — moved all JS library `<script>` tags before `{% block extra_scripts %}` so child template scripts always have jQuery/Bootstrap/Chart.js available.
+- [x] **Deduplicate DataTables CSS** — removed duplicate `<link>` (was in both `<head>` and after content block).
 - [ ] **`in_use_overview.html` and `dry_storage_overview.html`** are heavily duplicated. Extract shared card + tooltip pattern into a partial.
 
 ### Admin
 
-- [ ] **Fix `field` → `fields` typo** in `HardwareAdmin`, `DryerAdmin`, `AMSAdmin` (admin.py) — the list is silently ignored and Django shows all fields.
-- [ ] **Fix `DryerAdmin.field`** — contains `'max_temp"degC'` (mismatched quotes — valid Python string but not a real field name).
-- [ ] **Fix `display_product_details`** (admin.py ~line 287) — accesses `product.printer.serial_number`, `product.serial_number` etc. on models that don't have those fields → `AttributeError`.
-- [ ] **Fix `ShipmentAdmin`** — incorrectly extends `ProductChildAdmin` instead of an `OrderChildAdmin`; Shipment is not a child of Product.
-- [ ] **Fix `mark_depleted` admin action** — calls `queryset.update(status=...)` which bypasses `save()`, leaving `depleted`, `date_depleted`, `location` out of sync. Iterate and call `instance.mark_depleted()` instead.
-- [ ] **Fix `view_log`** (admin.py ~line 358) — reads entire log file into memory to slice the last 200 lines. Use `subprocess` + `tail -n 200` or seek from end.
+- [x] **Fix `field` → `fields` typo** in `HardwareAdmin`, `DryerAdmin`, `AMSAdmin`.
+- [x] **Fix `DryerAdmin.field`** — corrected `'max_temp"degC'` → `'max_temp_degC'`.
+- [x] **Fix `display_product_details`** — fixed wrong reverse-accessor patterns; serial number now read from `obj` (InventoryItem) not from the product subclass.
+- [x] **Fix `ShipmentAdmin`** — already deleted in Phase 2 along with the Shipment model.
+- [x] **Fix `mark_depleted` admin action** — now iterates queryset and calls `instance.mark_depleted(); instance.save()` so `date_depleted` and `location` are kept in sync.
+- [x] **Fix `view_log`** — replaced `f.readlines()[-200:]` (reads whole file) with `subprocess + tail -n 200`.
 
 ### Dependencies to clean up (after dead code removal)
 
-- [ ] Remove `numpy` and `pandas` if `import_products.py` is deleted.
-- [ ] Remove `django-tables2` if `tables.py` is deleted.
-- [ ] Move `pre-commit` and `django-debug-toolbar` to a `requirements-dev.txt`.
-- [ ] Pin `python-barcode`, `brother_ql`, `python-decouple` to explicit versions.
-- [ ] Remove `setuptools` from app requirements (build tool, not a runtime dep).
+- [x] Remove `numpy` and `pandas` — done in Phase 2 (import_products.py deleted).
+- [x] Remove `django-tables2` — done in Phase 2 (tables.py deleted).
+- [x] Move `pre-commit` and `django-debug-toolbar` to a `requirements-dev.txt`.
+- [x] Pin `python-barcode`, `brother_ql`, `python-decouple` to explicit minimum versions.
+- [x] Remove `setuptools` from app requirements.
 
 ### Tests
 
