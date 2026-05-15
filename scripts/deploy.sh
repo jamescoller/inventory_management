@@ -14,12 +14,14 @@ echo "Pulling latest code..."
 git fetch origin master
 git reset --hard origin/master
 
-# .env is gitignored and lives in the workspace root — git reset --hard
-# does not touch untracked/ignored files, so it persists across deploys.
-if [ ! -f ".env" ]; then
-  echo "ERROR: .env file not found in $(pwd). Copy .env.example and fill in values."
+# .env lives outside the workspace at a fixed path so the actions/checkout
+# clean step can't wipe it. Copy it into the workspace before starting Docker.
+ENV_SOURCE="${HOME}/.env_inventory"
+if [ ! -f "$ENV_SOURCE" ]; then
+  echo "ERROR: $ENV_SOURCE not found. Create it from .env.example on the runner host."
   exit 1
 fi
+cp "$ENV_SOURCE" .env
 
 echo "Restarting Docker Compose stack..."
 docker compose down
