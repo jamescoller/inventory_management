@@ -47,7 +47,7 @@ Safe to delete without any user-visible impact.
 - [x] `inventory/templates/inventory/movement.html` — deleted.
 - [x] Commented-out URL patterns in `inventory/urls.py` — removed.
 - [x] `format_label` and `generate_barcode` in `barcode_utils.py` — deleted and removed from `__all__`.
-- [x] Hardcoded fallback printer IP `"192.168.68.93"` — removed; `BROTHER_QL_HOST` is `None` if env var unset.
+- [x] Hardcoded fallback printer IP `"192.168.68.93"` — replaced with correct LAN address `"10.10.40.2"`.
 
 ### Fix `from X import *` antipattern
 

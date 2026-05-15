@@ -45,7 +45,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_DPI = int(os.environ.get("BROTHER_QL_DPI", "300"))
 
 # Try a couple of environment variable names for the printer host.
-BROTHER_QL_HOST = os.environ.get("BROTHER_QL_HOST") or os.environ.get("PRINTER_IP")
+BROTHER_QL_HOST = (
+    os.environ.get("BROTHER_QL_HOST") or os.environ.get("PRINTER_IP") or "10.10.40.2"
+)
 
 BROTHER_QL_MODEL = os.environ.get("BROTHER_QL_MODEL", "QL-810W")
 
