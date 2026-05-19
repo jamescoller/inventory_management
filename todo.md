@@ -125,6 +125,8 @@ Safe to delete without any user-visible impact.
 
 ### New Capabilities
 
+- [x] **Bulk inventory editor** — Added checkbox selection to the Search Inventory page with a sticky action bar to apply status, location, and/or shipment changes to multiple items at once. Uses `POST /bulk-update/` (`BulkUpdateView`), a JS `Set` as selection source of truth (survives DataTables page changes), and iterates with `item.save()` to preserve all side-effects (`mark_depleted`, `mark_sold`, location-driven status). Pagination options of 25/50/100/All. Filter params round-trip through redirect.
+
 - [ ] **Phone camera barcode scanning** — Two approaches:
   - *Browser-based (recommended, no app needed):* Integrate `@zxing/browser` JS library; wire a camera-capture modal to the existing search/inventory flow via HTMX. Works on any phone browser.
   - *Native:* Chrome/Edge Android has a built-in `BarcodeDetector` API (no library) but Safari doesn't support it.
