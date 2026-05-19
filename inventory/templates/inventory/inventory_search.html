@@ -87,7 +87,7 @@
                             <td>{{ item.product.upc }}</td>
                             <td>{{ item.date_added|date:"Y-m-d H:i:s" }}</td>
                             <td>{{ item.get_status_display }}</td>
-                            <td>{{ item.location.name }}</td>
+                            <td>{{ item.location.name|default:"—" }}</td>
                             <td>{{ item.serial_number }}</td>
 							<td>{{ item.id }}</td>
                             <td>
@@ -130,8 +130,8 @@
             <div id="bulk-id-container"></div>
             <!-- Sticky action bar — shown only when items are selected -->
             <div id="bulk-action-bar"
-                 class="d-flex align-items-center gap-3 flex-wrap d-print-none"
-                 style="display:none !important; position:sticky; bottom:0; background:#1e293b; color:white;
+                 class="align-items-center gap-3 flex-wrap d-print-none"
+                 style="display:none; position:sticky; bottom:0; background:#1e293b; color:white;
                         padding:12px 16px; border-radius:8px 8px 0 0;
                         box-shadow:0 -4px 16px rgba(0,0,0,0.18); margin-top:4px;">
                 <span id="bulk-count-label" class="fw-bold"></span>
@@ -267,7 +267,7 @@
             // Clear button
             document.getElementById('bulk-clear-btn').addEventListener('click', function () {
                 selectedIds.clear();
-                table.rows({page: 'current'}).nodes().each(function (row) {
+                table.rows().nodes().each(function (row) {
                     const cb = row.querySelector('.row-select');
                     if (cb) cb.checked = false;
                 });

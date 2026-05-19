@@ -480,7 +480,7 @@ class BulkUpdateView(LoginRequiredMixin, View):
         return self._redirect_back(request)
 
     def _redirect_back(self, request):
-        filter_keys = ("sku", "upc", "name", "location", "serial_number", "item_id")
+        filter_keys = ("sku", "upc", "name", "status", "location", "serial_number", "item_id")
         params = {k: request.POST.get(k, "") for k in filter_keys if request.POST.get(k, "")}
         url = reverse("inventory_search")
         if params:
