@@ -2,6 +2,7 @@ import logging
 import re
 from datetime import timedelta
 from decimal import Decimal
+from urllib.parse import urlencode
 
 import django_filters
 import openpyxl
@@ -9,12 +10,13 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import transaction
 from django.db.models import Count, F, Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.shortcuts import render
 from django.template.loader import render_to_string
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.utils.html import escape
 from django.utils.timezone import localtime, now as timezone_now
 from django.views.generic import CreateView, TemplateView, UpdateView, View
@@ -206,6 +208,8 @@ class InventorySearchView(LoginRequiredMixin, View):
                 "serial_number": serial_number,
                 "item_id": item_id,
             },
+            "status_choices": InventoryItem.Status.choices,
+            "locations": Location.objects.all().order_by("name"),
         }
 
         return render(request, "inventory/inventory_search.html", context)
@@ -400,6 +404,85 @@ class AddInventoryView(LoginRequiredMixin, CreateView):
 
 class Index(TemplateView):
     template_name = "inventory/index.html"
+
+
+class BulkUpdateView(LoginRequiredMixin, View):
+    def get(self, request):
+        return redirect("inventory_search")
+
+    def post(self, request):
+        raw_ids = request.POST.getlist("item_ids")
+        try:
+            item_ids = [int(i) for i in raw_ids if str(i).strip()]
+        except (ValueError, TypeError):
+            messages.warning(request, "Invalid item selection.")
+            return self._redirect_back(request)
+
+        if not item_ids:
+            messages.warning(request, "No items selected.")
+            return self._redirect_back(request)
+
+        MAX_BULK = 200
+        if len(item_ids) > MAX_BULK:
+            messages.error(request, f"Cannot update more than {MAX_BULK} items at once.")
+            return self._redirect_back(request)
+
+        new_status_raw = request.POST.get("bulk_status", "").strip()
+        new_location_id = request.POST.get("bulk_location", "").strip()
+        new_shipment = request.POST.get("bulk_shipment", "").strip() or None
+
+        if new_shipment and len(new_shipment) > 100:
+            messages.error(request, "Shipment value is too long (max 100 characters).")
+            return self._redirect_back(request)
+
+        new_status = None
+        if new_status_raw:
+            try:
+                val = int(new_status_raw)
+                InventoryItem.Status(val)   # raises ValueError if not a valid choice
+                new_status = val
+            except ValueError:
+                messages.error(request, "Invalid status value.")
+                return self._redirect_back(request)
+
+        new_location = None
+        if new_location_id:
+            try:
+                new_location = Location.objects.get(pk=new_location_id)
+            except Location.DoesNotExist:
+                messages.error(request, "Invalid location.")
+                return self._redirect_back(request)
+
+        if new_status is None and new_location is None and new_shipment is None:
+            messages.warning(request, "No fields selected — nothing was changed.")
+            return self._redirect_back(request)
+
+        count = 0
+        with transaction.atomic():
+            for item in InventoryItem.objects.filter(id__in=item_ids):
+                status_clears_location = False
+                if new_status is not None:
+                    item.status = new_status
+                    item._skip_status_from_location = True
+                    if new_status in (InventoryItem.Status.DEPLETED, InventoryItem.Status.SOLD):
+                        status_clears_location = True
+                if new_location is not None and not status_clears_location:
+                    item.location = new_location
+                if new_shipment is not None:
+                    item.shipment = new_shipment
+                item.save()
+                count += 1
+
+        messages.success(request, f"Updated {count} item{'s' if count != 1 else ''}.")
+        return self._redirect_back(request)
+
+    def _redirect_back(self, request):
+        filter_keys = ("sku", "upc", "name", "status", "location", "serial_number", "item_id")
+        params = {k: request.POST.get(k, "") for k in filter_keys if request.POST.get(k, "")}
+        url = reverse("inventory_search")
+        if params:
+            url += "?" + urlencode(params)
+        return redirect(url)
 
 
 class SignUpView(View):

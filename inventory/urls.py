@@ -11,6 +11,7 @@ from .views import (
     AddPrinterView,
     AddProductChoiceView,
     BarcodeRedirectView,
+    BulkUpdateView,
     Dashboard,
     DryStorageOverviewView,
     FilamentColorGuideView,
@@ -48,6 +49,7 @@ urlpatterns = [
     path("add-hardware/", AddHardwareView.as_view(), name="add_hardware"),
     path("add-dryer/", AddDryerView.as_view(), name="add_dryer"),
     path("search/", InventorySearchView.as_view(), name="inventory_search"),
+    path("bulk-update/", BulkUpdateView.as_view(), name="bulk_update"),
     path("edit/<int:item_id>/", InventoryEditView.as_view(), name="inventory_edit"),
     path("search/export/", InventoryExportView.as_view(), name="inventory_export"),
     path(

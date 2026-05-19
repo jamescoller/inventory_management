@@ -611,17 +611,18 @@ class InventoryItem(models.Model):
     def save(self, *args, **kwargs):
         is_new = self.pk is None
 
-        if is_new:
-            if self.location:
-                new_status = self.update_status()
-                if new_status:
-                    self.status = new_status
-        else:
-            original_location_id = getattr(self, "_original_location_id", None)
-            if original_location_id != self.location_id:
-                new_status = self.update_status()
-                if new_status:
-                    self.status = new_status
+        if not getattr(self, "_skip_status_from_location", False):
+            if is_new:
+                if self.location:
+                    new_status = self.update_status()
+                    if new_status:
+                        self.status = new_status
+            else:
+                original_location_id = getattr(self, "_original_location_id", None)
+                if original_location_id != self.location_id:
+                    new_status = self.update_status()
+                    if new_status:
+                        self.status = new_status
 
         if self.status == self.Status.DEPLETED:
             self.mark_depleted()
