@@ -4,7 +4,7 @@ Django>=6.0.5,<7.0
 django-crispy-forms==2.4
 django-filter==25.2
 django-htmx==1.27.0
-django-polymorphic==4.1.0
+django-polymorphic==4.11.3
 django-extensions>=4.1
 et_xmlfile==2.0.0
 gunicorn==23.0.0
