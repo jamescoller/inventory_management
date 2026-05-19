@@ -461,14 +461,11 @@ class BulkUpdateView(LoginRequiredMixin, View):
         with transaction.atomic():
             for item in InventoryItem.objects.filter(id__in=item_ids):
                 status_clears_location = False
-                if new_status == InventoryItem.Status.DEPLETED:
-                    item.mark_depleted()
-                    status_clears_location = True
-                elif new_status == InventoryItem.Status.SOLD:
-                    item.mark_sold()
-                    status_clears_location = True
-                elif new_status is not None:
+                if new_status is not None:
                     item.status = new_status
+                    item._skip_status_from_location = True
+                    if new_status in (InventoryItem.Status.DEPLETED, InventoryItem.Status.SOLD):
+                        status_clears_location = True
                 if new_location is not None and not status_clears_location:
                     item.location = new_location
                 if new_shipment is not None:

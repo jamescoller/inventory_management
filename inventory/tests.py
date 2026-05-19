@@ -141,3 +141,15 @@ class BulkUpdateViewTests(TestCase):
         self.item3.refresh_from_db()
         self.assertEqual(self.item3.status, InventoryItem.Status.STORED)
         self.assertEqual(self.item3.location, self.location_b)
+
+    def test_explicit_status_not_overridden_by_location_default(self):
+        """Explicit bulk_status must survive save() even when bulk_location is also set.
+        location_b.default_status = STORED; user explicitly requests IN_USE."""
+        self._post({
+            "item_ids": [self.item1.pk],
+            "bulk_status": str(InventoryItem.Status.IN_USE),
+            "bulk_location": str(self.location_b.pk),
+        })
+        self.item1.refresh_from_db()
+        self.assertEqual(self.item1.status, InventoryItem.Status.IN_USE)
+        self.assertEqual(self.item1.location, self.location_b)
