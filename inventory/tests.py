@@ -54,6 +54,8 @@ class BulkUpdateViewTests(TestCase):
         self.assertIsNotNone(self.item1.date_depleted)
         self.assertIsNone(self.item1.location)
         self.assertEqual(self.item2.status, InventoryItem.Status.DEPLETED)
+        self.assertIsNotNone(self.item2.date_depleted)
+        self.assertIsNone(self.item2.location)
 
     def test_bulk_status_depleted_does_not_reassign_location(self):
         """Providing a location alongside DEPLETED status must not re-assign it."""
@@ -137,5 +139,5 @@ class BulkUpdateViewTests(TestCase):
             "bulk_status": str(InventoryItem.Status.DEPLETED),
         })
         self.item3.refresh_from_db()
-        self.assertEqual(self.item3.status, InventoryItem.Status.NEW)
+        self.assertEqual(self.item3.status, InventoryItem.Status.STORED)
         self.assertEqual(self.item3.location, self.location_b)
