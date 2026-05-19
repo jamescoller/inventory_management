@@ -20,6 +20,7 @@ services:
     volumes:
       - static_volume:/static  # ✅ Match nginx.conf alias!
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ${HOME}/ha-stats:/ha-stats:ro  # JSON stats consumed by Home Assistant
     depends_on:
       - web
 
