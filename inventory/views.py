@@ -422,9 +422,18 @@ class BulkUpdateView(LoginRequiredMixin, View):
             messages.warning(request, "No items selected.")
             return self._redirect_back(request)
 
+        MAX_BULK = 200
+        if len(item_ids) > MAX_BULK:
+            messages.error(request, f"Cannot update more than {MAX_BULK} items at once.")
+            return self._redirect_back(request)
+
         new_status_raw = request.POST.get("bulk_status", "").strip()
         new_location_id = request.POST.get("bulk_location", "").strip()
         new_shipment = request.POST.get("bulk_shipment", "").strip() or None
+
+        if new_shipment and len(new_shipment) > 100:
+            messages.error(request, "Shipment value is too long (max 100 characters).")
+            return self._redirect_back(request)
 
         new_status = None
         if new_status_raw:
