@@ -1,0 +1,229 @@
+{% extends "inventory/base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  <!-- Header stats -->
+  <div class="d-flex gap-3 flex-wrap mb-4">
+    <div class="card text-center px-4 py-2">
+      <div class="fw-bold fs-3">{{ grand_total_rolls }}</div>
+      <div class="text-muted small">Total Rolls</div>
+    </div>
+    <div class="card text-center px-4 py-2">
+      <div class="fw-bold fs-3">{{ total_filament_types }}</div>
+      <div class="text-muted small">Color/Type Combos</div>
+    </div>
+    <div class="card text-center px-4 py-2">
+      <div class="fw-bold fs-3">{{ total_materials }}</div>
+      <div class="text-muted small">Materials</div>
+    </div>
+  </div>
+
+  <!-- Material card grid -->
+  <div class="d-flex flex-wrap gap-3 mb-4" id="material-cards">
+    {% for card in cards %}
+    <div class="card filament-card"
+         style="min-width:145px; max-width:200px; cursor:pointer"
+         data-material="{{ card.name }}"
+         onclick="filterByMaterial('{{ card.name }}')">
+      <div class="card-body p-2">
+        <div class="fw-semibold">{{ card.name }}</div>
+        <div class="text-muted small mb-1">
+          {{ card.total_on_hand }} roll{{ card.total_on_hand|pluralize }}{% if card.subtype_count %} &middot; {{ card.subtype_count }} type{{ card.subtype_count|pluralize }}{% endif %}
+        </div>
+        <div class="d-flex flex-wrap gap-1 swatch-container">
+          {% for swatch in card.visible_swatches %}
+          <span class="swatch"
+                style="width:18px;height:18px;border-radius:3px;display:inline-block;background:{{ swatch.hex }};border:1px solid rgba(0,0,0,.15);cursor:pointer"
+                title="{{ swatch.family }} — {{ swatch.count }} roll{{ swatch.count|pluralize }}"
+                onclick="event.stopPropagation(); filterByFamily('{{ card.name }}', '{{ swatch.family }}')"></span>
+          {% endfor %}
+          {% for swatch in card.hidden_swatches %}
+          <span class="swatch swatch-hidden"
+                style="width:18px;height:18px;border-radius:3px;display:none;background:{{ swatch.hex }};border:1px solid rgba(0,0,0,.15);cursor:pointer"
+                title="{{ swatch.family }} — {{ swatch.count }} roll{{ swatch.count|pluralize }}"
+                onclick="event.stopPropagation(); filterByFamily('{{ card.name }}', '{{ swatch.family }}')"></span>
+          {% endfor %}
+          {% if card.extra_count %}
+          <button class="btn btn-link btn-sm p-0 lh-1 expand-btn"
+                  style="font-size:.75rem"
+                  data-extra="{{ card.extra_count }}"
+                  data-expanded="false"
+                  onclick="event.stopPropagation(); toggleOverflow(this)">
+            +{{ card.extra_count }} more
+          </button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Filter chip bar -->
+  <div class="d-flex align-items-center gap-2 flex-wrap mb-2" id="filter-bar">
+    <div id="active-filter-chips"></div>
+    <div class="btn-group btn-group-sm ms-auto" role="group" aria-label="Usage period">
+      <button type="button" class="btn btn-outline-secondary period-btn active"
+              data-period="7d" onclick="setPeriod(this)">7d</button>
+      <button type="button" class="btn btn-outline-secondary period-btn"
+              data-period="30d" onclick="setPeriod(this)">30d</button>
+      <button type="button" class="btn btn-outline-secondary period-btn"
+              data-period="1y" onclick="setPeriod(this)">1y</button>
+    </div>
+    <span class="text-muted small ms-2" id="row-count-label"></span>
+  </div>
+
+  <!-- DataTables table -->
+  <table id="filament-summary-table" class="table table-sm table-hover">
+    <thead>
+      <tr>
+        <th>Material</th>
+        <th>Subtype</th>
+        <th>Color</th>
+        <th>Family</th>
+        <th>On Hand</th>
+        <th>Used (<span id="period-label">7d</span>)</th>
+        <th>Est. Weight (kg)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr data-material="{{ row.material_name }}" data-family="{{ row.color_family }}">
+        <td>{{ row.material_name }}</td>
+        <td>{{ row.material_type|default:"—" }}</td>
+        <td>
+          {% if row.hex_code %}
+          <span style="display:inline-block;width:12px;height:12px;border-radius:2px;
+                       background:{{ row.hex_code }};border:1px solid rgba(0,0,0,.2);
+                       vertical-align:middle;margin-right:4px"></span>
+          {% endif %}
+          {{ row.color }}
+        </td>
+        <td>{{ row.color_family }}</td>
+        <td>{{ row.on_hand }}</td>
+        <td class="usage-cell"
+            data-used-7d="{{ row.used_7d }}"
+            data-used-30d="{{ row.used_30d }}"
+            data-used-365d="{{ row.used_365d }}">
+          {% if row.used_7d %}{{ row.used_7d }}{% else %}&mdash;{% endif %}
+        </td>
+        <td>{% if row.est_weight_kg %}{{ row.est_weight_kg }}{% else %}&mdash;{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+var activeMaterial = null;
+var activeFamily = null;
+
+function filterByMaterial(material) {
+  if (activeMaterial === material && activeFamily === null) {
+    activeMaterial = null;
+  } else {
+    activeMaterial = material;
+    activeFamily = null;
+  }
+  applyFilters();
+}
+
+function filterByFamily(material, family) {
+  if (activeMaterial === material && activeFamily === family) {
+    activeMaterial = null;
+    activeFamily = null;
+  } else {
+    activeMaterial = material;
+    activeFamily = family;
+  }
+  applyFilters();
+}
+
+function clearFilters() {
+  activeMaterial = null;
+  activeFamily = null;
+  applyFilters();
+}
+
+function applyFilters() {
+  var rows = document.querySelectorAll('#filament-summary-table tbody tr');
+  var visible = 0;
+  rows.forEach(function(row) {
+    var mat = row.dataset.material;
+    var fam = row.dataset.family;
+    var show = (!activeMaterial || mat === activeMaterial) &&
+               (!activeFamily || fam === activeFamily);
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+
+  // Card active state
+  document.querySelectorAll('.filament-card').forEach(function(card) {
+    card.classList.toggle('border-primary', card.dataset.material === activeMaterial);
+    card.classList.toggle('bg-light', card.dataset.material === activeMaterial);
+  });
+
+  // Filter chips
+  var chips = '';
+  if (activeMaterial) {
+    chips += '<span class="badge bg-primary me-1">' + activeMaterial +
+             ' <span style="cursor:pointer" onclick="filterByMaterial(\'' + activeMaterial + '\')">&#x2715;</span></span>';
+  }
+  if (activeFamily) {
+    chips += '<span class="badge bg-secondary me-1">' + activeFamily +
+             ' <span style="cursor:pointer" onclick="filterByFamily(\'' + activeMaterial + '\',\'' + activeFamily + '\')">&#x2715;</span></span>';
+  }
+  if (chips) {
+    chips += '<button class="btn btn-link btn-sm p-0" onclick="clearFilters()">Clear all</button>';
+  }
+  document.getElementById('active-filter-chips').innerHTML = chips;
+
+  document.getElementById('row-count-label').textContent = visible + ' row' + (visible !== 1 ? 's' : '');
+}
+
+function setPeriod(btn) {
+  var period = btn.dataset.period;
+  document.querySelectorAll('.period-btn').forEach(function(b) {
+    b.classList.remove('active');
+  });
+  btn.classList.add('active');
+
+  // Map period to data attribute name
+  var attrMap = {'7d': 'used-7d', '30d': 'used-30d', '1y': 'used-365d'};
+  var attr = attrMap[period];
+  document.querySelectorAll('.usage-cell').forEach(function(cell) {
+    var raw = parseInt(cell.getAttribute('data-' + attr) || '0', 10);
+    cell.textContent = raw > 0 ? raw : '—';
+  });
+  document.getElementById('period-label').textContent = period;
+}
+
+function toggleOverflow(btn) {
+  var container = btn.closest('.swatch-container');
+  var hidden = container.querySelectorAll('.swatch-hidden');
+  var isExpanded = btn.dataset.expanded === 'true';
+  if (isExpanded) {
+    hidden.forEach(function(s) { s.style.display = 'none'; });
+    btn.textContent = '+' + btn.dataset.extra + ' more';
+    btn.dataset.expanded = 'false';
+  } else {
+    hidden.forEach(function(s) { s.style.display = 'inline-block'; });
+    btn.textContent = 'show less';
+    btn.dataset.expanded = 'true';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  new DataTable('#filament-summary-table', {
+    ordering: true,
+    searching: false,
+    paging: false,
+    info: false,
+  });
+  applyFilters();
+});
+</script>
+{% endblock %}
