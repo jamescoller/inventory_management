@@ -11,7 +11,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
-from django.db.models import Count, F, Q, Sum
+from django.db.models import Count, F, Max, Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.shortcuts import render
@@ -615,6 +615,156 @@ class FilamentColorGuideView(LoginRequiredMixin, TemplateView):
 
         context["grouped_filaments"] = ordered
         context["total_filaments"] = len(filaments)
+        return context
+
+
+class FilamentSummaryView(LoginRequiredMixin, TemplateView):
+    template_name = "inventory/filament_summary.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        now = timezone_now()
+        cutoff_7 = now - timedelta(days=7)
+        cutoff_30 = now - timedelta(days=30)
+        cutoff_365 = now - timedelta(days=365)
+        DEPLETED = InventoryItem.Status.DEPLETED
+
+        # Active inventory grouped by (material, subtype, color, family)
+        active_qs = list(
+            Filament.objects.values(
+                "material__name",
+                "material__material_type",
+                "color",
+                "color_family",
+            ).annotate(
+                on_hand=Count(
+                    "inventory_items",
+                    filter=Q(inventory_items__status__in=_ACTIVE_STATUSES),
+                ),
+                hex_code=Max("hex_code"),
+                weight=Max("weight"),
+            ).filter(on_hand__gt=0)
+        )
+
+        # Depleted counts for all three windows in one query
+        depleted_map = {
+            (
+                row["material__name"],
+                row["material__material_type"],
+                row["color"],
+                row["color_family"],
+            ): row
+            for row in Filament.objects.values(
+                "material__name",
+                "material__material_type",
+                "color",
+                "color_family",
+            ).annotate(
+                depleted_7=Count(
+                    "inventory_items",
+                    filter=Q(
+                        inventory_items__status=DEPLETED,
+                        inventory_items__date_depleted__gte=cutoff_7,
+                    ),
+                ),
+                depleted_30=Count(
+                    "inventory_items",
+                    filter=Q(
+                        inventory_items__status=DEPLETED,
+                        inventory_items__date_depleted__gte=cutoff_30,
+                    ),
+                ),
+                depleted_365=Count(
+                    "inventory_items",
+                    filter=Q(
+                        inventory_items__status=DEPLETED,
+                        inventory_items__date_depleted__gte=cutoff_365,
+                    ),
+                ),
+            ).filter(
+                Q(depleted_7__gt=0) | Q(depleted_30__gt=0) | Q(depleted_365__gt=0)
+            )
+        }
+
+        # Build table rows
+        rows = []
+        for row in active_qs:
+            key = (
+                row["material__name"],
+                row["material__material_type"],
+                row["color"],
+                row["color_family"],
+            )
+            dep = depleted_map.get(key, {})
+            on_hand = row["on_hand"]
+            weight = row["weight"]
+            est_kg = round(float(weight) * on_hand, 2) if weight and on_hand else None
+            rows.append(
+                {
+                    "material_name": row["material__name"] or "",
+                    "material_type": row["material__material_type"] or "",
+                    "color": row["color"] or "",
+                    "color_family": row["color_family"] or "",
+                    "hex_code": row["hex_code"] or "",
+                    "on_hand": on_hand,
+                    "used_7d": dep.get("depleted_7", 0),
+                    "used_30d": dep.get("depleted_30", 0),
+                    "used_365d": dep.get("depleted_365", 0),
+                    "est_weight_kg": est_kg,
+                }
+            )
+        rows.sort(key=lambda r: (r["material_name"], r["material_type"], r["color"]))
+
+        # Build material cards
+        cards_dict = {}
+        for row in rows:
+            mat = row["material_name"]
+            if mat not in cards_dict:
+                cards_dict[mat] = {
+                    "name": mat,
+                    "total_on_hand": 0,
+                    "subtypes": set(),
+                    "family_counts": {},
+                }
+            cards_dict[mat]["total_on_hand"] += row["on_hand"]
+            if row["material_type"]:
+                cards_dict[mat]["subtypes"].add(row["material_type"])
+            fam = row["color_family"]
+            if fam:
+                cards_dict[mat]["family_counts"][fam] = (
+                    cards_dict[mat]["family_counts"].get(fam, 0) + row["on_hand"]
+                )
+
+        cards = []
+        for mat_name in sorted(cards_dict):
+            data = cards_dict[mat_name]
+            all_swatches = sorted(
+                [
+                    {
+                        "family": fam,
+                        "hex": COLOR_FAMILY_HEX.get(fam, "#cccccc"),
+                        "count": cnt,
+                    }
+                    for fam, cnt in data["family_counts"].items()
+                ],
+                key=lambda x: -x["count"],
+            )
+            cards.append(
+                {
+                    "name": data["name"],
+                    "total_on_hand": data["total_on_hand"],
+                    "subtype_count": len(data["subtypes"]),
+                    "visible_swatches": all_swatches[:8],
+                    "hidden_swatches": all_swatches[8:],
+                    "extra_count": max(0, len(all_swatches) - 8),
+                }
+            )
+
+        context["cards"] = cards
+        context["rows"] = rows
+        context["grand_total_rolls"] = sum(r["on_hand"] for r in rows)
+        context["total_filament_types"] = len(rows)
+        context["total_materials"] = len(cards)
         return context
 
 
