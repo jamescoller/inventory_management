@@ -6,8 +6,8 @@ Project context for Claude Code working on this inventory management repository.
 
 A Django 4.2 web application for tracking 3D printer consumables — filament spools,
 hardware, printers, AMS units, and drying equipment. Deployed as a Docker Compose
-stack (Gunicorn + Nginx). The app also integrates with a Brother QL label printer
-for barcode generation.
+stack (Gunicorn + Nginx). The app also integrates with a Brother QL-810W label printer
+for barcode printing.
 
 GitHub: https://github.com/jamescoller/inventory_management
 Default branch: `master`
@@ -15,40 +15,25 @@ Default branch: `master`
 ## Hardware & topology
 
 - **App host:** Proxmox LXC at `10.10.20.17` — Docker Compose stack, GitHub Actions
-  self-hosted runner, and SQLite database all live here. Nothing for this app is on
-  the NAS anymore.
+  self-hosted runner, and SQLite database all live here.
 - **App URLs:** `http://inventory.home` (via NGINX + PiHole), `http://10.10.20.17:8080`
 - **Database:** SQLite at `inventory_db.sqlite3` — not version-controlled, lives on
-  the app LXC
+  the app LXC (note: a future task is to create a backup of this DB)
 - **Claude Code LXC:** Debian 12 on Proxmox at `10.10.20.16` — this is where Claude
-  Code runs and where all code editing happens. Not the same machine as the app host.
+  Code runs and where all code editing happens. This is running on the same physical host as the app.
 - **Network:** server VLAN (`10.10.20.x`)
 - **Co-located on the same VLAN:**
-  - Home Assistant Green (`10.10.20.2`)
+    - Home Assistant Green (`10.10.20.2`) with its own GitHub Actions runner in a Proxmox LXC (`10.10.20.15`)
   - Proxmox host — Minisforum UM790 Pro, Ryzen 9 7940HS, 32 GB DDR5 (running LXCs)
   - Claude Code LXC (`10.10.20.16`, Debian 12 on Proxmox)
   - App LXC (`10.10.20.17`, Debian 12 on Proxmox)
-  - Raspberry Pi 5
+    - Raspberry Pi 5s
   - Mac Mini M2
 
 ## Accessing the live app
 
 **Browser** — `http://inventory.home` or `http://10.10.20.3:8080` are reachable
 directly from this LXC.
-
-**SSH to NAS** — No alias configured yet in `~/.ssh/config`. The NAS is at
-`10.10.20.3`; standard Synology SSH is on port 22. Add an alias before doing
-Docker management tasks:
-```
-Host synology
-    HostName 10.10.20.3
-    Port     22
-    User     james
-    IdentityFile ~/.ssh/id_ed25519_github
-```
-
-**Docker management on NAS** — Once SSH'd in, the Compose stack lives at
-`/volume1/docker/inventory_management`. Use `docker-compose` commands there.
 
 ## CI/CD pipeline
 
@@ -66,8 +51,7 @@ an automatic deploy to the live NAS instance.
 
 ## Environment / secrets
 
-- `.env` file is **not** version-controlled (gitignored). On the NAS it is symlinked
-  from `/home/runner/.env_shared`.
+- `.env` file is **not** version-controlled (gitignored).
 - Key env vars: `DJANGO_SECRET_KEY`, `DEBUG`, `ENABLE_BARCODE_PRINTING`,
   `PRINTER_MAC`, `PRINTER_IP`.
 - Never hardcode secrets. Use `python-decouple`'s `config()` — it reads from `.env`.
@@ -96,7 +80,7 @@ Direct commits to `master` are for trivial changes only (typo fixes, doc tweaks)
   `python manage.py collectstatic` before testing production behavior.
 - **Barcode printing:** Controlled by `ENABLE_BARCODE_PRINTING`. The `brother_ql`
   library uses `scapy` for MAC-based printer discovery — this requires `NET_ADMIN`
-  and `NET_RAW` capabilities in the Docker container.
+  and `NET_RAW` capabilities in the Docker container. It is currently implemented with a static IP (`10.10.40.2`).
 - **Secrets:** Always use `config("VAR_NAME")` from `python-decouple`, never `os.environ`.
 
 ## Branching
