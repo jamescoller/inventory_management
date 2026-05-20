@@ -393,6 +393,7 @@ class LocationAdmin(admin.ModelAdmin):
 class MaterialAdmin(admin.ModelAdmin):
     list_display = [
         "name",
+        "material_type",
         "mfr",
         "print_temp_min_degC",
         "print_temp_max_degC",
@@ -405,4 +406,5 @@ class MaterialAdmin(admin.ModelAdmin):
         "drying_required",
         "notes",
     ]
+    list_editable = ["name", "material_type"]
     list_filter = ["mfr", "ams_capable", "drying_required"]
