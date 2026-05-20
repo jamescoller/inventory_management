@@ -109,6 +109,16 @@ Safe to delete without any user-visible impact.
 
 - [ ] Add `tests.py` basics — at minimum one round-trip per view and one `save()` per model. The number of latent bugs caught by the analysis above suggests zero test coverage currently.
 
+### Bugs
+
+- [ ] On view (`FilamentSummaryView`):
+  - [ ] Material cards at the top of the page are sorted alphabetically by material name, instead of by the number of filament rolls in the inventory.
+  - [ ] Color of the black swatches in the filament cards is approximately `#2c3e50` instead of `#000000`.
+  - [ ] ** Enhancement: ** Center the filament cards and the totals cards on the page instead of having them flush to the left.
+  - [ ] Missing filters for `subtype` on the table. This can be added just above the table on the left side. Add filters for material and color family here as well.
+  - [ ] In the table, change the word `family` to `color family` in the column headers.
+  - [ ] On the used filters (`7d`, `30d`, `1y`), the selected filter is shown by removing the border of the button. This is hard to see. Leave the border on and instead invert the colors of the font and background of the button.
+  - [ ] Some colors, such as `TPU 95A HF` show the color written Black, but the color swatch is White. This could be due to the color hex not being written in the individual DB entries. Investigate and fix.
 ---
 
 ## Phase 4 — Features & Enhancements
@@ -122,6 +132,10 @@ Safe to delete without any user-visible impact.
 - [ ] **#34 — Import order/invoice history** — Fix and relocate `import_products.py` to `management/commands/`. Add `add_arguments` for file path. Consider replacing pandas with openpyxl (already a dependency) to drop the heavy dep.
 - [ ] **#33 — Excel export broken** — Fix `InventoryExportView`. *(Also listed in Phase 1)*
 - [ ] **#65 — View 3MF files in the web portal** — Use `three.js` + `Online3DViewer` (https://github.com/kovacsv/Online3DViewer). Significant work; consider as a standalone feature branch.
+
+### Cleanup & Refactoring
+
+- [ ] Remove searching for the barcode printer by MAC address; simply use the static IP address (`10.10.40.2`).
 
 ### New Capabilities
 
@@ -138,6 +152,22 @@ Safe to delete without any user-visible impact.
   - Temperatures and status
   - *Highest-value automation:* on print completion, auto-update which spool is in which AMS slot and optionally decrement estimated remaining weight.
   - Reference: HACS bambu_lab integration source for the MQTT topic structure.
+
+- [ ] **Filament Selection Guide** – Add an interactive guide in the web portal to help users select the right filament for their needs. Key information:
+  - UV Resistance
+  - Printability
+  - Drying Time / Need
+  - Colors Available
+  - Structural Need
+  - Flexibility / Ductility (Thinking about TPU vs others)
+
+- [ ] **Bambu Store Integration** — Add a link to the Bambu Store to entries for quick re-ordering. (`us.store.bambulab.com`)
+  - Use search by SKU to find the item in the store.
+  - Load current prices into the web portal.
+  - Create ability to alert for sales and low stock levels using HA.
+  - Allow metadata updates for products, such as price, color hex code, drying times and temperatures, etc.
+
+- [ ] **HA Integraton** — Integrate DB visualization in a HA dashboard using Grafana.
 
 - [x] **Improved data visualizations** — Dashboard now has 3 charts (product type, filament by material, filament by color family with real hex colors); low-stock alert table with urgency tiers (Out of Stock / Running Low / Low Stock) cross-referenced against 30-day depletion history; new `/filament-color-guide/` page showing all on-hand filament spools grouped by color family, printable as PDF.
   - [ ] Filament usage over time (requires logging consumption events)
