@@ -24,8 +24,7 @@
     {% for card in cards %}
     <div class="card filament-card"
          style="min-width:145px; max-width:200px; cursor:pointer"
-         data-material="{{ card.name }}"
-         onclick="filterByMaterial('{{ card.name }}')">
+         data-material="{{ card.name }}">
       <div class="card-body p-2">
         <div class="fw-semibold">{{ card.name }}</div>
         <div class="text-muted small mb-1">
@@ -36,13 +35,13 @@
           <span class="swatch"
                 style="width:18px;height:18px;border-radius:3px;display:inline-block;background:{{ swatch.hex }};border:1px solid rgba(0,0,0,.15);cursor:pointer"
                 title="{{ swatch.family }} — {{ swatch.count }} roll{{ swatch.count|pluralize }}"
-                onclick="event.stopPropagation(); filterByFamily('{{ card.name }}', '{{ swatch.family }}')"></span>
+                data-family="{{ swatch.family }}"></span>
           {% endfor %}
           {% for swatch in card.hidden_swatches %}
           <span class="swatch swatch-hidden"
                 style="width:18px;height:18px;border-radius:3px;display:none;background:{{ swatch.hex }};border:1px solid rgba(0,0,0,.15);cursor:pointer"
                 title="{{ swatch.family }} — {{ swatch.count }} roll{{ swatch.count|pluralize }}"
-                onclick="event.stopPropagation(); filterByFamily('{{ card.name }}', '{{ swatch.family }}')"></span>
+                data-family="{{ swatch.family }}"></span>
           {% endfor %}
           {% if card.extra_count %}
           <button class="btn btn-link btn-sm p-0 lh-1 expand-btn"
@@ -149,6 +148,17 @@ function clearFilters() {
   applyFilters();
 }
 
+function clearMaterial() {
+  activeMaterial = null;
+  activeFamily = null;
+  applyFilters();
+}
+
+function clearFamily() {
+  activeFamily = null;
+  applyFilters();
+}
+
 function applyFilters() {
   var rows = document.querySelectorAll('#filament-summary-table tbody tr');
   var visible = 0;
@@ -177,7 +187,7 @@ function applyFilters() {
     var x = document.createElement('span');
     x.style.cursor = 'pointer';
     x.textContent = '✕';
-    x.addEventListener('click', function() { filterByMaterial(activeMaterial); });
+    x.addEventListener('click', function(e) { e.stopPropagation(); clearMaterial(); });
     badge.appendChild(x);
     chipsEl.appendChild(badge);
   }
@@ -188,7 +198,7 @@ function applyFilters() {
     var x2 = document.createElement('span');
     x2.style.cursor = 'pointer';
     x2.textContent = '✕';
-    x2.addEventListener('click', function() { filterByFamily(activeMaterial, activeFamily); });
+    x2.addEventListener('click', function(e) { e.stopPropagation(); clearFamily(); });
     badge2.appendChild(x2);
     chipsEl.appendChild(badge2);
   }
@@ -245,6 +255,23 @@ document.addEventListener('DOMContentLoaded', function() {
     info: false,
     drawCallback: function() { applyPeriodDisplay(); },
   });
+
+  // Card click: filter by material
+  document.querySelectorAll('.filament-card').forEach(function(card) {
+    card.addEventListener('click', function() {
+      filterByMaterial(card.dataset.material);
+    });
+  });
+
+  // Swatch click: filter by material + family
+  document.querySelectorAll('.swatch').forEach(function(swatch) {
+    swatch.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var card = swatch.closest('.filament-card');
+      filterByFamily(card.dataset.material, swatch.dataset.family);
+    });
+  });
+
   applyFilters();
 });
 </script>

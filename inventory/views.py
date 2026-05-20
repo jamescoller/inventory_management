@@ -631,7 +631,7 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
 
         # Active inventory grouped by (material, subtype, color, family)
         active_qs = list(
-            Filament.objects.values(
+            Filament.objects.filter(material__isnull=False).values(
                 "material__name",
                 "material__material_type",
                 "color",
@@ -654,7 +654,7 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
                 row["color"],
                 row["color_family"],
             ): row
-            for row in Filament.objects.values(
+            for row in Filament.objects.filter(material__isnull=False).values(
                 "material__name",
                 "material__material_type",
                 "color",
