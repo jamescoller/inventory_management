@@ -700,9 +700,9 @@ class Material(models.Model):
     notes (str, optional): Additional notes or comments about the material.
     """
 
-    name = models.CharField(max_length=100, unique=True)
-    # The name should include the material type e.g. "ABS" or "PLA" as well as any subtype designations
-    # e.g. "PLA-CF" or "ABS-GF"
+    name = models.CharField(max_length=100)
+    material_type = models.CharField(max_length=50, blank=True, default="")
+    # name = base polymer (e.g. "PETG", "PLA"); material_type = subtype modifier (e.g. "HF", "CF")
     mfr = models.CharField(max_length=100, blank=True, default="Bambu Lab")
 
     # Print Temperatures
@@ -723,6 +723,12 @@ class Material(models.Model):
 
     notes = models.TextField(blank=True)
 
+    class Meta:
+        unique_together = [('name', 'material_type')]
+        ordering = ['name', 'material_type']
+
     def __str__(self):
+        if self.material_type:
+            return f"{self.name} {self.material_type}"
         return self.name
 
