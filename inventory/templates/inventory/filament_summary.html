@@ -120,6 +120,7 @@
 <script>
 var activeMaterial = null;
 var activeFamily = null;
+var activePeriod = '7d';
 
 function filterByMaterial(material) {
   if (activeMaterial === material && activeFamily === null) {
@@ -167,38 +168,58 @@ function applyFilters() {
   });
 
   // Filter chips
-  var chips = '';
+  var chipsEl = document.getElementById('active-filter-chips');
+  chipsEl.innerHTML = '';
   if (activeMaterial) {
-    chips += '<span class="badge bg-primary me-1">' + activeMaterial +
-             ' <span style="cursor:pointer" onclick="filterByMaterial(\'' + activeMaterial + '\')">&#x2715;</span></span>';
+    var badge = document.createElement('span');
+    badge.className = 'badge bg-primary me-1';
+    badge.textContent = activeMaterial + ' ';
+    var x = document.createElement('span');
+    x.style.cursor = 'pointer';
+    x.textContent = '✕';
+    x.addEventListener('click', function() { filterByMaterial(activeMaterial); });
+    badge.appendChild(x);
+    chipsEl.appendChild(badge);
   }
   if (activeFamily) {
-    chips += '<span class="badge bg-secondary me-1">' + activeFamily +
-             ' <span style="cursor:pointer" onclick="filterByFamily(\'' + activeMaterial + '\',\'' + activeFamily + '\')">&#x2715;</span></span>';
+    var badge2 = document.createElement('span');
+    badge2.className = 'badge bg-secondary me-1';
+    badge2.textContent = activeFamily + ' ';
+    var x2 = document.createElement('span');
+    x2.style.cursor = 'pointer';
+    x2.textContent = '✕';
+    x2.addEventListener('click', function() { filterByFamily(activeMaterial, activeFamily); });
+    badge2.appendChild(x2);
+    chipsEl.appendChild(badge2);
   }
-  if (chips) {
-    chips += '<button class="btn btn-link btn-sm p-0" onclick="clearFilters()">Clear all</button>';
+  if (activeMaterial || activeFamily) {
+    var clearBtn = document.createElement('button');
+    clearBtn.className = 'btn btn-link btn-sm p-0';
+    clearBtn.textContent = 'Clear all';
+    clearBtn.addEventListener('click', clearFilters);
+    chipsEl.appendChild(clearBtn);
   }
-  document.getElementById('active-filter-chips').innerHTML = chips;
 
   document.getElementById('row-count-label').textContent = visible + ' row' + (visible !== 1 ? 's' : '');
 }
 
-function setPeriod(btn) {
-  var period = btn.dataset.period;
-  document.querySelectorAll('.period-btn').forEach(function(b) {
-    b.classList.remove('active');
-  });
-  btn.classList.add('active');
-
-  // Map period to data attribute name
+function applyPeriodDisplay() {
   var attrMap = {'7d': 'used-7d', '30d': 'used-30d', '1y': 'used-365d'};
-  var attr = attrMap[period];
+  var attr = attrMap[activePeriod];
   document.querySelectorAll('.usage-cell').forEach(function(cell) {
     var raw = parseInt(cell.getAttribute('data-' + attr) || '0', 10);
     cell.textContent = raw > 0 ? raw : '—';
   });
-  document.getElementById('period-label').textContent = period;
+}
+
+function setPeriod(btn) {
+  activePeriod = btn.dataset.period;
+  document.querySelectorAll('.period-btn').forEach(function(b) {
+    b.classList.remove('active');
+  });
+  btn.classList.add('active');
+  applyPeriodDisplay();
+  document.getElementById('period-label').textContent = activePeriod;
 }
 
 function toggleOverflow(btn) {
@@ -222,6 +243,7 @@ document.addEventListener('DOMContentLoaded', function() {
     searching: false,
     paging: false,
     info: false,
+    drawCallback: function() { applyPeriodDisplay(); },
   });
   applyFilters();
 });
