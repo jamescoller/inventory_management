@@ -223,7 +223,7 @@ class Filament(Product):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        material_name = self.material.name if self.material else "Unknown"
+        material_name = str(self.material) if self.material else "Unknown"
         return f"{material_name} {self.color}"
 
     class Meta:
