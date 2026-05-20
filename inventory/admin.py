@@ -406,5 +406,9 @@ class MaterialAdmin(admin.ModelAdmin):
         "drying_required",
         "notes",
     ]
-    list_editable = ["name", "material_type"]
+    # name is the list_display_links field (clickable link); only material_type
+    # is editable inline — Django disallows editing the first list_display field
+    # unless list_display_links is explicitly set to something else.
+    list_display_links = ["name"]
+    list_editable = ["material_type"]
     list_filter = ["mfr", "ams_capable", "drying_required"]
