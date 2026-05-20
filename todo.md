@@ -144,6 +144,8 @@ Safe to delete without any user-visible impact.
   - [ ] Spool weight distribution (how much of each color/material is on hand by weight)
   - [ ] Printer utilization (requires BambuLab integration)
 
+- [x] **Filament summary view** — Added `material_type` field to `Material` model (migrations 0021/0022); data migration splits compound names (e.g. "ABS+ (Matte)" → name "ABS+", type "Matte"); `MaterialAdmin` updated with `list_editable` for `material_type` and correct `list_display_links`; new `/filament-summary/` view (`FilamentSummaryView`) aggregates inventory into per-material cards showing roll counts by time period (all-time / 90-day / 30-day) and top colors; nav link added; filament_summary.html uses DataTables + JS period toggle for interactive filtering.
+
 - [ ] **Status-based location assignment** ✅ *(Already implemented in `InventoryItem.save()` via `Location.default_status` — the original todo item is done)*
 
 ### Reusable App Extraction (longer term)

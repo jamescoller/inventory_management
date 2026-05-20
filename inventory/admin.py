@@ -393,6 +393,7 @@ class LocationAdmin(admin.ModelAdmin):
 class MaterialAdmin(admin.ModelAdmin):
     list_display = [
         "name",
+        "material_type",
         "mfr",
         "print_temp_min_degC",
         "print_temp_max_degC",
@@ -405,4 +406,9 @@ class MaterialAdmin(admin.ModelAdmin):
         "drying_required",
         "notes",
     ]
+    # name is the list_display_links field (clickable link); only material_type
+    # is editable inline — Django disallows editing the first list_display field
+    # unless list_display_links is explicitly set to something else.
+    list_display_links = ["name"]
+    list_editable = ["material_type"]
     list_filter = ["mfr", "ams_capable", "drying_required"]

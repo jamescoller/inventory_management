@@ -15,6 +15,7 @@ from .views import (
     Dashboard,
     DryStorageOverviewView,
     FilamentColorGuideView,
+    FilamentSummaryView,
     Index,
     InventoryEditView,
     InventoryExportView,
@@ -62,6 +63,7 @@ urlpatterns = [
     ),
     path("in-use-overview/", InUseOverviewView.as_view(), name="in_use_overview"),
     path("filament-color-guide/", FilamentColorGuideView.as_view(), name="filament_color_guide"),
+    path("filament-summary/", FilamentSummaryView.as_view(), name="filament_summary"),
     path(
         "dry-storage-overview/",
         DryStorageOverviewView.as_view(),

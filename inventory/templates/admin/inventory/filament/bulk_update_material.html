@@ -10,7 +10,7 @@
 				<select name="new_matl" required>
 					<option value="">---------</option>
 					{% for material in materials %}
-						<option value="{{ material.id }}">{{ material.name }}</option>
+						<option value="{{ material.id }}">{{ material }}</option>
 					{% endfor %}
 				</select>
 			</div>
