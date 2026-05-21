@@ -2,7 +2,7 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User
 
-from .models import Filament, InventoryItem, Location
+from .models import Filament, InventoryItem, Location, Material
 
 
 class BulkUpdateViewTests(TestCase):
@@ -153,3 +153,51 @@ class BulkUpdateViewTests(TestCase):
         self.item1.refresh_from_db()
         self.assertEqual(self.item1.status, InventoryItem.Status.IN_USE)
         self.assertEqual(self.item1.location, self.location_b)
+
+
+class FilamentSummaryViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="tester2", password="pass")
+        self.client.login(username="tester2", password="pass")
+        self.loc = Location.objects.create(name="Shelf", default_status=InventoryItem.Status.NEW)
+        self.mat = Material.objects.create(name="PLA", material_type="")
+        # 3 PLA rolls + 1 PETG roll — cards should sort by roll count, PLA first
+        pla_black = Filament.objects.create(
+            name="PLA Black", upc="1000000000001",
+            material=self.mat, color="Black", color_family="BLACK",
+            hex_code="",
+        )
+        petg_mat = Material.objects.create(name="PETG", material_type="")
+        petg_white = Filament.objects.create(
+            name="PETG White", upc="1000000000002",
+            material=petg_mat, color="White", color_family="WHITE",
+            hex_code="#ffffff",
+        )
+        for _ in range(3):
+            InventoryItem.objects.create(product=pla_black, location=self.loc)
+        InventoryItem.objects.create(product=petg_white, location=self.loc)
+        self.url = reverse("filament_summary")
+
+    def test_cards_sorted_by_roll_count_descending(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+        cards = resp.context["cards"]
+        counts = [c["total_on_hand"] for c in cards]
+        self.assertEqual(counts, sorted(counts, reverse=True))
+
+    def test_black_family_hex_is_not_bootstrap_dark(self):
+        """BLACK swatch should be pure black, not Bootstrap's dark (#2c3e50)."""
+        resp = self.client.get(self.url)
+        cards = resp.context["cards"]
+        pla_card = next(c for c in cards if c["name"] == "PLA")
+        black_swatch = next(s for s in pla_card["visible_swatches"] if s["family"] == "BLACK")
+        self.assertEqual(black_swatch["hex"], "#000000")
+
+    def test_row_hex_falls_back_to_family_hex_when_missing(self):
+        """Row with no hex_code should get a fallback from COLOR_FAMILY_HEX."""
+        resp = self.client.get(self.url)
+        rows = resp.context["rows"]
+        black_row = next(r for r in rows if r["color"] == "Black")
+        # hex_code is empty in the DB, but color_family is BLACK → fallback expected
+        self.assertEqual(black_row["hex_code"], "#000000")

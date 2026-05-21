@@ -111,14 +111,14 @@ Safe to delete without any user-visible impact.
 
 ### Bugs
 
-- [ ] On view (`FilamentSummaryView`):
-  - [ ] Material cards at the top of the page are sorted alphabetically by material name, instead of by the number of filament rolls in the inventory.
-  - [ ] Color of the black swatches in the filament cards is approximately `#2c3e50` instead of `#000000`.
-  - [ ] ** Enhancement: ** Center the filament cards and the totals cards on the page instead of having them flush to the left.
-  - [ ] Missing filters for `subtype` on the table. This can be added just above the table on the left side. Add filters for material and color family here as well.
-  - [ ] In the table, change the word `family` to `color family` in the column headers.
-  - [ ] On the used filters (`7d`, `30d`, `1y`), the selected filter is shown by removing the border of the button. This is hard to see. Leave the border on and instead invert the colors of the font and background of the button.
-  - [ ] Some colors, such as `TPU 95A HF` show the color written Black, but the color swatch is White. This could be due to the color hex not being written in the individual DB entries. Investigate and fix.
+- [x] On view (`FilamentSummaryView`):
+  - [x] Material cards at the top of the page are sorted alphabetically by material name, instead of by the number of filament rolls in the inventory.
+  - [x] Color of the black swatches in the filament cards is approximately `#2c3e50` instead of `#000000`.
+  - [x] ** Enhancement: ** Center the filament cards and the totals cards on the page instead of having them flush to the left.
+  - [x] Missing filters for `subtype` on the table. This can be added just above the table on the left side. Add filters for material and color family here as well.
+  - [x] In the table, change the word `family` to `color family` in the column headers.
+  - [x] On the used filters (`7d`, `30d`, `1y`), the selected filter is shown by removing the border of the button. This is hard to see. Leave the border on and instead invert the colors of the font and background of the button.
+  - [x] Some colors, such as `TPU 95A HF` show the color written Black, but the color swatch is White. This could be due to the color hex not being written in the individual DB entries. Investigate and fix.
 ---
 
 ## Phase 4 — Features & Enhancements

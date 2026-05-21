@@ -63,7 +63,7 @@ COLOR_FAMILY_HEX = {
     "PURPLE": "#8e44ad",
     "PINK": "#fd79a8",
     "BROWN": "#8B4513",
-    "BLACK": "#2c3e50",
+    "BLACK": "#000000",
     "GRAY": "#95a5a6",
     "WHITE": "#ecf0f1",
     "TRANSLUCENT": "#dfe6e9",
@@ -705,7 +705,7 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
                     "material_type": row["material__material_type"] or "",
                     "color": row["color"] or "",
                     "color_family": row["color_family"] or "",
-                    "hex_code": row["hex_code"] or "",
+                    "hex_code": row["hex_code"] or COLOR_FAMILY_HEX.get(row["color_family"] or "", ""),
                     "on_hand": on_hand,
                     "used_7d": dep.get("depleted_7", 0),
                     "used_30d": dep.get("depleted_30", 0),
@@ -736,7 +736,7 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
                 )
 
         cards = []
-        for mat_name in sorted(cards_dict):
+        for mat_name in sorted(cards_dict, key=lambda m: (-cards_dict[m]["total_on_hand"], m)):
             data = cards_dict[mat_name]
             all_swatches = sorted(
                 [
