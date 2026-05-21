@@ -37,3 +37,4 @@ scripts/check-migrations.sh
 # Optional: logs
 *.log
 .superpowers/
+.claude/
