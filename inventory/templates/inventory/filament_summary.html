@@ -4,7 +4,7 @@
 <div class="container-fluid py-3">
 
   <!-- Header stats -->
-  <div class="d-flex gap-3 flex-wrap mb-4">
+  <div class="d-flex gap-3 flex-wrap mb-4 justify-content-center">
     <div class="card text-center px-4 py-2">
       <div class="fw-bold fs-3">{{ grand_total_rolls }}</div>
       <div class="text-muted small">Total Rolls</div>
@@ -20,7 +20,7 @@
   </div>
 
   <!-- Material card grid -->
-  <div class="d-flex flex-wrap gap-3 mb-4" id="material-cards">
+  <div class="d-flex flex-wrap gap-3 mb-4 justify-content-center" id="material-cards">
     {% for card in cards %}
     <div class="card filament-card"
          style="min-width:145px; max-width:200px; cursor:pointer"
@@ -62,11 +62,11 @@
   <div class="d-flex align-items-center gap-2 flex-wrap mb-2" id="filter-bar">
     <div id="active-filter-chips"></div>
     <div class="btn-group btn-group-sm ms-auto" role="group" aria-label="Usage period">
-      <button type="button" class="btn btn-outline-secondary period-btn active"
+      <button type="button" class="btn btn-outline-primary period-btn active"
               data-period="7d" onclick="setPeriod(this)">7d</button>
-      <button type="button" class="btn btn-outline-secondary period-btn"
+      <button type="button" class="btn btn-outline-primary period-btn"
               data-period="30d" onclick="setPeriod(this)">30d</button>
-      <button type="button" class="btn btn-outline-secondary period-btn"
+      <button type="button" class="btn btn-outline-primary period-btn"
               data-period="1y" onclick="setPeriod(this)">1y</button>
     </div>
     <span class="text-muted small ms-2" id="row-count-label"></span>
@@ -79,7 +79,7 @@
         <th>Material</th>
         <th>Subtype</th>
         <th>Color</th>
-        <th>Family</th>
+        <th>Color Family</th>
         <th>On Hand</th>
         <th>Used (<span id="period-label">7d</span>)</th>
         <th>Est. Weight (kg)</th>
