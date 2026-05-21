@@ -229,6 +229,23 @@ Code quality and architecture improvements across all layers.
 - Fixed `base.html`: moved `{% block extra_scripts %}` after all JS library `<script>` tags; removed duplicate DataTables CSS.
 - Created `requirements-dev.txt` (pre-commit, django-debug-toolbar); removed them + setuptools from `requirements.txt`; pinned python-barcode, brother_ql, python-decouple to minimum versions.
 
+### Phase 3 continued — filament summary fixes (May 2026, PRs #92, #95)
+
+- Added `material_type` field to `Material` (migrations 0021/0022 with data migration).
+- Added `MaterialAdmin` bulk-edit for `material_type`; fixed `list_display_links`.
+- Added `FilamentSummaryView` at `/filament-summary/` — material cards, DataTables, JS filtering, period toggle.
+- PR #95 post-ship fixes: card sort by roll count; BLACK hex `#000000`; hex fallback from family; centering; "Color Family" header; period toggle contrast; material/subtype/color-family filter dropdowns with bidirectional sync and chips.
+
+### Roadmap (as of May 2026)
+
+Phases 4–8 and a Code Audit track are documented in `todo.md`. Summary:
+- **Code Audit** (any session, ~45 min review): packages, Django version gap, template quality, docstrings, naming.
+- **Phase 4**: Tests foundation, MAC discovery removal, #38 spool boolean, #47 barcode tuning.
+- **Phase 5**: Filament Selection Guide Stage 1 — model fields + reference table. Spec: `docs/superpowers/specs/2026-05-21-filament-guide-design.md`.
+- **Phase 6**: Barcode & location system (#48, #49) + camera scanning.
+- **Phase 7**: Filament Selection Guide Stage 2 — requirements picker (depends on Phase 5 data loading).
+- **Phase 8**: Data visualizations (spool weight; usage over time needs `ConsumptionEvent` design first).
+
 ## Environment notes
 
 - Django is **not** installed in this Claude Code LXC. `python3 manage.py check`
