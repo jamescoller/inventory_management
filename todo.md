@@ -121,74 +121,116 @@ Safe to delete without any user-visible impact.
   - [x] Some colors, such as `TPU 95A HF` show the color written Black, but the color swatch is White. This could be due to the color hex not being written in the individual DB entries. Investigate and fix.
 ---
 
-## Phase 4 — Features & Enhancements
+## Phase 4 — Quick Wins & Test Foundation
 
-### Open GitHub Issues
+Small, self-contained items plus the test coverage carryover from Phase 3. Ship as a single PR.
 
-- [ ] **#47 — Improve Item ID barcode rendering** — INV-XXX barcodes are hard for scanners to read. Investigate `module_width_mm` tuning in `barcode_utils.py`; compare rendered output against a known-good P-touch label. May need to adjust quiet zone or bar height ratio.
-- [ ] **#48 — Location barcodes (LOC-XXX)** — Add `barcode` field or auto-generated `LOC-{id}` code to the `Location` model; extend `PrintBarcodeView` to handle location objects; add a print button to the location admin/detail page.
-- [ ] **#49 — Location-based views** — `Location` already has `default_status` and `is_printer`. Build views to: list all items at a location, and edit an item's location from that view. Natural companion to #48.
+### Carryover from Phase 3
+
+- [ ] Add `tests.py` basics — at minimum one round-trip per view and one `save()` per model. *(Moved from Phase 3; must be done before Phase 5+ features to establish a safety net.)*
+
+### Cleanup
+
+- [ ] Remove barcode printer MAC discovery from `barcode_utils.py`; use only the static IP `10.10.40.2`.
+
+### Small Features
+
 - [ ] **#38 — Show spool boolean in inventory editor** — `Filament.has_spool` exists on the model; add it to `InventoryEditForm.Meta.fields` and the edit template.
-- [ ] **#34 — Import order/invoice history** — Fix and relocate `import_products.py` to `management/commands/`. Add `add_arguments` for file path. Consider replacing pandas with openpyxl (already a dependency) to drop the heavy dep.
-- [ ] **#33 — Excel export broken** — Fix `InventoryExportView`. *(Also listed in Phase 1)*
-- [ ] **#65 — View 3MF files in the web portal** — Use `three.js` + `Online3DViewer` (https://github.com/kovacsv/Online3DViewer). Significant work; consider as a standalone feature branch.
-
-### Cleanup & Refactoring
-
-- [ ] Remove searching for the barcode printer by MAC address; simply use the static IP address (`10.10.40.2`).
-
-### New Capabilities
-
-- [x] **Bulk inventory editor** — Added checkbox selection to the Search Inventory page with a sticky action bar to apply status, location, and/or shipment changes to multiple items at once. Uses `POST /bulk-update/` (`BulkUpdateView`), a JS `Set` as selection source of truth (survives DataTables page changes), and iterates with `item.save()` to preserve all side-effects (`mark_depleted`, `mark_sold`, location-driven status). Pagination options of 25/50/100/All. Filter params round-trip through redirect.
-
-- [ ] **Phone camera barcode scanning** — Two approaches:
-  - *Browser-based (recommended, no app needed):* Integrate `@zxing/browser` JS library; wire a camera-capture modal to the existing search/inventory flow via HTMX. Works on any phone browser.
-  - *Native:* Chrome/Edge Android has a built-in `BarcodeDetector` API (no library) but Safari doesn't support it.
-  - Pairs with #48 (location barcodes) — scan a LOC-XXX to pull up a location page, scan an INV-XXX to pull up an item.
-
-- [ ] **BambuLab API integration** — Connect to printers on the local LAN via MQTT (same protocol the HACS `bambu_lab` integration uses). Key data to pull:
-  - Current print job and progress
-  - AMS slot assignments (which filament spool is loaded in which slot)
-  - Temperatures and status
-  - *Highest-value automation:* on print completion, auto-update which spool is in which AMS slot and optionally decrement estimated remaining weight.
-  - Reference: HACS bambu_lab integration source for the MQTT topic structure.
-
-- [ ] **Filament Selection Guide** – Add an interactive guide in the web portal to help users select the right filament for their needs. Key information:
-  - UV Resistance
-  - Printability
-  - Drying Time / Need
-  - Colors Available
-  - Structural Need
-  - Flexibility / Ductility (Thinking about TPU vs others)
-
-- [ ] **Bambu Store Integration** — Add a link to the Bambu Store to entries for quick re-ordering. (`us.store.bambulab.com`)
-  - Use search by SKU to find the item in the store.
-  - Load current prices into the web portal.
-  - Create ability to alert for sales and low stock levels using HA.
-  - Allow metadata updates for products, such as price, color hex code, drying times and temperatures, etc.
-
-- [ ] **HA Integraton** — Integrate DB visualization in a HA dashboard using Grafana.
-
-- [x] **Improved data visualizations** — Dashboard now has 3 charts (product type, filament by material, filament by color family with real hex colors); low-stock alert table with urgency tiers (Out of Stock / Running Low / Low Stock) cross-referenced against 30-day depletion history; new `/filament-color-guide/` page showing all on-hand filament spools grouped by color family, printable as PDF.
-  - [ ] Filament usage over time (requires logging consumption events)
-  - [ ] Spool weight distribution (how much of each color/material is on hand by weight)
-  - [ ] Printer utilization (requires BambuLab integration)
-
-- [x] **Filament summary view** — Added `material_type` field to `Material` model (migrations 0021/0022); data migration splits compound names (e.g. "ABS+ (Matte)" → name "ABS+", type "Matte"); `MaterialAdmin` updated with `list_editable` for `material_type` and correct `list_display_links`; new `/filament-summary/` view (`FilamentSummaryView`) aggregates inventory into per-material cards showing roll counts by time period (all-time / 90-day / 30-day) and top colors; nav link added; filament_summary.html uses DataTables + JS period toggle for interactive filtering.
-
-- [ ] **Status-based location assignment** ✅ *(Already implemented in `InventoryItem.save()` via `Location.default_status` — the original todo item is done)*
-
-### Reusable App Extraction (longer term)
-
-- [ ] **Extract `barcode_utils.py` as a standalone `brother_ql_utils` package** — zero Django coupling, clean public API, useful beyond this project.
-- [ ] **Extract polymorphic inventory core** (`Product`, `InventoryItem`, `Location`, `Material`, status-by-location) into a reusable `polymorphic_inventory` app once filament-specific logic is isolated in subclasses.
+- [ ] **#47 — Improve Item ID barcode rendering** — INV-XXX barcodes are hard for scanners to read. Investigate `module_width_mm` tuning in `barcode_utils.py`; compare rendered output against a known-good P-touch label. May need to adjust quiet zone or bar height ratio.
 
 ---
 
-## Aspirational / Backlog
+## Phase 5 — Filament Selection Guide (Stage 1: Data Foundation)
 
-- [ ] Sphinx docs + GitHub Pages deployment *(original todo item — low priority)*
-- [ ] Per-user inventory scoping — `user` FK was deliberately removed in migration 0013; fine for single-household use but worth revisiting if multi-user support is wanted.
-- [ ] Replace SQLite with PostgreSQL if concurrent write performance becomes a concern.
-- [ ] `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` driven by env vars instead of hardcoded.
-- [ ] HTTPS + `SECURE_*` Django settings if the app is ever exposed outside the LAN.
+Spec: `docs/superpowers/specs/2026-05-21-filament-guide-design.md`
+
+Delivers the reference table immediately (useful for James). Lays the data foundation that Stage 2 (Phase 7) and the Haiku data-loading task depend on.
+
+### Model
+
+- [ ] Add 13 fields to `Material`: `uv_resistant`, `flexible`, `high_strength`, `heat_resistant`, `food_safe`, `easy_to_print`, `budget_friendly`, `impact_resistant`, `requires_enclosure`, `requires_drying`, `drying_temp_c`, `drying_time_hours`, `description`.
+- [ ] Generate and include migration `0023_material_guide_fields`.
+
+### Admin
+
+- [ ] Add `Guide Properties` fieldset to `MaterialAdmin` grouping all new fields.
+
+### View + Template
+
+- [ ] Add `FilamentGuideView` (GET, `LoginRequiredMixin`) at `/filament-guide/`.
+- [ ] Template: reference table via DataTables. Boolean columns render ✓ / —. `requires_enclosure` and `requires_drying` use warning colour on ✓. Include placeholder comment for Stage 2 picker.
+- [ ] Add nav link to `navigation.html`.
+
+### Data loading (post-deploy, separate task)
+
+- [ ] After Stage 1 is deployed to the app host, dispatch Haiku agents with James's filament documentation to populate the new fields for all existing `Material` rows via Django shell. *(Not part of the implementation PR — runs after deploy.)*
+
+---
+
+## Phase 6 — Barcode & Location System
+
+These three items share the same infrastructure and ship together. Camera scanning depends on good barcodes existing first.
+
+- [ ] **#48 — Location barcodes (LOC-XXX)** — Add auto-generated `LOC-{id}` code to the `Location` model; extend `PrintBarcodeView` to handle location objects; add a print button to the location admin/detail page.
+- [ ] **#49 — Location-based views** — `Location` already has `default_status` and `is_printer`. Build views to list all items at a location and edit an item's location from that view.
+- [ ] **Phone camera barcode scanning** — Integrate `@zxing/browser` JS library; wire a camera-capture modal to the existing search/inventory flow via HTMX. Works on any phone browser without a native app. Scan LOC-XXX → location page; scan INV-XXX → item page.
+
+---
+
+## Phase 7 — Filament Selection Guide (Stage 2: Requirements Picker)
+
+Spec: `docs/superpowers/specs/2026-05-21-filament-guide-design.md`
+
+*Depends on Phase 5 data loading being complete.*
+
+- [ ] Add requirements picker above the reference table on `/filament-guide/`: 8 checkboxes with Bootstrap tooltips, no page reload.
+- [ ] Embed all `Material` guide data as a `json_script` block (same XSS-safe pattern as dashboard charts).
+- [ ] JS scoring: count satisfied requirements per material. Perfect matches (score = 1.0) highlighted with star badge at top. Partial matches (≥ 0.5) ranked below with per-requirement met/unmet chips (✓ green / ✗ muted). Poor matches (< 0.5) hidden behind a "Show all" toggle.
+- [ ] Warning badges on result cards: `requires_enclosure` (red), `requires_drying` with temp/time (amber).
+
+---
+
+## Phase 8 — Data Visualizations
+
+*Spool weight distribution is self-contained. Filament usage over time requires a new consumption event log — design that data model before starting.*
+
+- [ ] **Spool weight distribution** — chart showing how much filament (by weight) is on hand per color/material. Data is already available via `Filament.weight` × `on_hand` count.
+- [ ] **Filament usage over time** — requires adding a `ConsumptionEvent` log (recorded when an item is marked depleted). Design the model before implementing the chart.
+
+---
+
+## Completed Features
+
+- [x] **Bulk inventory editor** — Checkbox selection on Search Inventory page; sticky action bar for bulk status/location/shipment changes. `POST /bulk-update/` (`BulkUpdateView`). JS `Set` as selection source of truth (survives DataTables pagination). Iterates `item.save()` to preserve all side-effects.
+- [x] **Filament summary view** — `/filament-summary/` (`FilamentSummaryView`). Material cards sorted by roll count; DataTables with material/subtype/color-family filter dropdowns; period toggle (7d/30d/1y) for usage; `material_type` field on `Material` (migrations 0021/0022).
+- [x] **Improved data visualizations** — Dashboard: 3 charts + low-stock alert table with urgency tiers. `/filament-color-guide/` page grouped by color family, printable as PDF.
+- [x] **Status-based location assignment** — Implemented in `InventoryItem.save()` via `Location.default_status`.
+
+---
+
+## Backlog
+
+Items with real value but no current phase slot. Revisit during sprint planning.
+
+- [ ] **#33 — Excel export** — Fix `InventoryExportView`. Low priority; not regularly used.
+- [ ] **#34 — Import order/invoice history** — Relocate to `management/commands/`; replace pandas with openpyxl. Only worth doing if invoice imports are a regular workflow.
+- [ ] **#65 — View 3MF files in web portal** — `three.js` + `Online3DViewer`. Significant JS bundle for a household app; revisit if 3MF browsing becomes a real workflow need.
+- [ ] **BambuLab MQTT integration** — Connect to printers on local LAN (same protocol as HACS `bambu_lab`). Pull AMS slot assignments, print progress, temperatures. Auto-update spool tracking on print completion. High value but changes app from manual to event-driven — requires dedicated design session before any implementation.
+- [ ] **HA/Grafana dashboard** — Expose DB visualizations in a Home Assistant dashboard via Grafana. Mostly infrastructure/configuration work. Revisit after BambuLab integration.
+- [ ] **Bambu Store quick-link** — Add a "View in Bambu Store" link on filament product pages using the SKU. Trivial to add; the price scraping / HA alert scope from the original idea is backlog.
+- [ ] **Printer utilization chart** — Blocked on BambuLab integration.
+- [ ] **`ALLOWED_HOSTS` / `CSRF_TRUSTED_ORIGINS` from env vars** — Low urgency; only matters if the app gains a new deployment URL.
+- [ ] **HTTPS + `SECURE_*` settings** — Only needed if the app is ever exposed outside the LAN.
+
+---
+
+## Trashed
+
+Ideas that were evaluated and set aside. Kept here for context so they don't get re-proposed.
+
+- **Reusable app extraction** (`barcode_utils` package, `polymorphic_inventory` app) — Premature abstraction for a single-developer household app. No other projects consuming these; the extraction cost outweighs any benefit at current scale.
+- **Polar/radar charts for filament guide** — Visually impressive (Bambu Lab uses them) but adds cognitive overhead without improving decisions. Per-requirement badge chips are more scannable for this use case.
+- **Sphinx docs + GitHub Pages** — No audience; the codebase is self-explanatory for a solo project.
+- **SQLite → PostgreSQL migration** — No concurrent write pressure currently. Revisit only if write contention becomes measurable.
+- **Per-user inventory scoping** — `user` FK deliberately removed in migration 0013. Fine for single-household use; only revisit if multi-user support is explicitly needed.
+- **Bambu Store price scraping + HA sale alerts** — Bambu has no public store API; scraping is fragile by nature. The quick-link (backlog) is the right scope.
