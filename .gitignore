@@ -31,9 +31,6 @@ staticfiles/
 inventory_management_site/staticfiles/
 static_root/
 
-# Development only files
-scripts/check-migrations.sh
-
 # Optional: logs
 *.log
 .superpowers/

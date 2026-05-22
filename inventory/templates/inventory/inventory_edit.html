@@ -1,4 +1,4 @@
-{% extends 'inventory/base.html' %}
+{% extends "inventory/base.html" %}
 {% block content %}
 	<div class="container py-4">
 		<div class="d-flex justify-content-between align-items-center mb-4">
@@ -50,6 +50,17 @@
 
 							<dt class="col-sm-4">Serial Number</dt>
 							<dd class="col-sm-8">{{ item.serial_number }}</dd>
+
+							{% if is_filament %}
+								<dt class="col-sm-4">Has Spool</dt>
+								<dd class="col-sm-8">
+									{% if product.has_spool %}
+										<span class="badge bg-success">Yes</span>
+									{% else %}
+										<span class="badge bg-secondary">No (refill)</span>
+									{% endif %}
+								</dd>
+							{% endif %}
 						</dl>
 					</div>
 				</div>
@@ -111,4 +122,4 @@
 	</div>
 
 	<!-- Add Bootstrap Icons CSS in your base template if not already present -->
-{% endblock %}
+{% endblock content %}

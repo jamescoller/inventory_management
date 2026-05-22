@@ -1,4 +1,4 @@
-{% extends 'inventory/base.html' %}
+{% extends "inventory/base.html" %}
 {% block content %}
 <div class="container py-4">
   <h2>{{ form_title }}</h2>
@@ -9,8 +9,8 @@
     {% if request.GET.from_inventory %}
       <a href="{% url 'add_inventory' %}" class="btn btn-secondary">Cancel</a>
     {% else %}
-      <a href="{% url 'product_list' %}" class="btn btn-secondary">Back to Product List</a>
+      <a href="{% url 'dashboard' %}" class="btn btn-secondary">Cancel</a>
     {% endif %}
   </form>
 </div>
-{% endblock %}
+{% endblock content %}

@@ -10,14 +10,14 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
-from django.db.models import Count, F, Max, Q, Sum
+from django.db.models import Count, Max, Q, Sum
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, redirect
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.utils.html import escape
-from django.utils.timezone import localtime, now as timezone_now
+from django.utils.timezone import localtime
+from django.utils.timezone import now as timezone_now
 from django.views.generic import CreateView, TemplateView, UpdateView, View
 
 from .barcode_utils import generate_and_print_barcode
@@ -69,8 +69,18 @@ COLOR_FAMILY_HEX = {
 }
 
 FAMILY_ORDER = [
-    "RED", "ORANGE", "YELLOW", "GREEN", "BLUE", "PURPLE",
-    "PINK", "BROWN", "BLACK", "GRAY", "WHITE", "TRANSLUCENT",
+    "RED",
+    "ORANGE",
+    "YELLOW",
+    "GREEN",
+    "BLUE",
+    "PURPLE",
+    "PINK",
+    "BROWN",
+    "BLACK",
+    "GRAY",
+    "WHITE",
+    "TRANSLUCENT",
 ]
 
 # ---- Barcode Writer Helpers --------
@@ -204,10 +214,16 @@ class InventoryEditView(LoginRequiredMixin, UpdateView):
             InventoryItem.objects.select_related("product"), id=item_id
         )
         form = InventoryEditForm(instance=item)
+        product = item.product.get_real_instance()
         return render(
             request,
             "inventory/inventory_edit.html",
-            {"form": form, "item": item, "product": item.product},
+            {
+                "form": form,
+                "item": item,
+                "product": product,
+                "is_filament": isinstance(product, Filament),
+            },
         )
 
     def post(self, request, item_id):
@@ -235,8 +251,14 @@ class InventoryEditView(LoginRequiredMixin, UpdateView):
             return redirect("inventory_edit", item_id=item_id)
 
         # Handle the regular form submission
-        old_location = item.location
         form = InventoryEditForm(request.POST, instance=item)  # Bind form with instance
+        product = item.product.get_real_instance()
+        base_ctx = {
+            "form": form,
+            "item": item,
+            "product": product,
+            "is_filament": isinstance(product, Filament),
+        }
 
         if form.is_valid():
             new_location = form.cleaned_data["location"]
@@ -247,20 +269,14 @@ class InventoryEditView(LoginRequiredMixin, UpdateView):
 
                 if level == "error":
                     form.add_error("location", message)
-                    return render(
-                        request,
-                        "inventory/inventory_edit.html",
-                        {"form": form, "item": item, "product": item.product},
-                    )
+                    return render(request, "inventory/inventory_edit.html", base_ctx)
 
                 if needs_ack and not request.POST.get("acknowledged"):
                     return render(
                         request,
                         "inventory/inventory_edit.html",
                         {
-                            "form": form,
-                            "item": item,
-                            "product": item.product,
+                            **base_ctx,
                             "warning_level": level,
                             "warning_message": message,
                             "requires_ack": True,
@@ -277,11 +293,7 @@ class InventoryEditView(LoginRequiredMixin, UpdateView):
             return redirect("inventory_search")
         else:
             # Form is not valid, render the page with errors
-            return render(
-                request,
-                "inventory/inventory_edit.html",
-                {"form": form, "item": item, "product": item.product},
-            )
+            return render(request, "inventory/inventory_edit.html", base_ctx)
 
 
 class AddInventoryView(LoginRequiredMixin, CreateView):
@@ -333,7 +345,7 @@ class AddInventoryView(LoginRequiredMixin, CreateView):
             }
             messages.warning(
                 request,
-                f"No product found with that UPC or SKU. Please add the product before continuing.",
+                "No product found with that UPC or SKU. Please add the product before continuing.",
             )
             return redirect("add_product_choice")  # This is a new view we’ll create
             # messages.error(request, f"No product found with UPC: {upc}")
@@ -407,7 +419,9 @@ class BulkUpdateView(LoginRequiredMixin, View):
 
         MAX_BULK = 200
         if len(item_ids) > MAX_BULK:
-            messages.error(request, f"Cannot update more than {MAX_BULK} items at once.")
+            messages.error(
+                request, f"Cannot update more than {MAX_BULK} items at once."
+            )
             return self._redirect_back(request)
 
         new_status_raw = request.POST.get("bulk_status", "").strip()
@@ -422,7 +436,7 @@ class BulkUpdateView(LoginRequiredMixin, View):
         if new_status_raw:
             try:
                 val = int(new_status_raw)
-                InventoryItem.Status(val)   # raises ValueError if not a valid choice
+                InventoryItem.Status(val)  # raises ValueError if not a valid choice
                 new_status = val
             except ValueError:
                 messages.error(request, "Invalid status value.")
@@ -447,7 +461,10 @@ class BulkUpdateView(LoginRequiredMixin, View):
                 if new_status is not None:
                     item.status = new_status
                     item._skip_status_from_location = True
-                    if new_status in (InventoryItem.Status.DEPLETED, InventoryItem.Status.SOLD):
+                    if new_status in (
+                        InventoryItem.Status.DEPLETED,
+                        InventoryItem.Status.SOLD,
+                    ):
                         status_clears_location = True
                 if new_location is not None and not status_clears_location:
                     item.location = new_location
@@ -460,8 +477,18 @@ class BulkUpdateView(LoginRequiredMixin, View):
         return self._redirect_back(request)
 
     def _redirect_back(self, request):
-        filter_keys = ("sku", "upc", "name", "status", "location", "serial_number", "item_id")
-        params = {k: request.POST.get(k, "") for k in filter_keys if request.POST.get(k, "")}
+        filter_keys = (
+            "sku",
+            "upc",
+            "name",
+            "status",
+            "location",
+            "serial_number",
+            "item_id",
+        )
+        params = {
+            k: request.POST.get(k, "") for k in filter_keys if request.POST.get(k, "")
+        }
         url = reverse("inventory_search")
         if params:
             url += "?" + urlencode(params)
@@ -564,7 +591,13 @@ def _build_low_stock_alerts():
 
         alerts.append(row)
 
-    alerts.sort(key=lambda r: (urgency_rank[r["urgency"]], r["active_count"], r["product__name"]))
+    alerts.sort(
+        key=lambda r: (
+            urgency_rank[r["urgency"]],
+            r["active_count"],
+            r["product__name"],
+        )
+    )
     return alerts
 
 
@@ -614,19 +647,22 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
 
         # Active inventory grouped by (material, subtype, color, family)
         active_qs = list(
-            Filament.objects.filter(material__isnull=False).values(
+            Filament.objects.filter(material__isnull=False)
+            .values(
                 "material__name",
                 "material__material_type",
                 "color",
                 "color_family",
-            ).annotate(
+            )
+            .annotate(
                 on_hand=Count(
                     "inventory_items",
                     filter=Q(inventory_items__status__in=_ACTIVE_STATUSES),
                 ),
                 hex_code=Max("hex_code"),
                 weight=Max("weight"),
-            ).filter(on_hand__gt=0)
+            )
+            .filter(on_hand__gt=0)
         )
 
         # Depleted counts for all three windows in one query
@@ -637,12 +673,14 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
                 row["color"],
                 row["color_family"],
             ): row
-            for row in Filament.objects.filter(material__isnull=False).values(
+            for row in Filament.objects.filter(material__isnull=False)
+            .values(
                 "material__name",
                 "material__material_type",
                 "color",
                 "color_family",
-            ).annotate(
+            )
+            .annotate(
                 depleted_7=Count(
                     "inventory_items",
                     filter=Q(
@@ -664,9 +702,8 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
                         inventory_items__date_depleted__gte=cutoff_365,
                     ),
                 ),
-            ).filter(
-                Q(depleted_7__gt=0) | Q(depleted_30__gt=0) | Q(depleted_365__gt=0)
             )
+            .filter(Q(depleted_7__gt=0) | Q(depleted_30__gt=0) | Q(depleted_365__gt=0))
         }
 
         # Build table rows
@@ -688,7 +725,8 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
                     "material_type": row["material__material_type"] or "",
                     "color": row["color"] or "",
                     "color_family": row["color_family"] or "",
-                    "hex_code": row["hex_code"] or COLOR_FAMILY_HEX.get(row["color_family"] or "", ""),
+                    "hex_code": row["hex_code"]
+                    or COLOR_FAMILY_HEX.get(row["color_family"] or "", ""),
                     "on_hand": on_hand,
                     "used_7d": dep.get("depleted_7", 0),
                     "used_30d": dep.get("depleted_30", 0),
@@ -719,7 +757,9 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
                 )
 
         cards = []
-        for mat_name in sorted(cards_dict, key=lambda m: (-cards_dict[m]["total_on_hand"], m)):
+        for mat_name in sorted(
+            cards_dict, key=lambda m: (-cards_dict[m]["total_on_hand"], m)
+        ):
             data = cards_dict[mat_name]
             all_swatches = sorted(
                 [
@@ -763,10 +803,9 @@ class Dashboard(LoginRequiredMixin, View):
             .order_by("-count")
         ]
 
-        total_value = (
-            InventoryItem.objects.aggregate(total=Sum("product__price"))["total"]
-            or Decimal("0.00")
-        )
+        total_value = InventoryItem.objects.aggregate(total=Sum("product__price"))[
+            "total"
+        ] or Decimal("0.00")
 
         materials = (
             Filament.objects.values("material__name")
@@ -786,7 +825,10 @@ class Dashboard(LoginRequiredMixin, View):
         color_chart_data = {
             "labels": [row["color_family"] or "Unknown" for row in colors],
             "data": [row["count"] for row in colors],
-            "colors": [COLOR_FAMILY_HEX.get(row["color_family"] or "", "#cccccc") for row in colors],
+            "colors": [
+                COLOR_FAMILY_HEX.get(row["color_family"] or "", "#cccccc")
+                for row in colors
+            ],
         }
 
         inventory_by_sku = [
@@ -962,16 +1004,9 @@ class InUseOverviewView(LoginRequiredMixin, TemplateView):
         in_use_items = InventoryItem.objects.filter(
             status=InventoryItem.Status.IN_USE
         ).select_related("location", "product")
-        drying_items = InventoryItem.objects.filter(
-            status=InventoryItem.Status.DRYING
-        ).select_related("location", "product")
-        stored_items = InventoryItem.objects.filter(
-            status=InventoryItem.Status.STORED
-        ).select_related("location", "product")
 
         grouped_by_location = {}
         for item in in_use_items:
-            # TODO Add in additional views for | drying_items | stored_items
             loc = item.location.name if item.location else "Unassigned"
             item.product_type = str(
                 item.product.polymorphic_ctype.model
@@ -979,7 +1014,9 @@ class InUseOverviewView(LoginRequiredMixin, TemplateView):
 
             tooltip_lines = []
             if item.serial_number:
-                tooltip_lines.append(f"<strong>Serial:</strong> {escape(item.serial_number)}")
+                tooltip_lines.append(
+                    f"<strong>Serial:</strong> {escape(item.serial_number)}"
+                )
 
             if (
                 item.product_type == "filament"
@@ -1017,7 +1054,9 @@ class DryStorageOverviewView(LoginRequiredMixin, TemplateView):
 
             tooltip_lines = []
             if item.serial_number:
-                tooltip_lines.append(f"<strong>Serial:</strong> {escape(item.serial_number)}")
+                tooltip_lines.append(
+                    f"<strong>Serial:</strong> {escape(item.serial_number)}"
+                )
 
             if (
                 item.product_type == "filament"
