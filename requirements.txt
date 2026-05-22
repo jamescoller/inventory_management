@@ -2,10 +2,7 @@ asgiref==3.9.1
 crispy-bootstrap5==2026.3
 Django>=6.0.5,<7.0
 django-crispy-forms==2.4
-django-filter==25.2
-django-htmx==1.27.0
 django-polymorphic==4.11.3
-django-extensions>=4.1
 et_xmlfile==2.0.0
 gunicorn==23.0.0
 openpyxl==3.1.5
@@ -15,8 +12,5 @@ python-dateutil==2.9.0.post0
 python-barcode>=0.15.1
 python-decouple>=3.8
 brother_ql>=0.9.4
-pytz==2025.2
-six==1.17.0
 sqlparse==0.5.5
-typing_extensions==4.15.0
 tzdata==2025.2
