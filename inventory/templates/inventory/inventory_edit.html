@@ -52,12 +52,12 @@
 							<dd class="col-sm-8">{{ item.serial_number }}</dd>
 
 							{% if is_filament %}
-								<dt class="col-sm-4">Has Spool</dt>
-								<dd class="col-sm-8">
+								<dt class="col-sm-4 mt-2">Has Spool</dt>
+								<dd class="col-sm-8 mt-2">
 									{% if product.has_spool %}
 										<span class="badge bg-success">Yes</span>
 									{% else %}
-										<span class="badge bg-secondary">No (refill)</span>
+										<span class="badge bg-warning text-dark">No (refill)</span>
 									{% endif %}
 								</dd>
 							{% endif %}
