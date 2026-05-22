@@ -105,13 +105,28 @@ the message should explain why this change exists.
 
 ## Validation before committing
 
-1. Run `python manage.py check` — catches Django configuration errors.
-2. For model changes, confirm a migration exists and is included.
-3. For template changes, verify the template renders (check for missing context
-   variables or broken block tags).
-4. If `requirements.txt` changes, verify the lock is consistent and the image
-   will still build.
-5. Before suggesting a PR, check `readme.md` and `todo.md` — update them if the
+Run from the local venv (`~/.venvs/inventory/bin/python` or after
+`source ~/.venvs/inventory/bin/activate`):
+
+1. `python manage.py check` — Django config, model integrity, import-time
+   `NameError`s (the kind that previously only surfaced in production).
+2. For model changes: `python manage.py makemigrations --dry-run --check` —
+   exits non-zero if a migration is missing. Then actually generate it with
+   `makemigrations` and include it in the PR.
+3. `pre-commit run --files <changed-files>` — runs black, ruff (with `--fix`),
+   djlint (templates), shellcheck (shell scripts), trailing-whitespace, and the
+   local migrations check. Avoid `--all-files` for normal commits; that's a
+   bulk-cleanup activity.
+4. For template changes also: visit the live app at `http://inventory.home` or
+   `http://10.10.20.17:8080` (reachable from this LXC) to confirm render.
+5. For requirements changes: `uv pip install -r requirements.txt -r requirements-dev.txt`
+   into `~/.venvs/inventory` to confirm the lock resolves, then verify the Docker
+   image will still build (the GitHub Actions runner on the app LXC rebuilds on
+   merge to master).
+6. For high-confidence verification against the running stack:
+   `ssh inventory-manager 'docker exec inventory_management-web-1 python manage.py check'`
+   (and `check --deploy` if touching settings/security).
+7. Before suggesting a PR, check `readme.md` and `todo.md` — update them if the
    change warrants it.
 
 ## Things to ask, not assume
@@ -156,8 +171,8 @@ phase, bugs come before enhancements. Before starting any phase:
    templates) — map each item to its exact location before writing a single edit.
 3. Fix in logical groups that minimise re-reading: model-layer changes first,
    then view-layer, then templates, then config.
-4. Syntax-validate every modified Python file with `ast.parse` (Django is not
-   installed in this LXC — `manage.py check` requires the full Docker environment).
+4. Validate every modified Python file with `~/.venvs/inventory/bin/python manage.py check`
+   (this catches import errors too, not just syntax — see Environment notes).
 5. Mark items `[x]` in `todo.md` as they are completed.
 6. Open one PR per phase unless a single item is a natural standalone fix.
 7. **When replacing wildcard imports (`from .x import *`) with explicit ones,**
@@ -248,10 +263,32 @@ Phases 4–8 and a Code Audit track are documented in `todo.md`. Summary:
 
 ## Environment notes
 
-- Django is **not** installed in this Claude Code LXC. `python3 manage.py check`
-  will fail. Use `python3 -c "import ast; ast.parse(open('file.py').read())"` for
-  syntax validation. Full checks require SSH + `docker exec` on the app LXC (`.17`).
-- The app's env file is `.env_inventory` at `$HOME` on the app LXC (see docker-compose.yml).
-- `ast.parse` only catches syntax errors, not runtime `NameError`s from missing
-  imports. After replacing wildcards with explicit imports, manually scan for names
-  the module uses but doesn't import directly.
+### Local dev environment on this LXC (Claude Code, `10.10.20.16`)
+
+Set up via PR (May 2026):
+
+- **Python 3.12** managed by [`uv`](https://docs.astral.sh/uv/) — installed at
+  `~/.local/share/uv/python/`. The Debian 12 system Python is 3.11, which is too
+  old for Django 6.x; `uv` keeps a 3.12 alongside it without touching system
+  packages.
+- **Project venv** at `~/.venvs/inventory` with `requirements.txt` +
+  `requirements-dev.txt` installed. Activate with
+  `source ~/.venvs/inventory/bin/activate` or call binaries directly via
+  `~/.venvs/inventory/bin/python`.
+- **Local `.env`** at the repo root (gitignored) holds a dev-only
+  `DJANGO_SECRET_KEY` and `DEBUG=True` so `manage.py check` boots without secrets.
+  This file is **separate** from the production env (`~/.env_inventory` on the
+  app LXC) — do not copy real secrets here.
+- **`pre-commit` hooks** are installed in the local `.git/hooks/`. The full hook
+  set: black, ruff (`--fix`), djlint-django, shellcheck, plus existing
+  trailing-whitespace / yaml / migrations checks. Config in
+  `.pre-commit-config.yaml`; ruff/djlint settings in `pyproject.toml`.
+- **SSH alias** `inventory-manager` reaches the app LXC (`10.10.20.17`) — use
+  for `docker exec` / `docker logs` against the running stack.
+
+If recreating the venv: `uv venv --python 3.12 ~/.venvs/inventory && uv pip install --python ~/.venvs/inventory/bin/python -r requirements.txt -r requirements-dev.txt`.
+
+### Production env
+
+The app's env file is `.env_inventory` at `$HOME` on the app LXC (see
+docker-compose.yml). Any new `config()` call needs a corresponding entry there.
