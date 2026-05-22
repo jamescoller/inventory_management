@@ -121,25 +121,18 @@ Safe to delete without any user-visible impact.
   - [x] Some colors, such as `TPU 95A HF` show the color written Black, but the color swatch is White. This could be due to the color hex not being written in the individual DB entries. Investigate and fix.
 ---
 
-## Code Audit (do at start of any session, before Phase 4)
+## Code Audit (completed 2026-05-21)
 
-*Review-only first; implementation is a separate PR. Estimated review time: ~45 minutes.*
+- [x] **Review complete.** Report: `docs/code-audit-2026-05-21.md`.
 
-The Python/Django layer is in good shape. The HTML/templates are the weakest area and the priority focus.
+Summary of where the audit landed:
 
-### Review checklist
+- **Backend Python:** healthy after Phases 1–3. Main targets are `FilamentSummaryView.get_context_data()` (split into helpers), `InventoryItem` custom QuerySet, `BaseProductForm` extraction, wiring `InventorySearchView` to `FilterView`.
+- **Templates:** the weakest area as expected — ~435 lines of inline JS across `filament_summary.html`, `inventory_search.html`, `dashboard.html`. Extract to `static/inventory/js/`. Plus accessibility quick wins (aria labels, decorative `aria-hidden`).
+- **Dependencies:** `pytz`, `six`, `typing_extensions` are pinned but unused — remove. `django-htmx` and `django-filter` are loaded but functionally unused — decide remove-vs-commit. Django 6.0 compatibility is clean (no deprecated APIs).
+- **Quick wins** (~30 min): dead-dep removal, one admin N+1, `{% block extra_head %}`, duplicate print CSS, ARIA labels.
 
-- [ ] **Package audit** — For each package in `requirements.txt`: is there a better/more maintained alternative? Any packages at risk of deprecation or Django 5.x incompatibility? (Key suspects: `django-polymorphic`, `brother_ql`, `python-barcode`.)
-- [ ] **Django version gap** — Current: Django 4.2 (LTS). Django 5.x is available. What's the migration cost, and are there features worth having?
-- [ ] **Template quality review** — HTML structure, CSS class hygiene, JS organisation, accessibility basics (alt text, label associations, ARIA where needed). James's weakest area by his own assessment.
-- [ ] **Docstrings** — Add one-line docstrings to all views, model methods, and utility functions that lack them. Skip getters/setters and anything self-evident from the name.
-- [ ] **Naming & declarations** — Identify any unclear variable names, inconsistent naming conventions (especially across templates and views), dead/commented-out code that survived cleanup.
-- [ ] **Readability pass** — Overly long functions that should be split; repeated patterns that deserve a helper; anything a reader would have to re-read twice.
-- [ ] **New platform features worth considering** — CSS Container Queries / `@layer` / `color-mix()` for template improvements; Django 5.x `GeneratedField`, `login_required` decorator improvements, async views; Bootstrap 5.3 features if not already used.
-
-### Output
-
-Produce a written report (committed to `docs/`) before writing any code. Group findings by severity: *must fix*, *should fix*, *nice to have*. Implementation PR(s) follow separately.
+Implementation PRs follow this audit — see Phase 4 for next steps.
 
 ---
 
