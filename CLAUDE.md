@@ -53,7 +53,7 @@ an automatic deploy to the live NAS instance.
 
 - `.env` file is **not** version-controlled (gitignored).
 - Key env vars: `DJANGO_SECRET_KEY`, `DEBUG`, `ENABLE_BARCODE_PRINTING`,
-  `PRINTER_MAC`, `PRINTER_IP`.
+  `PRINTER_IP`.
 - Never hardcode secrets. Use `python-decouple`'s `config()` — it reads from `.env`.
 
 ## Workflow

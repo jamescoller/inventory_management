@@ -56,7 +56,6 @@ Required variables:
 | `DEBUG` | `True` / `False` (use `False` in production) |
 | `ENABLE_BARCODE_PRINTING` | `True` / `False` — enables Brother QL printing |
 | `PRINTER_IP` | IP address of the label printer |
-| `PRINTER_MAC` | MAC address of the label printer |
 
 On the NAS the file lives at `$HOME/.env_inventory` and is referenced by `docker-compose.yml`.
 

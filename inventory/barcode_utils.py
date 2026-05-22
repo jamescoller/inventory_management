@@ -16,11 +16,10 @@ import os
 import warnings
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Optional, Tuple
 
-from PIL import Image, ImageDraw, ImageFont
 from barcode import Code128
 from barcode.writer import ImageWriter
+from PIL import Image, ImageDraw, ImageFont
 
 # Suppress long-lived brother_ql devicedependent deprecation noise.
 warnings.filterwarnings(
@@ -29,12 +28,11 @@ warnings.filterwarnings(
     message=".*brother_ql.devicedependent is deprecated.*",
 )
 
-from brother_ql.backends.network import BrotherQLBackendNetwork
-from brother_ql.conversion import convert
-from brother_ql.raster import BrotherQLRaster
-
-from django.conf import settings
-from django.http import HttpResponse
+from brother_ql.backends.network import BrotherQLBackendNetwork  # noqa: E402
+from brother_ql.conversion import convert  # noqa: E402
+from brother_ql.raster import BrotherQLRaster  # noqa: E402
+from django.conf import settings  # noqa: E402
+from django.http import HttpResponse  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +83,7 @@ class LabelProfile:
     side_margin_mm: float = 2.0
 
     @property
-    def canvas_size_px(self) -> Tuple[int, int]:
+    def canvas_size_px(self) -> tuple[int, int]:
         """
         Return (width_px, height_px) for the label.
 
@@ -105,8 +103,8 @@ class LabelProfile:
 
 
 def _profile_from_mm(
-    label_size_mm: Tuple[float, float],
-    dpi: Optional[int] = None,
+    label_size_mm: tuple[float, float],
+    dpi: int | None = None,
     barcode_area_ratio: float = 0.7,
     side_margin_mm: float = 2.0,
 ) -> LabelProfile:
@@ -148,7 +146,7 @@ def _render_code128(
     module_width_mm: float,
     module_height_px: int,
     dpi: int,
-    quiet_zone_mm: float = 2.0,
+    quiet_zone_mm: float = 3.0,
 ) -> Image.Image:
     """
     Render a Code128 barcode to a PIL.Image in mode '1' (1-bit).
@@ -186,8 +184,9 @@ def generate_barcode_to_fit(
     max_width_px: int,
     target_height_px: int,
     dpi: int,
-    initial_module_width_mm: float = 0.3,
-    min_module_width_mm: float = 0.1,
+    initial_module_width_mm: float = 0.4,
+    # 0.25mm is the GS1 Code 128 minimum X-dimension for handheld scanners.
+    min_module_width_mm: float = 0.25,
 ) -> Image.Image:
     """
     Generate a Code128 barcode that fits within max_width_px (no upscaling).
@@ -233,8 +232,8 @@ def generate_barcode_to_fit(
 
 def create_label_image(
     data: str,
-    text: Optional[str] = None,
-    profile: Optional[LabelProfile] = None,
+    text: str | None = None,
+    profile: LabelProfile | None = None,
 ) -> Image.Image:
     """
     Build a full label image (barcode + optional text) in mode '1'.
@@ -359,7 +358,7 @@ def _get_backend() -> BrotherQLBackendNetwork:
 
 def print_label_image(
     img: Image.Image,
-    label: Optional[str] = None,
+    label: str | None = None,
     rotate: str = "auto",
     threshold: float = 70.0,
     dither: bool = False,
@@ -401,8 +400,8 @@ def print_label_image(
 
 def generate_and_print_label(
     data: str,
-    text: Optional[str] = None,
-    profile: Optional[LabelProfile] = None,
+    text: str | None = None,
+    profile: LabelProfile | None = None,
     **print_kwargs,
 ) -> HttpResponse:
     """
@@ -429,7 +428,7 @@ def generate_and_print_label(
 # ---------------------------------------------------------------------------
 
 
-def _get_upc_for_item(item) -> Optional[str]:
+def _get_upc_for_item(item) -> str | None:
     """
     Extract the UPC (or equivalent) from an inventory item.
 
@@ -504,7 +503,7 @@ def _get_item_display_name(item) -> str:
 def generate_and_print_barcode(
     item,
     mode: str,
-    profile: Optional[LabelProfile] = None,
+    profile: LabelProfile | None = None,
     **print_kwargs,
 ) -> HttpResponse:
     """
@@ -545,13 +544,11 @@ def generate_and_print_barcode(
             logger.error("Cannot generate UPC barcode: Item has no product or UPC")
             raise ValueError("Cannot generate UPC barcode: Item has no product or UPC")
         data = item.product.upc
-        label_name = f"UPC-{data}"
     elif mode == "unique":
         if not hasattr(item, "id"):
             logger.error("Cannot generate unique barcode: Item has no ID")
             raise ValueError("Cannot generate unique barcode: Item has no ID")
         data = f"INV-{item.id}"
-        label_name = f"INV-{item.id}"
 
     mode_lower = (mode or "").lower()
     if profile is None:

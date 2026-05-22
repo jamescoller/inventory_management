@@ -142,16 +142,25 @@ Small, self-contained items plus the test coverage carryover from Phase 3. Ship 
 
 ### Carryover from Phase 3
 
-- [ ] Add `tests.py` basics — at minimum one round-trip per view and one `save()` per model. *(Moved from Phase 3; must be done before Phase 5+ features to establish a safety net.)*
+- [x] Add `tests.py` basics — round-trip GET per view + `save()` per model, plus targeted form/signup tests. Tests caught two latent bugs fixed in the same PR (see below).
 
 ### Cleanup
 
-- [ ] Remove barcode printer MAC discovery from `barcode_utils.py`; use only the static IP `10.10.40.2`.
+- [x] Remove barcode printer MAC discovery from `barcode_utils.py`; use only the static IP `10.10.40.2`. *(Already done in Phase 2 / commit `e8466f6`; confirmed no MAC / scapy references remain.)*
 
 ### Small Features
 
-- [ ] **#38 — Show spool boolean in inventory editor** — `Filament.has_spool` exists on the model; add it to `InventoryEditForm.Meta.fields` and the edit template.
-- [ ] **#47 — Improve Item ID barcode rendering** — INV-XXX barcodes are hard for scanners to read. Investigate `module_width_mm` tuning in `barcode_utils.py`; compare rendered output against a known-good P-touch label. May need to adjust quiet zone or bar height ratio.
+- [x] **#38 — Show spool boolean in inventory editor** — `has_spool` is shown as a read-only badge in the Product Details card of `inventory_edit.html` (only when product is a Filament). Added `get_real_instance()` so polymorphic subclass attributes are accessible in the template.
+- [x] **#47 — Improve Item ID barcode rendering** — Bumped `initial_module_width_mm` 0.3 → 0.4, `quiet_zone_mm` 2.0 → 3.0, and raised `min_module_width_mm` 0.1 → 0.25 (GS1 Code 128 floor for handheld scanners).
+
+### Bugs surfaced by the test foundation (fixed in same PR)
+
+- [x] **`add_product.html` referenced non-existent URL** `'product_list'` → `NoReverseMatch` on every add-product GET when not coming from inventory. Pointed back-button at `dashboard` instead.
+- [x] **Missing migration `0023_alter_material_options`** — Phase 3 added `ordering = ['name', 'material_type']` to `Material.Meta` without generating a migration. Generated now.
+
+### Known limitation (not addressed)
+
+- 3-digit hex codes (e.g. `#F00`) crash `Filament.get_color_family()` because the function slices `hex_code[0:2]`/`[2:4]`/`[4:6]` without expanding 3→6. Tests use 6-digit hex throughout. Worth a follow-up fix; out of scope for the Phase 4 PR.
 
 ---
 
