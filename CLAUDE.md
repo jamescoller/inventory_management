@@ -161,6 +161,16 @@ At the end of every session, review this CLAUDE.md. If anything learned during
 the session would help future sessions — new constraints, corrected assumptions,
 better approaches, validated patterns — update it before closing out.
 
+**Always commit and push before ending a session.** No uncommitted or unpushed
+work should remain on this LXC. Reason: a SessionStart hook prunes stale local
+branches whose upstream is `[gone]` (using `git branch -d`, which refuses
+unmerged commits — but only protects against accidents on *that* branch).
+Combined with the working tree being on a long-lived feature branch,
+uncommitted edits could be lost on a future `git checkout` or branch cleanup.
+If a piece of work isn't ready for a PR, at least commit it to its branch and
+push (`git push -u origin <branch>`) so the remote has a copy. If there's truly
+nothing worth committing, say so explicitly before ending.
+
 ## Working from todo.md
 
 `todo.md` is the canonical roadmap. Phases are ordered by priority; within a
