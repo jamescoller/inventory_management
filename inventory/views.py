@@ -4,7 +4,6 @@ from datetime import timedelta
 from decimal import Decimal
 from urllib.parse import urlencode
 
-import django_filters
 import openpyxl
 from django.conf import settings
 from django.contrib import messages
@@ -133,22 +132,6 @@ class AddProductChoiceView(LoginRequiredMixin, CreateView):
     def get(self, request):
         upc = request.session.get("pending_inventory", {}).get("upc", "")
         return render(request, "inventory/add_product_choice.html", {"upc": upc})
-
-
-class InventoryFilter(django_filters.FilterSet):
-    sku = django_filters.CharFilter(
-        field_name="product__sku", lookup_expr="exact", label="SKU"
-    )
-    upc = django_filters.CharFilter(
-        field_name="product__upc", lookup_expr="exact", label="UPC"
-    )
-    name = django_filters.CharFilter(
-        field_name="product__name", lookup_expr="icontains", label="Name"
-    )
-
-    class Meta:
-        model = InventoryItem
-        fields = ["sku", "upc", "name"]
 
 
 class InventorySearchView(LoginRequiredMixin, View):

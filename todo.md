@@ -132,7 +132,7 @@ Summary of where the audit landed:
 - **Dependencies:** `pytz`, `six`, `typing_extensions` are pinned but unused — remove. `django-htmx` and `django-filter` are loaded but functionally unused — decide remove-vs-commit. Django 6.0 compatibility is clean (no deprecated APIs).
 - **Quick wins** (~30 min): dead-dep removal, one admin N+1, `{% block extra_head %}`, duplicate print CSS, ARIA labels.
 
-Implementation PRs follow this audit — see Phase 4 for next steps.
+Quick wins completed 2026-05-22 (PR: chore/audit-quick-wins). See `docs/audit-quick-wins-2026-05-22.md` for full change log. Decisions made: `django-htmx` Python package removed (htmx CDN kept for Phase 6); `django-filter` removed (wiring FilterView deferred to medium-refactor phase). Implementation PRs follow — see Phase 4 for next steps.
 
 ---
 

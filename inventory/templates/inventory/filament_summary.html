@@ -48,6 +48,7 @@
                   style="font-size:.75rem"
                   data-extra="{{ card.extra_count }}"
                   data-expanded="false"
+                  aria-label="Show {{ card.extra_count }} more colors"
                   onclick="event.stopPropagation(); toggleOverflow(this)">
             +{{ card.extra_count }} more
           </button>
