@@ -13,4 +13,4 @@ python-barcode>=0.15.1
 python-decouple>=3.8
 brother_ql>=0.9.4
 sqlparse==0.5.5
-tzdata==2025.2
+tzdata==2026.2
