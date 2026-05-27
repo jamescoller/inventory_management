@@ -158,9 +158,9 @@ Small, self-contained items plus the test coverage carryover from Phase 3. Ship 
 - [x] **`add_product.html` referenced non-existent URL** `'product_list'` → `NoReverseMatch` on every add-product GET when not coming from inventory. Pointed back-button at `dashboard` instead.
 - [x] **Missing migration `0023_alter_material_options`** — Phase 3 added `ordering = ['name', 'material_type']` to `Material.Meta` without generating a migration. Generated now.
 
-### Known limitation (not addressed)
+### Known limitation (now addressed)
 
-- 3-digit hex codes (e.g. `#F00`) crash `Filament.get_color_family()` because the function slices `hex_code[0:2]`/`[2:4]`/`[4:6]` without expanding 3→6. Tests use 6-digit hex throughout. Worth a follow-up fix; out of scope for the Phase 4 PR.
+- [x] 3-digit hex codes (e.g. `#F00`) — `get_color_family()` now expands 3-digit hex to 6-digit before slicing. Test added in `ModelSaveTests`. Also fixed pre-existing `InventoryItem` method ordering (DJ012 violations) while touching models.py.
 
 ---
 
