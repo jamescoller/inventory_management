@@ -1,7 +1,6 @@
 import colorsys
 import re
 
-from django.contrib.auth.models import User
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -170,6 +169,8 @@ class Filament(Product):
 
         # Convert hex to RGB
         hex_code = self.hex_code.lstrip("#")
+        if len(hex_code) == 3:
+            hex_code = "".join(c * 2 for c in hex_code)
         r = int(hex_code[0:2], 16) / 255.0
         g = int(hex_code[2:4], 16) / 255.0
         b = int(hex_code[4:6], 16) / 255.0
@@ -213,7 +214,9 @@ class Filament(Product):
         if self.hex_code:
             if self.normalize_hex_code() is None:
                 raise ValidationError(
-                    {"hex_code": "Invalid hex color code. Use 3 or 6 hex digits (e.g. #F0F or #FF00FF)."}
+                    {
+                        "hex_code": "Invalid hex color code. Use 3 or 6 hex digits (e.g. #F0F or #FF00FF)."
+                    }
                 )
 
     def save(self, *args, **kwargs):
@@ -295,7 +298,9 @@ class Printer(Product):
 
     def clean(self):
         if not (self.bed_length_mm and self.bed_width_mm and self.max_height_mm):
-            raise ValidationError("Bed dimensions (length, width, height) are all required.")
+            raise ValidationError(
+                "Bed dimensions (length, width, height) are all required."
+            )
 
     def save(self, *args, **kwargs):
         self.print_volume_m3 = self.calculate_print_volume()
@@ -507,6 +512,40 @@ class InventoryItem(models.Model):
         choices=Status.choices, default=Status.NEW, blank=True
     )
 
+    class Meta:
+        # abstract = True
+        verbose_name = "Inventory Item"
+        verbose_name_plural = "Inventory Items"
+
+    def __str__(self):
+        return f"{self.product.upc} - {self.date_added.strftime('%Y-%m-%d')}"
+
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+
+        if not getattr(self, "_skip_status_from_location", False):
+            if is_new:
+                if self.location:
+                    new_status = self.update_status()
+                    if new_status:
+                        self.status = new_status
+            else:
+                original_location_id = getattr(self, "_original_location_id", None)
+                if original_location_id != self.location_id:
+                    new_status = self.update_status()
+                    if new_status:
+                        self.status = new_status
+
+        if self.status == self.Status.DEPLETED:
+            self.mark_depleted()
+
+        if self.status == self.Status.SOLD:
+            self.mark_sold()
+
+        self.last_modified = now()
+
+        super().save(*args, **kwargs)
+
     @classmethod
     def from_db(cls, db, field_names, values):
         instance = super().from_db(db, field_names, values)
@@ -524,9 +563,6 @@ class InventoryItem(models.Model):
     @property
     def sold(self):
         return self.status == self.Status.SOLD
-
-    def __str__(self):
-        return f"{self.product.upc} - {self.date_added.strftime('%Y-%m-%d')}"
 
     def update_status(self):
         """
@@ -607,37 +643,6 @@ class InventoryItem(models.Model):
 
         else:
             return None
-
-    def save(self, *args, **kwargs):
-        is_new = self.pk is None
-
-        if not getattr(self, "_skip_status_from_location", False):
-            if is_new:
-                if self.location:
-                    new_status = self.update_status()
-                    if new_status:
-                        self.status = new_status
-            else:
-                original_location_id = getattr(self, "_original_location_id", None)
-                if original_location_id != self.location_id:
-                    new_status = self.update_status()
-                    if new_status:
-                        self.status = new_status
-
-        if self.status == self.Status.DEPLETED:
-            self.mark_depleted()
-
-        if self.status == self.Status.SOLD:
-            self.mark_sold()
-
-        self.last_modified = now()
-
-        super().save(*args, **kwargs)
-
-    class Meta:
-        # abstract = True
-        verbose_name = "Inventory Item"
-        verbose_name_plural = "Inventory Items"
 
 
 class Location(models.Model):
@@ -724,11 +729,10 @@ class Material(models.Model):
     notes = models.TextField(blank=True)
 
     class Meta:
-        unique_together = [('name', 'material_type')]
-        ordering = ['name', 'material_type']
+        unique_together = [("name", "material_type")]
+        ordering = ["name", "material_type"]
 
     def __str__(self):
         if self.material_type:
             return f"{self.name} {self.material_type}"
         return self.name
-

@@ -286,6 +286,19 @@ class ModelSaveTests(TestCase):
         self.assertEqual(f.hex_code, "#ff0000")
         self.assertEqual(f.color_family, "RED")
 
+    def test_filament_3digit_hex_color_family(self):
+        mat = Material.objects.create(name="PLA 3D", material_type="")
+        f = Filament.objects.create(
+            name="PLA Red Short",
+            upc="2000000000099",
+            material=mat,
+            color="Red",
+            hex_code="#F00",
+        )
+        f.refresh_from_db()
+        self.assertEqual(f.hex_code, "#f00")
+        self.assertEqual(f.color_family, "RED")
+
     def test_printer_save_computes_volume(self):
         p = Printer.objects.create(
             name="X1C",
