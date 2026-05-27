@@ -728,6 +728,18 @@ class Material(models.Model):
 
     notes = models.TextField(blank=True)
 
+    # Filament Guide Properties (Phase 5)
+    description = models.CharField(max_length=200, blank=True, default="")
+    uv_resistant = models.BooleanField(default=False)
+    flexible = models.BooleanField(default=False)
+    high_strength = models.BooleanField(default=False)
+    heat_resistant = models.BooleanField(default=False)
+    food_safe = models.BooleanField(default=False)
+    easy_to_print = models.BooleanField(default=False)
+    budget_friendly = models.BooleanField(default=False)
+    impact_resistant = models.BooleanField(default=False)
+    requires_enclosure = models.BooleanField(default=False)
+
     class Meta:
         unique_together = [("name", "material_type")]
         ordering = ["name", "material_type"]

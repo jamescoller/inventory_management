@@ -15,12 +15,13 @@ from .views import (
     Dashboard,
     DryStorageOverviewView,
     FilamentColorGuideView,
+    FilamentGuideView,
     FilamentSummaryView,
     Index,
+    InUseOverviewView,
     InventoryEditView,
     InventoryExportView,
     InventorySearchView,
-    InUseOverviewView,
     PrintBarcodeView,
     SignUpView,
 )
@@ -62,7 +63,12 @@ urlpatterns = [
         "barcode/<str:value>/", BarcodeRedirectView.as_view(), name="barcode_redirect"
     ),
     path("in-use-overview/", InUseOverviewView.as_view(), name="in_use_overview"),
-    path("filament-color-guide/", FilamentColorGuideView.as_view(), name="filament_color_guide"),
+    path(
+        "filament-color-guide/",
+        FilamentColorGuideView.as_view(),
+        name="filament_color_guide",
+    ),
+    path("filament-guide/", FilamentGuideView.as_view(), name="filament_guide"),
     path("filament-summary/", FilamentSummaryView.as_view(), name="filament_summary"),
     path(
         "dry-storage-overview/",
