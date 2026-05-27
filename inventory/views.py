@@ -38,6 +38,7 @@ from .models import (
     Hardware,
     InventoryItem,
     Location,
+    Material,
     Printer,
     Product,
 )
@@ -788,6 +789,19 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
         context["grand_total_rolls"] = sum(r["on_hand"] for r in rows)
         context["total_filament_types"] = len(rows)
         context["total_materials"] = len(cards)
+        return context
+
+
+class FilamentGuideView(LoginRequiredMixin, TemplateView):
+    template_name = "inventory/filament_guide.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["materials"] = (
+            Material.objects.filter(filament__isnull=False)
+            .distinct()
+            .order_by("name", "material_type")
+        )
         return context
 
 

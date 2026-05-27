@@ -1,0 +1,110 @@
+{% extends "inventory/base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-3">
+        <div class="col">
+            <h2>Filament Selection Guide</h2>
+            <p class="text-muted">Reference table for all materials with filament in inventory. Boolean properties indicate whether a material meets that criterion.</p>
+        </div>
+    </div>
+
+    {# Stage 2: requirements picker goes here #}
+
+    <div class="row">
+        <div class="col">
+            <div class="table-responsive">
+                <table id="filament-guide-table" class="table table-sm table-hover table-bordered w-100">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Material</th>
+                            <th>Description</th>
+                            <th title="Survives prolonged sunlight / outdoor exposure">UV Resistant</th>
+                            <th title="Can bend or flex without fracturing">Flexible</th>
+                            <th title="Suitable for structural or load-bearing parts">High Strength</th>
+                            <th title="Tolerates elevated temperatures">Heat Resistant</th>
+                            <th title="Safe for food contact">Food Safe</th>
+                            <th title="Beginner-friendly; forgiving without enclosure or drying">Easy to Print</th>
+                            <th title="Generally lower cost per spool">Budget Friendly</th>
+                            <th title="Absorbs impact without shattering">Impact Resistant</th>
+                            <th title="VOCs or warping make open-frame printing impractical">Enclosure Req.</th>
+                            <th title="Must be dried before printing for good results">Drying Req.</th>
+                            <th title="Recommended drying temperature">Drying Temp</th>
+                            <th title="Recommended drying time">Drying Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in materials %}
+                        <tr>
+                            <td>
+                                <strong>{{ m.name }}</strong>
+                                {% if m.material_type %}<span class="text-muted"> {{ m.material_type }}</span>{% endif %}
+                            </td>
+                            <td>{{ m.description }}</td>
+                            <td data-sort="{{ m.uv_resistant|yesno:'1,0' }}" class="text-center">
+                                {% if m.uv_resistant %}<span>✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td data-sort="{{ m.flexible|yesno:'1,0' }}" class="text-center">
+                                {% if m.flexible %}<span>✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td data-sort="{{ m.high_strength|yesno:'1,0' }}" class="text-center">
+                                {% if m.high_strength %}<span>✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td data-sort="{{ m.heat_resistant|yesno:'1,0' }}" class="text-center">
+                                {% if m.heat_resistant %}<span>✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td data-sort="{{ m.food_safe|yesno:'1,0' }}" class="text-center">
+                                {% if m.food_safe %}<span>✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td data-sort="{{ m.easy_to_print|yesno:'1,0' }}" class="text-center">
+                                {% if m.easy_to_print %}<span>✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td data-sort="{{ m.budget_friendly|yesno:'1,0' }}" class="text-center">
+                                {% if m.budget_friendly %}<span>✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td data-sort="{{ m.impact_resistant|yesno:'1,0' }}" class="text-center">
+                                {% if m.impact_resistant %}<span>✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td data-sort="{{ m.requires_enclosure|yesno:'1,0' }}" class="text-center">
+                                {% if m.requires_enclosure %}<span class="text-warning">✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td data-sort="{{ m.drying_required|yesno:'1,0' }}" class="text-center">
+                                {% if m.drying_required %}<span class="text-warning">✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if m.dry_temp_ideal_degC %}{{ m.dry_temp_ideal_degC }} °C{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if m.dry_time_hrs %}{{ m.dry_time_hrs }} h{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="14" class="text-center text-muted">No materials with filament in inventory.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock content %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        new DataTable('#filament-guide-table', {
+            ordering: true,
+            paging: false,
+            info: false,
+            searching: true,
+        });
+
+        // Enable Bootstrap tooltips on column headers
+        document.querySelectorAll('#filament-guide-table th[title]').forEach(function (el) {
+            new bootstrap.Tooltip(el, { placement: 'top' });
+        });
+    });
+</script>
+{% endblock extra_scripts %}

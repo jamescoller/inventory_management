@@ -104,7 +104,6 @@ class FilamentAdmin(ProductChildAdmin):
         # Store selected items in session
         selected = request.POST.getlist("_selected_action")
         request.session["selected_filaments"] = selected
-        opts = self.model._meta
 
         return HttpResponseRedirect("bulk-update-material/")
 
@@ -419,3 +418,42 @@ class MaterialAdmin(admin.ModelAdmin):
     list_display_links = ["name"]
     list_editable = ["material_type"]
     list_filter = ["mfr", "ams_capable", "drying_required"]
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "name",
+                    "material_type",
+                    "mfr",
+                    "print_temp_min_degC",
+                    "print_temp_max_degC",
+                    "print_temp_ideal_degC",
+                    "dry_temp_min_degC",
+                    "dry_temp_max_degC",
+                    "dry_temp_ideal_degC",
+                    "dry_time_hrs",
+                    "ams_capable",
+                    "drying_required",
+                    "notes",
+                )
+            },
+        ),
+        (
+            "Guide Properties",
+            {
+                "fields": (
+                    "description",
+                    "uv_resistant",
+                    "flexible",
+                    "high_strength",
+                    "heat_resistant",
+                    "food_safe",
+                    "easy_to_print",
+                    "budget_friendly",
+                    "impact_resistant",
+                    "requires_enclosure",
+                )
+            },
+        ),
+    )
