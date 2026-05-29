@@ -1,7 +1,7 @@
 asgiref==3.11.1
 crispy-bootstrap5==2026.3
 Django>=6.0.5,<7.0
-django-crispy-forms==2.4
+django-crispy-forms==2.6
 django-polymorphic==4.11.3
 et_xmlfile==2.0.0
 gunicorn==26.0.0
