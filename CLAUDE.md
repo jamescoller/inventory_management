@@ -293,7 +293,11 @@ Phases 5–8 documented in `todo.md`. Summary:
 - **Phase 6**: Barcode & location system (#48, #49) + camera scanning.
 - **Phase 7**: Filament Selection Guide Stage 2 — requirements picker (depends on Phase 5 data loading).
 - **Phase 8**: Data visualizations (spool weight; usage over time needs `ConsumptionEvent` design first).
-- **Django upgrade**: Issue #109 — upgrade from 4.2 to 6.0. Unblocks Dependabot PR #103 (django-crispy-forms 2.6 dropped Django 4.2 support). Code audit confirmed upgrade path is clean.
+- **Django upgrade**: ✅ Done (issue #109 closed May 2026). Now on Django 6.0.5 in
+  production — landed via constraint bump `4d07401` (2026-05-15), not a discrete
+  upgrade PR; prod rebuilds from `requirements.txt` on every master merge.
+  django-crispy-forms 2.6 (PR #103) merged to finish it off. Note: 6.0 is **not**
+  an LTS (5.2 was the prior LTS) — track the next 6.x LTS for a long-haul pin.
 
 ## Environment notes
 
