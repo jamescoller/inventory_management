@@ -239,6 +239,7 @@ Spec: `docs/superpowers/specs/2026-05-21-filament-guide-design.md`
 Items with real value but no current phase slot. Revisit during sprint planning.
 
 - [x] **Containers don't auto-start after host reboot** — Root cause: the `nginx` service had no `restart:` policy, so after a host/LXC reboot the daemon brought `web` (`restart: always`) back but left nginx down, making the app unreachable on `:8080`. Set both services to `restart: unless-stopped` in `docker-compose.yml`. Docker daemon confirmed `enabled` on the app LXC, so no systemd change needed. (fix/compose-restart-policy)
+- [ ] **`sudo` missing on the app LXC** — `jcoller` is in the `sudo` group but the `sudo` binary isn't installed, and polkit denies `systemctl reboot` for non-root SSH sessions — so Claude Code (and any non-root automation) can't perform privileged ops on `10.10.20.17`. Decide on an approach: install `sudo` with a narrow NOPASSWD rule (e.g. just `systemctl reboot`/`docker`), drive privileged ops from the Proxmox host via `pct exec`/`pct reboot`, or leave manual. Think before granting standing privilege.
 - [ ] **#33 — Excel export** — Fix `InventoryExportView`. Low priority; not regularly used.
 - [ ] **#34 — Import order/invoice history** — Relocate to `management/commands/`; replace pandas with openpyxl. Only worth doing if invoice imports are a regular workflow.
 - [ ] **#65 — View 3MF files in web portal** — `three.js` + `Online3DViewer`. Significant JS bundle for a household app; revisit if 3MF browsing becomes a real workflow need.
