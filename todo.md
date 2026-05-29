@@ -238,6 +238,7 @@ Spec: `docs/superpowers/specs/2026-05-21-filament-guide-design.md`
 
 Items with real value but no current phase slot. Revisit during sprint planning.
 
+- [x] **Containers don't auto-start after host reboot** — Root cause: the `nginx` service had no `restart:` policy, so after a host/LXC reboot the daemon brought `web` (`restart: always`) back but left nginx down, making the app unreachable on `:8080`. Set both services to `restart: unless-stopped` in `docker-compose.yml`. Docker daemon confirmed `enabled` on the app LXC, so no systemd change needed. (fix/compose-restart-policy)
 - [ ] **#33 — Excel export** — Fix `InventoryExportView`. Low priority; not regularly used.
 - [ ] **#34 — Import order/invoice history** — Relocate to `management/commands/`; replace pandas with openpyxl. Only worth doing if invoice imports are a regular workflow.
 - [ ] **#65 — View 3MF files in web portal** — `three.js` + `Online3DViewer`. Significant JS bundle for a household app; revisit if 3MF browsing becomes a real workflow need.
