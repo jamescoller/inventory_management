@@ -261,15 +261,39 @@ Code quality and architecture improvements across all layers.
 - Added `FilamentSummaryView` at `/filament-summary/` — material cards, DataTables, JS filtering, period toggle.
 - PR #95 post-ship fixes: card sort by roll count; BLACK hex `#000000`; hex fallback from family; centering; "Color Family" header; period toggle contrast; material/subtype/color-family filter dropdowns with bidirectional sync and chips.
 
+### Phase 4 — what was done (May 2026, PRs #100 + fixes)
+
+Tests foundation + small features. All items from todo.md Phase 4 completed.
+
+- Added `tests.py` with round-trip GET per view + `save()` per model; tests caught two latent bugs.
+- Confirmed MAC discovery already removed from `barcode_utils.py` (done in Phase 2).
+- Added `has_spool` read-only badge to `inventory_edit.html`; added `get_real_instance()` helper.
+- Bumped barcode rendering params: `initial_module_width_mm` 0.3→0.4, `quiet_zone_mm` 2.0→3.0, `min_module_width_mm` 0.1→0.25.
+- Fixed `add_product.html` back-button `NoReverseMatch` (pointed at `dashboard`).
+- Generated missing migration `0023_alter_material_options`.
+- Fixed `get_color_family()` to expand 3-digit hex codes before slicing.
+
+### Phase 5 — what was done (May 2026, PR #108 — open, pending merge)
+
+Filament Selection Guide Stage 1. Added 10 new fields to `Material` (spec said 13
+but `requires_drying`/`drying_temp_c`/`drying_time_hours` were redundant with
+existing `drying_required`/`dry_temp_ideal_degC`/`dry_time_hrs`). Migration `0024`.
+`MaterialAdmin` gained a Guide Properties fieldset. `FilamentGuideView` at
+`/filament-guide/` renders a DataTables reference table; boolean columns ✓/—;
+warning colour on `requires_enclosure` and `drying_required`. Nav link added.
+CSV template for data loading committed to `docs/filament-guide-data.csv`.
+
+Post-merge: fill CSV with guide data, then dispatch Haiku agents to load via
+Django shell. Unblocks Phase 7 (requirements picker).
+
 ### Roadmap (as of May 2026)
 
-Phases 4–8 and a Code Audit track are documented in `todo.md`. Summary:
-- **Code Audit** (any session, ~45 min review): packages, Django version gap, template quality, docstrings, naming.
-- **Phase 4**: Tests foundation, MAC discovery removal, #38 spool boolean, #47 barcode tuning.
-- **Phase 5**: Filament Selection Guide Stage 1 — model fields + reference table. Spec: `docs/superpowers/specs/2026-05-21-filament-guide-design.md`.
+Phases 5–8 documented in `todo.md`. Summary:
+- **Phase 5**: PR #108 open. After merge + deploy, fill `docs/filament-guide-data.csv` and run Haiku data-loading task.
 - **Phase 6**: Barcode & location system (#48, #49) + camera scanning.
 - **Phase 7**: Filament Selection Guide Stage 2 — requirements picker (depends on Phase 5 data loading).
 - **Phase 8**: Data visualizations (spool weight; usage over time needs `ConsumptionEvent` design first).
+- **Django upgrade**: Issue #109 — upgrade from 4.2 to 6.0. Unblocks Dependabot PR #103 (django-crispy-forms 2.6 dropped Django 4.2 support). Code audit confirmed upgrade path is clean.
 
 ## Environment notes
 

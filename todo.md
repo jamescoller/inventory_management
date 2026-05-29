@@ -170,24 +170,26 @@ Spec: `docs/superpowers/specs/2026-05-21-filament-guide-design.md`
 
 Delivers the reference table immediately (useful for James). Lays the data foundation that Stage 2 (Phase 7) and the Haiku data-loading task depend on.
 
+**Status: PR #108 open (feat/phase-5), pending merge + deploy.**
+
 ### Model
 
-- [ ] Add 13 fields to `Material`: `uv_resistant`, `flexible`, `high_strength`, `heat_resistant`, `food_safe`, `easy_to_print`, `budget_friendly`, `impact_resistant`, `requires_enclosure`, `requires_drying`, `drying_temp_c`, `drying_time_hours`, `description`.
-- [ ] Generate and include migration `0023_material_guide_fields`.
+- [x] Add 10 fields to `Material`: `uv_resistant`, `flexible`, `high_strength`, `heat_resistant`, `food_safe`, `easy_to_print`, `budget_friendly`, `impact_resistant`, `requires_enclosure`, `description`. *(Spec listed 13; `requires_drying`, `drying_temp_c`, `drying_time_hours` were redundant — `drying_required`, `dry_temp_ideal_degC`, `dry_time_hrs` already existed and are reused in the template.)*
+- [x] Generate and include migration `0024_material_*` (spec said 0023 but 0023 was taken by Phase 4).
 
 ### Admin
 
-- [ ] Add `Guide Properties` fieldset to `MaterialAdmin` grouping all new fields.
+- [x] Add `Guide Properties` fieldset to `MaterialAdmin` grouping all new fields.
 
 ### View + Template
 
-- [ ] Add `FilamentGuideView` (GET, `LoginRequiredMixin`) at `/filament-guide/`.
-- [ ] Template: reference table via DataTables. Boolean columns render ✓ / —. `requires_enclosure` and `requires_drying` use warning colour on ✓. Include placeholder comment for Stage 2 picker.
-- [ ] Add nav link to `navigation.html`.
+- [x] Add `FilamentGuideView` (GET, `LoginRequiredMixin`) at `/filament-guide/`.
+- [x] Template: reference table via DataTables. Boolean columns render ✓ / —. `requires_enclosure` and `drying_required` use warning colour on ✓. Stage 2 placeholder comment included.
+- [x] Add nav link to `navigation.html`.
 
 ### Data loading (post-deploy, separate task)
 
-- [ ] After Stage 1 is deployed to the app host, dispatch Haiku agents with James's filament documentation to populate the new fields for all existing `Material` rows via Django shell. *(Not part of the implementation PR — runs after deploy.)*
+- [ ] Fill in `docs/filament-guide-data.csv` (template committed to repo, 38 rows pre-populated with exact `name`/`material_type` from live DB). Then dispatch Haiku agents to load via Django shell after PR #108 is merged and deployed.
 
 ---
 
@@ -236,6 +238,7 @@ Spec: `docs/superpowers/specs/2026-05-21-filament-guide-design.md`
 
 Items with real value but no current phase slot. Revisit during sprint planning.
 
+- [x] **Containers don't auto-start after host reboot** — Root cause: the `nginx` service had no `restart:` policy, so after a host/LXC reboot the daemon brought `web` (`restart: always`) back but left nginx down, making the app unreachable on `:8080`. Set both services to `restart: unless-stopped` in `docker-compose.yml`. Docker daemon confirmed `enabled` on the app LXC, so no systemd change needed. (fix/compose-restart-policy)
 - [ ] **#33 — Excel export** — Fix `InventoryExportView`. Low priority; not regularly used.
 - [ ] **#34 — Import order/invoice history** — Relocate to `management/commands/`; replace pandas with openpyxl. Only worth doing if invoice imports are a regular workflow.
 - [ ] **#65 — View 3MF files in web portal** — `three.js` + `Online3DViewer`. Significant JS bundle for a household app; revisit if 3MF browsing becomes a real workflow need.
