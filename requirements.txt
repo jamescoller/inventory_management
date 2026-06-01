@@ -6,7 +6,7 @@ django-polymorphic==4.11.3
 et_xmlfile==2.0.0
 gunicorn==26.0.0
 openpyxl==3.1.5
-packaging==25.0
+packaging==26.2
 pillow>=12.2.0
 python-dateutil==2.9.0.post0
 python-barcode>=0.16.1
