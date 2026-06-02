@@ -1,0 +1,53 @@
+{% extends "inventory/base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="row">
+    <div class="col-12 col-lg-8 mx-auto">
+      <h1><i class="bi bi-check2-circle"></i> Finalize Audit #{{ session.pk }}</h1>
+      <p class="text-muted">
+        The locations you visited have been reconciled. The items below were recorded
+        at a visited location but never scanned during this audit. Finalizing will mark
+        them <strong>depleted</strong> and clear their location. Anything you still
+        need to keep should be scanned back in before you confirm.
+      </p>
+
+      <div class="card mb-3">
+        <div class="card-header">
+          {{ unknown_items|length }} item{{ unknown_items|length|pluralize }} to be depleted
+        </div>
+        <ul class="list-group list-group-flush">
+          {% for item in unknown_items %}
+            <li class="list-group-item d-flex align-items-center">
+              <span>
+                {{ item.product.name }}
+                <small class="text-muted">INV-{{ item.pk }}</small>
+              </span>
+              <span class="text-muted ms-auto">
+                last seen: {{ item.location.name|default:"—" }}
+              </span>
+            </li>
+          {% empty %}
+            <li class="list-group-item text-muted">
+              Nothing is unaccounted for — finalizing just closes the audit.
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="{% url 'audit_console' %}">
+          <i class="bi bi-arrow-left"></i> Back to scanning
+        </a>
+        <form method="post" action="{% url 'audit_finalize' %}"
+              onsubmit="return confirm('Mark {{ unknown_items|length }} item(s) depleted and finalize the audit?');">
+          {% csrf_token %}
+          <button class="btn btn-success" type="submit">
+            <i class="bi bi-check2-circle"></i> Confirm &amp; Finalize
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %}

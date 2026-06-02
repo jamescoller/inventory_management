@@ -391,8 +391,27 @@ class InventoryItemAdmin(admin.ModelAdmin):
 
 @admin.register(Location)
 class LocationAdmin(admin.ModelAdmin):
-    list_display = ["name", "default_status"]
-    list_filter = ["default_status"]
+    list_display = ["name", "kind", "parent", "slot_index", "default_status", "unit"]
+    list_filter = ["kind", "default_status"]
+    list_select_related = ["parent", "unit"]
+    search_fields = ["name"]
+    autocomplete_fields = ["parent", "unit"]
+    actions = ["print_location_labels"]
+
+    @admin.action(description="Print location labels (LOC-<id>)")
+    def print_location_labels(self, request, queryset):
+        from .barcode_utils import generate_and_print_label
+
+        printed = 0
+        for loc in queryset:
+            try:
+                generate_and_print_label(data=f"LOC-{loc.pk}", text=loc.name)
+                printed += 1
+            except Exception as exc:  # noqa: BLE001 - surface to admin, keep going
+                self.message_user(
+                    request, f"Failed to print {loc.name}: {exc}", level="error"
+                )
+        self.message_user(request, f"Printed {printed} location label(s).")
 
 
 @admin.register(Material)

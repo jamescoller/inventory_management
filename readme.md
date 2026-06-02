@@ -71,3 +71,19 @@ docker exec -it <container> python manage.py makemigrations
 ```
 
 Include the resulting migration file in your PR.
+
+## Locations & inventory audit
+
+The physical storage hierarchy (receiving racks/shelves, dry storage, AMS units +
+slots, dryers + slots) is seeded with an idempotent management command:
+
+```bash
+docker exec -it <container> python manage.py seed_locations
+```
+
+Print each location's `LOC-<id>` label from the Django admin (Locations → "Print
+location labels" action). Then run an audit from **Audit** in the nav (`/audit/`):
+scan a location barcode, scan the item tags physically present, and finalize — items
+left unaccounted-for at visited locations are marked depleted. After first seeding,
+link each AMS/dryer slot group to its unit's inventory record via the `unit` field in
+the Location admin.

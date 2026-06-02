@@ -526,3 +526,216 @@ class InventoryEditFormTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.item.refresh_from_db()
         self.assertEqual(self.item.location, self.loc_b)
+
+
+from . import audit  # noqa: E402
+from .models import AuditEvent, AuditSession  # noqa: E402
+
+
+class StickyStatusGuardTests(TestCase):
+    """A location-changing save must never overwrite a sticky status."""
+
+    def setUp(self):
+        self.product = Filament.objects.create(name="PLA Sticky", upc="9100000000001")
+        self.loc_a = Location.objects.create(
+            name="Guard A",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.loc_b = Location.objects.create(
+            name="Guard B",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+
+    def test_unknown_survives_location_change(self):
+        item = InventoryItem.objects.create(product=self.product, location=self.loc_a)
+        item.status = InventoryItem.Status.UNKNOWN
+        item._skip_status_from_location = True
+        item.save()
+        # Reload (drops the ad-hoc skip flag) then move it via a normal save.
+        item = InventoryItem.objects.get(pk=item.pk)
+        item.location = self.loc_b
+        item.save()
+        item.refresh_from_db()
+        self.assertEqual(item.status, InventoryItem.Status.UNKNOWN)
+        self.assertEqual(item.location_id, self.loc_b.id)
+
+    def test_depleted_survives_location_change(self):
+        item = InventoryItem.objects.create(product=self.product, location=self.loc_a)
+        item.status = InventoryItem.Status.DEPLETED
+        item.save()
+        item = InventoryItem.objects.get(pk=item.pk)
+        item.location = self.loc_b
+        item.save()
+        item.refresh_from_db()
+        self.assertEqual(item.status, InventoryItem.Status.DEPLETED)
+
+
+class LocationModelTests(TestCase):
+    def test_assignable_excludes_containers(self):
+        rack = Location.objects.create(name="Rack X", kind=Location.Kind.RACK)
+        shelf = Location.objects.create(
+            name="Rack X / Shelf 1",
+            kind=Location.Kind.SHELF,
+            parent=rack,
+            default_status=InventoryItem.Status.NEW,
+        )
+        assignable = list(Location.assignable())
+        self.assertIn(shelf, assignable)
+        self.assertNotIn(rack, assignable)
+
+    def test_drying_warning_uses_kind(self):
+        mat = Material.objects.create(
+            name="PLA", material_type="", drying_required=True
+        )
+        fil = Filament.objects.create(name="PLA Wet", upc="9200000000001", material=mat)
+        item = InventoryItem.objects.create(product=fil)
+        item.status = InventoryItem.Status.NEW
+        dry = Location.objects.create(
+            name="DryZone",
+            kind=Location.Kind.DRY_STORAGE,
+            default_status=InventoryItem.Status.STORED,
+        )
+        printer = Location.objects.create(
+            name="P1",
+            kind=Location.Kind.PRINTER,
+            default_status=InventoryItem.Status.IN_USE,
+        )
+        self.assertEqual(item.filament_drying_warning(dry)[0], "error")
+        self.assertEqual(item.filament_drying_warning(printer)[0], "warning")
+
+
+class AuditReconcileTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="auditor", password="pass")
+        self.shelf_a = Location.objects.create(
+            name="A1", kind=Location.Kind.SHELF, default_status=InventoryItem.Status.NEW
+        )
+        self.shelf_b = Location.objects.create(
+            name="B1",
+            kind=Location.Kind.DRY_STORAGE,
+            default_status=InventoryItem.Status.STORED,
+        )
+        self.product = Filament.objects.create(name="PLA Audit", upc="9300000000001")
+
+    def _item(self, location):
+        return InventoryItem.objects.create(product=self.product, location=location)
+
+    def test_single_active_session(self):
+        audit.start_session(self.user)
+        with self.assertRaises(audit.AuditError):
+            audit.start_session(self.user)
+
+    def test_present_then_close_does_not_flag(self):
+        session = audit.start_session(self.user)
+        item = self._item(self.shelf_a)
+        audit.visit_location(session, self.shelf_a)
+        action = audit.scan_item(session, self.shelf_a, item)
+        self.assertEqual(action, AuditEvent.Action.SCANNED_PRESENT)
+        audit.close_location(session, self.shelf_a)
+        item.refresh_from_db()
+        self.assertEqual(item.status, InventoryItem.Status.NEW)
+        self.assertEqual(item.location_id, self.shelf_a.id)
+
+    def test_unscanned_flagged_unknown_keeps_location(self):
+        session = audit.start_session(self.user)
+        item = self._item(self.shelf_a)
+        audit.visit_location(session, self.shelf_a)
+        audit.close_location(session, self.shelf_a)
+        item.refresh_from_db()
+        self.assertEqual(item.status, InventoryItem.Status.UNKNOWN)
+        self.assertEqual(item.location_id, self.shelf_a.id)
+
+    def test_move_updates_location_and_status(self):
+        session = audit.start_session(self.user)
+        item = self._item(self.shelf_a)
+        audit.visit_location(session, self.shelf_b)
+        action = audit.scan_item(session, self.shelf_b, item)
+        self.assertEqual(action, AuditEvent.Action.MOVED_IN)
+        item.refresh_from_db()
+        self.assertEqual(item.location_id, self.shelf_b.id)
+        self.assertEqual(item.status, InventoryItem.Status.STORED)
+
+    def test_revive_clears_date_depleted(self):
+        session = audit.start_session(self.user)
+        item = self._item(self.shelf_a)
+        item.mark_depleted()
+        item.save()
+        item.refresh_from_db()
+        self.assertIsNotNone(item.date_depleted)
+        audit.visit_location(session, self.shelf_b)
+        action = audit.scan_item(session, self.shelf_b, item)
+        self.assertEqual(action, AuditEvent.Action.REVIVED)
+        item.refresh_from_db()
+        self.assertIsNone(item.date_depleted)
+        self.assertEqual(item.location_id, self.shelf_b.id)
+        self.assertEqual(item.status, InventoryItem.Status.STORED)
+
+    def test_unit_item_rejected(self):
+        session = audit.start_session(self.user)
+        ams_product = AMS.objects.create(name="AMS Unit", upc="9400000000001")
+        unit_item = InventoryItem.objects.create(product=ams_product)
+        audit.visit_location(session, self.shelf_a)
+        with self.assertRaises(audit.AuditError):
+            audit.scan_item(session, self.shelf_a, unit_item)
+
+    def test_finalize_closes_last_location_and_depletes(self):
+        session = audit.start_session(self.user)
+        item = self._item(self.shelf_a)
+        audit.visit_location(session, self.shelf_a)  # not closed yet
+        depleted = audit.finalize(session, active_location=self.shelf_a)
+        self.assertEqual(len(depleted), 1)
+        item.refresh_from_db()
+        self.assertEqual(item.status, InventoryItem.Status.DEPLETED)
+        self.assertIsNone(item.location)
+        session.refresh_from_db()
+        self.assertEqual(session.state, AuditSession.State.FINALIZED)
+
+
+class SeedLocationsCommandTests(TestCase):
+    def test_seed_counts_and_idempotent(self):
+        from django.core.management import call_command
+
+        call_command("seed_locations", verbosity=0)
+        self.assertEqual(
+            Location.objects.filter(kind=Location.Kind.AMS_SLOT).count(), 32
+        )
+        self.assertEqual(
+            Location.objects.filter(kind=Location.Kind.DRYER_SLOT).count(), 12
+        )
+        self.assertEqual(Location.objects.filter(kind=Location.Kind.SHELF).count(), 10)
+        total = Location.objects.count()
+        call_command("seed_locations", verbosity=0)
+        self.assertEqual(Location.objects.count(), total)  # no duplicates
+
+
+class AuditViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="v", password="pass")
+        self.client.login(username="v", password="pass")
+        self.shelf = Location.objects.create(
+            name="V1", kind=Location.Kind.SHELF, default_status=InventoryItem.Status.NEW
+        )
+        self.product = Filament.objects.create(name="PLA View", upc="9500000000001")
+
+    def test_console_without_session(self):
+        self.assertEqual(self.client.get(reverse("audit_console")).status_code, 200)
+
+    def test_full_flow(self):
+        item = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        missing = InventoryItem.objects.create(
+            product=self.product, location=self.shelf
+        )
+        self.client.post(reverse("audit_start"))
+        # Scan the location, then one of the two items.
+        self.client.post(reverse("audit_scan"), {"code": f"LOC-{self.shelf.pk}"})
+        self.client.post(reverse("audit_scan"), {"code": f"INV-{item.pk}"})
+        # Review (closes the location) then finalize.
+        self.assertEqual(self.client.get(reverse("audit_finalize")).status_code, 200)
+        self.client.post(reverse("audit_finalize"))
+        item.refresh_from_db()
+        missing.refresh_from_db()
+        self.assertNotEqual(item.status, InventoryItem.Status.DEPLETED)
+        self.assertEqual(missing.status, InventoryItem.Status.DEPLETED)

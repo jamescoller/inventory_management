@@ -20,6 +20,7 @@ from django.utils.timezone import localtime
 from django.utils.timezone import now as timezone_now
 from django.views.generic import CreateView, TemplateView, UpdateView, View
 
+from . import audit
 from .barcode_utils import generate_and_print_barcode
 from .forms import (
     AMSForm,
@@ -33,6 +34,8 @@ from .forms import (
 )
 from .models import (
     AMS,
+    AuditEvent,
+    AuditSession,
     Dryer,
     Filament,
     Hardware,
@@ -132,6 +135,18 @@ class BarcodeRedirectView(LoginRequiredMixin, View):
         if value.startswith("INV-"):
             item_id = value.replace("INV-", "")
             return redirect("inventory_edit", item_id=item_id)
+        if value.startswith("LOC-"):
+            loc_id = value.replace("LOC-", "")
+            location = Location.objects.filter(pk=loc_id).first()
+            if location is None:
+                return HttpResponse("Unknown location", status=404)
+            if location.is_container:
+                messages.warning(
+                    request, f"{location.name} is a container, not a storage spot."
+                )
+                return redirect("dashboard")
+            # A scanned location barcode jumps into the audit console focused there.
+            return redirect(f"{reverse('audit_console')}?loc={location.pk}")
         return HttpResponse("Invalid barcode", status=400)
 
 
@@ -449,6 +464,12 @@ class BulkUpdateView(LoginRequiredMixin, View):
                 new_location = Location.objects.get(pk=new_location_id)
             except Location.DoesNotExist:
                 messages.error(request, "Invalid location.")
+                return self._redirect_back(request)
+            if new_location.is_container:
+                messages.error(
+                    request,
+                    f"{new_location.name} is a container and can't hold items.",
+                )
                 return self._redirect_back(request)
 
         if new_status is None and new_location is None and new_shipment is None:
@@ -1088,3 +1109,219 @@ class DryStorageOverviewView(LoginRequiredMixin, TemplateView):
 
         context["grouped_items"] = grouped_by_location
         return context
+
+
+# ---------------------------------------------------------------------------
+# Inventory audit mode
+# ---------------------------------------------------------------------------
+
+_AUDIT_ACTIVE_LOC_KEY = "audit_active_location_id"
+
+
+def _active_location(request):
+    """The location currently in focus for this audit, or None.
+
+    Active-location focus is ephemeral UI state kept in the request session;
+    re-scanning a location barcode re-establishes it.
+    """
+    loc_id = request.session.get(_AUDIT_ACTIVE_LOC_KEY)
+    if not loc_id:
+        return None
+    return Location.objects.filter(pk=loc_id).first()
+
+
+def _set_active_location(request, location):
+    if location is None:
+        request.session.pop(_AUDIT_ACTIVE_LOC_KEY, None)
+    else:
+        request.session[_AUDIT_ACTIVE_LOC_KEY] = location.pk
+
+
+def _audit_context(request, session, active_location, last_result=None):
+    """Build the context shared by the console page and its HTMX body partial."""
+    items_here = []
+    if active_location is not None:
+        scanned_ids = set(
+            AuditEvent.objects.filter(
+                session=session,
+                location=active_location,
+                action__in=audit.PRESENT_ACTIONS,
+            ).values_list("item_id", flat=True)
+        )
+        for item in (
+            InventoryItem.objects.filter(location=active_location)
+            .select_related("product")
+            .order_by("id")
+        ):
+            item.audit_scanned = item.id in scanned_ids
+            items_here.append(item)
+
+    return {
+        "session": session,
+        "active_location": active_location,
+        "items_here": items_here,
+        "unknown_items": audit.session_unknown_items(session),
+        "tally": {
+            "moved": AuditEvent.objects.filter(
+                session=session, action=AuditEvent.Action.MOVED_IN
+            ).count(),
+            "present": AuditEvent.objects.filter(
+                session=session, action=AuditEvent.Action.SCANNED_PRESENT
+            ).count(),
+            "revived": AuditEvent.objects.filter(
+                session=session, action=AuditEvent.Action.REVIVED
+            ).count(),
+            "closed": AuditEvent.objects.filter(
+                session=session, action=AuditEvent.Action.CLOSED
+            ).count(),
+        },
+        "recent_events": (
+            AuditEvent.objects.filter(session=session)
+            .select_related("item__product", "location")
+            .order_by("-created_at")[:12]
+        ),
+        "last_result": last_result,
+    }
+
+
+class AuditStartView(LoginRequiredMixin, View):
+    def post(self, request):
+        try:
+            audit.start_session(request.user)
+        except audit.AuditError as exc:
+            messages.error(request, str(exc))
+        else:
+            _set_active_location(request, None)
+            messages.success(request, "Audit started. Scan a location to begin.")
+        return redirect("audit_console")
+
+
+class AuditConsoleView(LoginRequiredMixin, TemplateView):
+    template_name = "inventory/audit_console.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        session = AuditSession.active()
+        context["session"] = session
+        if session is None:
+            _set_active_location(self.request, None)
+            return context
+
+        # A LOC barcode scanned outside the console (?loc=) sets focus here.
+        loc_param = self.request.GET.get("loc")
+        active = _active_location(self.request)
+        if loc_param:
+            target = Location.objects.filter(pk=loc_param).first()
+            if target and not target.is_container:
+                audit.visit_location(session, target, previous_location=active)
+                _set_active_location(self.request, target)
+                active = target
+
+        context.update(_audit_context(self.request, session, active))
+        return context
+
+
+class AuditScanView(LoginRequiredMixin, View):
+    """Input-agnostic scan endpoint: a wedge form-submit or a camera JS POST both
+    deliver a ``code`` string here and get back the refreshed console body."""
+
+    def post(self, request):
+        session = AuditSession.active()
+        if session is None:
+            messages.error(request, "No audit in progress.")
+            return redirect("audit_console")
+
+        active = _active_location(request)
+        last_result = None
+        try:
+            kind, pk = audit.parse_code(request.POST.get("code", ""))
+            if kind == "loc":
+                location = Location.objects.filter(pk=pk).first()
+                if location is None:
+                    raise audit.AuditError(f"No location with id {pk}.")
+                audit.visit_location(session, location, previous_location=active)
+                _set_active_location(request, location)
+                active = location
+                last_result = ("info", f"At {location.name}.")
+            else:  # item
+                item = InventoryItem.objects.filter(pk=pk).first()
+                if item is None:
+                    raise audit.AuditError(f"No item with id {pk}.")
+                action = audit.scan_item(session, active, item)
+                labels = {
+                    AuditEvent.Action.SCANNED_PRESENT: ("success", "Present"),
+                    AuditEvent.Action.MOVED_IN: ("success", "Moved here"),
+                    AuditEvent.Action.REVIVED: ("warning", "Revived here"),
+                }
+                tag, verb = labels[action]
+                last_result = (tag, f"{verb}: {item.product.name} (INV-{item.pk}).")
+        except audit.AuditError as exc:
+            last_result = ("danger", str(exc))
+
+        context = _audit_context(request, session, active, last_result=last_result)
+        if request.headers.get("HX-Request"):
+            return render(request, "inventory/partials/audit_body.html", context)
+        return redirect("audit_console")
+
+
+class AuditCloseLocationView(LoginRequiredMixin, View):
+    def post(self, request):
+        session = AuditSession.active()
+        if session is None:
+            messages.error(request, "No audit in progress.")
+            return redirect("audit_console")
+        active = _active_location(request)
+        if active is not None:
+            flagged = audit.close_location(session, active)
+            _set_active_location(request, None)
+            messages.info(
+                request,
+                f"Closed {active.name}. {len(flagged)} item"
+                f"{'' if len(flagged) == 1 else 's'} flagged unknown.",
+            )
+        return redirect("audit_console")
+
+
+class AuditFinalizeView(LoginRequiredMixin, View):
+    def get(self, request):
+        session = AuditSession.active()
+        if session is None:
+            messages.error(request, "No audit in progress.")
+            return redirect("audit_console")
+        # Close the still-open location so its unscanned items are included.
+        active = _active_location(request)
+        if active is not None:
+            audit.close_location(session, active)
+            _set_active_location(request, None)
+        return render(
+            request,
+            "inventory/audit_finalize.html",
+            {"session": session, "unknown_items": audit.session_unknown_items(session)},
+        )
+
+    def post(self, request):
+        session = AuditSession.active()
+        if session is None:
+            messages.error(request, "No audit in progress.")
+            return redirect("audit_console")
+        depleted = audit.finalize(session, active_location=_active_location(request))
+        _set_active_location(request, None)
+        messages.success(
+            request,
+            f"Audit finalized. {len(depleted)} item"
+            f"{'' if len(depleted) == 1 else 's'} marked depleted.",
+        )
+        return redirect("dashboard")
+
+
+class AuditAbandonView(LoginRequiredMixin, View):
+    def post(self, request):
+        session = AuditSession.active()
+        if session is not None:
+            audit.abandon(session)
+        _set_active_location(request, None)
+        messages.warning(
+            request,
+            "Audit abandoned. Items flagged unknown were left as-is for review.",
+        )
+        return redirect("dashboard")
