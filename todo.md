@@ -195,11 +195,13 @@ Delivers the reference table immediately (useful for James). Lays the data found
 
 ## Phase 6 — Barcode & Location System
 
-These three items share the same infrastructure and ship together. Camera scanning depends on good barcodes existing first.
+These items share the same infrastructure and ship together. Camera scanning depends on good barcodes existing first.
 
-- [ ] **#48 — Location barcodes (LOC-XXX)** — Add auto-generated `LOC-{id}` code to the `Location` model; extend `PrintBarcodeView` to handle location objects; add a print button to the location admin/detail page.
-- [ ] **#49 — Location-based views** — `Location` already has `default_status` and `is_printer`. Build views to list all items at a location and edit an item's location from that view.
-- [ ] **Phone camera barcode scanning** — Integrate `@zxing/browser` JS library; wire a camera-capture modal to the existing search/inventory flow via HTMX. Works on any phone browser without a native app. Scan LOC-XXX → location page; scan INV-XXX → item page.
+- [x] **Detailed location hierarchy** — `Location` gained `kind` (rack/shelf/dry_storage/ams/ams_slot/dryer/dryer_slot/printer), `parent`, `unit` (FK to the physical AMS/dryer InventoryItem), and `slot_index`; `default_status` now nullable for containers. `seed_locations` management command seeds 2 racks×5 shelves + 5 dry storage + 8 AMS×4 slots + 3 dryers×4 slots (72 rows, idempotent). Drying-warning logic now keys off `kind` instead of the hardcoded name. *Migrations 0025/0026.*
+- [x] **#48 — Location barcodes (LOC-XXX)** — `LOC-{id}` is decoded by `BarcodeRedirectView` (jumps into the audit console focused there) and the audit scan endpoint; `LocationAdmin` has a "Print location labels" action reusing `generate_and_print_label`.
+- [x] **Inventory audit mode** — Scan a location then the item tags present there; reconcile is per-location-immediate. New `UNKNOWN` status (durable via a `save()` sticky-status guard), `AuditSession`/`AuditEvent` models, reconcile state machine in `inventory/audit.py`, console + finalize UI (`/audit/`). Items recorded elsewhere move on scan; unscanned items at a closed location → UNKNOWN; finalize → DEPLETED. Input-agnostic scan endpoint (USB wedge now, camera later). **Post-merge:** link the 8 AMS / 3 dryer slot-groups to their unit InventoryItems in admin; add the 2 new dryers via the normal flow.
+- [ ] **#49 — Location-based views** — Build views to list all items at a location and edit an item's location from that view. *(Audit console partially covers "items at a location"; a standalone read-only location page is still open.)*
+- [ ] **Phone camera barcode scanning** — Integrate `@zxing/browser` JS library; wire a camera-capture modal. The audit scan endpoint is already input-agnostic (a camera JS POST of the decoded code hits the same `/audit/scan/`). Scan LOC-XXX → location page; scan INV-XXX → item page.
 
 ---
 

@@ -4,7 +4,20 @@ from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 
-from .models import AMS, Dryer, Filament, Hardware, InventoryItem, Printer
+from .models import AMS, Dryer, Filament, Hardware, InventoryItem, Location, Printer
+
+# Statuses a user may set by hand. UNKNOWN is audit-internal; DEPLETED/SOLD have
+# dedicated actions that also clear the location.
+_USER_SETTABLE_STATUSES = [
+    (value, label)
+    for value, label in InventoryItem.Status.choices
+    if value
+    not in (
+        InventoryItem.Status.UNKNOWN,
+        InventoryItem.Status.DEPLETED,
+        InventoryItem.Status.SOLD,
+    )
+]
 
 
 class UserRegisterForm(UserCreationForm):
@@ -26,16 +39,20 @@ class InventoryItemForm(forms.ModelForm):
             "shipment": "Scan or enter shipment tracking number, or enter arrival date if no tracking is available.",
         }
 
-        # def __init__(self, *args, **kwargs):
-        #     super().__init__(*args, **kwargs)
-        #     if not (product and hasattr(product, "serial_number")):
-        #         self.fields.pop("serial_number", None)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["location"].queryset = Location.assignable()
 
 
 class MoveItemForm(forms.ModelForm):
     class Meta:
         model = InventoryItem
         fields = ["location", "status"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["location"].queryset = Location.assignable()
+        self.fields["status"].choices = _USER_SETTABLE_STATUSES
 
 
 class FilamentForm(forms.ModelForm):
@@ -132,3 +149,7 @@ class InventoryEditForm(forms.ModelForm):
                 attrs={"class": "form-control", "type": "date"}
             ),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["location"].queryset = Location.assignable()

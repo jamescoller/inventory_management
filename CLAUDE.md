@@ -286,11 +286,61 @@ CSV template for data loading committed to `docs/filament-guide-data.csv`.
 Post-merge: fill CSV with guide data, then dispatch Haiku agents to load via
 Django shell. Unblocks Phase 7 (requirements picker).
 
-### Roadmap (as of May 2026)
+### Phase 6 — what was done (June 2026, PR #113 — open, pending merge)
+
+Detailed location hierarchy + inventory audit mode, shipped together (one PR) to
+support a full physical re-inventory.
+
+- `Location` went from flat to typed/hierarchical: added `kind` (`Location.Kind`
+  TextChoices: rack/shelf/dry_storage/ams/ams_slot/dryer/dryer_slot/printer),
+  `parent` (self-FK), `unit` (FK→`InventoryItem`, `SET_NULL`, links a slot to the
+  physical AMS/dryer record), `slot_index`. `default_status` made **nullable**
+  (containers carry none). `Location.assignable()` returns leaf kinds only;
+  `is_container` property. `is_printer` kept for back-compat.
+- `seed_locations` management command (idempotent `get_or_create`): 72 rows —
+  2 racks×5 shelves, 5 dry storage, 8 AMS×4 slots, 3 dryers×4 slots. **Slot `unit`
+  FKs seeded null on purpose** (no reliable auto-match key for the existing units) —
+  linked by hand in the Location admin post-merge; the 2 new dryers added via the
+  normal flow.
+- `filament_drying_warning()` rewritten to key off `kind` (DRY_STORAGE / PRINTER)
+  with `is_printer` kept in an OR fallback, instead of the hardcoded
+  `name == "dry storage"`.
+- New `InventoryItem.Status.UNKNOWN = 7`, made durable by a **`save()` sticky-status
+  guard**: `STICKY_STATUSES = (DEPLETED, SOLD, UNKNOWN)` skip the location→status
+  recompute branch. This is a model-level guarantee (not the ad-hoc
+  `_skip_status_from_location` flag, which doesn't survive reload) and also fixes a
+  latent bug where re-saving a depleted/sold item could reset it to NEW.
+- Audit mode: `AuditSession`/`AuditEvent` models; reconcile state machine lives in a
+  new **`inventory/audit.py`** service module (not views — keeps views.py lean and
+  the logic unit-testable). Views are thin CBVs (`AuditStart/Console/Scan/
+  CloseLocation/Finalize/Abandon`) at `/audit/...`. Per-location-immediate reconcile;
+  active-location focus is ephemeral in `request.session` (re-scan re-establishes it);
+  a `CLOSED` AuditEvent durably marks reconciled locations so close/finalize are
+  idempotent. Scan endpoint is input-agnostic (HTMX fragment) — USB wedge now, a
+  camera JS POST later hits the same `/audit/scan/`. Unit items (AMS/Dryer/Printer or
+  anything referenced by a `Location.unit`) are rejected so they can't be moved into a
+  slot.
+- `LOC-<id>` decoded by `BarcodeRedirectView` (jumps into the audit console focused
+  there); printable via a new `LocationAdmin` "Print location labels" action reusing
+  `generate_and_print_label`. Container kinds rejected **server-side** on the
+  bulk-move path and the audit scan handler (form queryset filtering alone is
+  bypassable). `UNKNOWN` excluded from the manual `MoveItemForm` status dropdown.
+- Migrations split: `0025` schema (AddFields + nullable default_status + choices +
+  audit models), `0026` RunPython backfill of `kind` from `is_printer`/name
+  (case-insensitive, printer-first). `kind` added with `default='shelf'`, so no
+  NOT-NULL-without-default trap. Seeding is a management command, never a migration.
+
+Post-merge: run `seed_locations`, link slot `unit` FKs in admin, add the 2 new
+dryers, verify `/audit/` render against the live stack (tests only exercise it via
+the Django test client).
+
+### Roadmap (as of June 2026)
 
 Phases 5–8 documented in `todo.md`. Summary:
 - **Phase 5**: PR #108 open. After merge + deploy, fill `docs/filament-guide-data.csv` and run Haiku data-loading task.
-- **Phase 6**: Barcode & location system (#48, #49) + camera scanning.
+- **Phase 6**: ✅ Location hierarchy + audit mode done (PR #113, open). Remaining: #49
+  standalone read-only location page; phone camera scanning (`@zxing/browser` →
+  POST decoded code to the already input-agnostic `/audit/scan/`).
 - **Phase 7**: Filament Selection Guide Stage 2 — requirements picker (depends on Phase 5 data loading).
 - **Phase 8**: Data visualizations (spool weight; usage over time needs `ConsumptionEvent` design first).
 - **Django upgrade**: ✅ Done (issue #109 closed May 2026). Now on Django 6.0.5 in

@@ -1,0 +1,89 @@
+{% if last_result %}
+  <div class="alert alert-{{ last_result.0 }} py-2">{{ last_result.1 }}</div>
+{% endif %}
+
+<div class="d-flex gap-3 flex-wrap mb-3">
+  <div class="card text-center px-3 py-2">
+    <div class="fw-bold fs-4">{{ tally.present }}</div>
+    <div class="text-muted small">Confirmed</div>
+  </div>
+  <div class="card text-center px-3 py-2">
+    <div class="fw-bold fs-4">{{ tally.moved }}</div>
+    <div class="text-muted small">Moved</div>
+  </div>
+  <div class="card text-center px-3 py-2">
+    <div class="fw-bold fs-4">{{ tally.revived }}</div>
+    <div class="text-muted small">Revived</div>
+  </div>
+  <div class="card text-center px-3 py-2">
+    <div class="fw-bold fs-4">{{ tally.closed }}</div>
+    <div class="text-muted small">Locations done</div>
+  </div>
+  <div class="card text-center px-3 py-2 {% if unknown_items %}border-warning{% endif %}">
+    <div class="fw-bold fs-4">{{ unknown_items|length }}</div>
+    <div class="text-muted small">Unknown</div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-12 col-lg-7">
+    {% if active_location %}
+      <div class="card mb-3">
+        <div class="card-header d-flex align-items-center">
+          <span>
+            <i class="bi bi-geo-alt-fill"></i>
+            <strong>{{ active_location.name }}</strong>
+            <span class="badge bg-light text-dark">{{ active_location.get_kind_display }}</span>
+          </span>
+          <form class="ms-auto" method="post" action="{% url 'audit_close_location' %}">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-outline-secondary" type="submit">
+              Close location
+            </button>
+          </form>
+        </div>
+        <ul class="list-group list-group-flush">
+          {% for item in items_here %}
+            <li class="list-group-item d-flex align-items-center">
+              {% if item.audit_scanned %}
+                <i class="bi bi-check-circle-fill text-success me-2"></i>
+              {% else %}
+                <i class="bi bi-question-circle text-warning me-2"></i>
+              {% endif %}
+              <span>
+                {{ item.product.name }}
+                <small class="text-muted">INV-{{ item.pk }}</small>
+              </span>
+              {% if not item.audit_scanned %}
+                <span class="badge bg-warning text-dark ms-auto">will be unknown</span>
+              {% endif %}
+            </li>
+          {% empty %}
+            <li class="list-group-item text-muted">No items recorded here.</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% else %}
+      <div class="alert alert-info">
+        <i class="bi bi-upc-scan"></i> Scan a location barcode to begin.
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="col-12 col-lg-5">
+    <h6 class="text-muted">Recent activity</h6>
+    <ul class="list-group list-group-flush small">
+      {% for event in recent_events %}
+        <li class="list-group-item py-1 d-flex justify-content-between">
+          <span>
+            {{ event.get_action_display }}
+            {% if event.item %}<small class="text-muted">INV-{{ event.item_id }}</small>{% endif %}
+          </span>
+          <span class="text-muted">{{ event.location.name|default:"—" }}</span>
+        </li>
+      {% empty %}
+        <li class="list-group-item text-muted">Nothing scanned yet.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>

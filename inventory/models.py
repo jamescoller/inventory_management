@@ -507,6 +507,12 @@ class InventoryItem(models.Model):
         STORED = 4, "stored"
         DEPLETED = 5, "depleted"
         SOLD = 6, "sold"
+        UNKNOWN = 7, "unknown"
+
+    # Statuses that are "sticky": once set, a location change must not silently
+    # recompute status from the destination's default. DEPLETED/SOLD are terminal;
+    # UNKNOWN is set during an audit and must survive until explicitly resolved.
+    STICKY_STATUSES = (Status.DEPLETED, Status.SOLD, Status.UNKNOWN)
 
     status = models.PositiveSmallIntegerField(
         choices=Status.choices, default=Status.NEW, blank=True
@@ -523,7 +529,14 @@ class InventoryItem(models.Model):
     def save(self, *args, **kwargs):
         is_new = self.pk is None
 
-        if not getattr(self, "_skip_status_from_location", False):
+        # Never auto-recompute status from location for sticky statuses
+        # (DEPLETED/SOLD are terminal; UNKNOWN is held during an audit). This is a
+        # model-level guarantee, independent of the ad-hoc _skip_status_from_location
+        # flag, which does not survive a reload from the DB.
+        if (
+            not getattr(self, "_skip_status_from_location", False)
+            and self.status not in self.STICKY_STATUSES
+        ):
             if is_new:
                 if self.location:
                     new_status = self.update_status()
@@ -611,29 +624,28 @@ class InventoryItem(models.Model):
         if not isinstance(self.product, Filament):
             return None
 
+        # Kept tolerant of legacy rows: prefer the typed `kind`, but fall back to
+        # `is_printer` so a NULL/un-backfilled kind never silently drops the drying
+        # safety error.
+        is_dry_storage = new_location.kind == Location.Kind.DRY_STORAGE
+        is_printer = (
+            new_location.kind == Location.Kind.PRINTER or new_location.is_printer
+        )
+
         if self.status == self.Status.NEW:
-            if (
-                new_location.name.lower() == "dry storage"
-                and self.product.filament.material.drying_required
-            ):
+            if is_dry_storage and self.product.filament.material.drying_required:
                 return (
                     "error",
                     "This filament must be dried before being moved to dry storage. Skipping drying is not allowed.",
                     False,
                 )
-            elif (
-                new_location.is_printer
-                and self.product.filament.material.drying_required
-            ):
+            elif is_printer and self.product.filament.material.drying_required:
                 return (
                     "warning",
                     "This filament requires drying before being used. Skipping drying may lead to poor print quality or print failure.",
                     True,
                 )
-            elif (
-                new_location.is_printer
-                and not self.product.filament.material.drying_required
-            ):
+            elif is_printer and not self.product.filament.material.drying_required:
                 return (
                     "info",
                     "This filament does not require drying before being used, but it may perform better if dried first.",
@@ -649,17 +661,75 @@ class Location(models.Model):
     """
     Represents a location that can store inventory items.
 
-    This class is used to model different locations where inventory items can
-    be stored. Each location has a name and a default status that is applied
-    to any items moved into this location. The name field is unique, ensuring
-    that no two locations can have the same name. The default status is
-    selected from predefined status choices available in `InventoryItem.Status`.
+    Locations form a shallow hierarchy described by ``kind``:
+
+    - Container kinds (``RACK``, ``AMS``, ``DRYER``) are organizational parents.
+      Items are never assigned directly to them.
+    - Leaf kinds (``SHELF``, ``DRY_STORAGE``, ``AMS_SLOT``, ``DRYER_SLOT``,
+      ``PRINTER``) are the assignable locations and carry a ``default_status``
+      that is applied to items moved into them.
+
+    ``AMS_SLOT``/``DRYER_SLOT`` leaves may link to the physical unit's
+    :class:`InventoryItem` via ``unit`` so a slot knows which tracked machine it
+    belongs to.
     """
+
+    class Kind(models.TextChoices):
+        RACK = "rack", "Receiving Rack"
+        SHELF = "shelf", "Shelf"
+        DRY_STORAGE = "dry_storage", "Dry Storage"
+        AMS = "ams", "AMS Unit"
+        AMS_SLOT = "ams_slot", "AMS Slot"
+        DRYER = "dryer", "Dryer"
+        DRYER_SLOT = "dryer_slot", "Dryer Slot"
+        PRINTER = "printer", "Printer"
+
+    # Kinds that hold items (selectable as an item's location).
+    ASSIGNABLE_KINDS = (
+        Kind.SHELF,
+        Kind.DRY_STORAGE,
+        Kind.AMS_SLOT,
+        Kind.DRYER_SLOT,
+        Kind.PRINTER,
+    )
+    # Organizational parents; items are never assigned to these.
+    CONTAINER_KINDS = (Kind.RACK, Kind.AMS, Kind.DRYER)
 
     name = models.CharField(max_length=200, unique=True)
 
+    kind = models.CharField(
+        max_length=20,
+        choices=Kind.choices,
+        default=Kind.SHELF,
+        help_text="Structural type of this location.",
+    )
+
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="children",
+        help_text="Parent container (shelf->rack, slot->unit).",
+    )
+
+    unit = models.ForeignKey(
+        "InventoryItem",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="slot_locations",
+        help_text="The physical AMS/dryer unit this slot belongs to, if tracked.",
+    )
+
+    slot_index = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text="Slot number within an AMS/dryer (1-4)."
+    )
+
     default_status = models.PositiveSmallIntegerField(
         choices=InventoryItem.Status.choices,
+        null=True,
+        blank=True,
         help_text="Default status to apply to items moved to this location.",
     )
 
@@ -670,9 +740,21 @@ class Location(models.Model):
     class Meta:
         verbose_name = "Location"
         verbose_name_plural = "Locations"
+        ordering = ["name"]
 
     def __str__(self):
         return self.name
+
+    @property
+    def is_container(self):
+        return self.kind in self.CONTAINER_KINDS
+
+    @classmethod
+    def assignable(cls):
+        """Leaf locations that an item can be assigned to, hierarchically ordered."""
+        return cls.objects.filter(kind__in=cls.ASSIGNABLE_KINDS).order_by(
+            "parent__name", "name"
+        )
 
 
 class Material(models.Model):
@@ -748,3 +830,80 @@ class Material(models.Model):
         if self.material_type:
             return f"{self.name} {self.material_type}"
         return self.name
+
+
+class AuditSession(models.Model):
+    """
+    A single physical inventory-audit run.
+
+    The auditor walks the storage, scanning each location and then the item tags
+    physically present there. Reconciliation happens live (per-location): closing a
+    location flags any still-assigned-but-unscanned items as
+    :attr:`InventoryItem.Status.UNKNOWN`; at finalize, items left UNKNOWN by this
+    session are confirmed depleted. Only one session may be ACTIVE at a time.
+    """
+
+    class State(models.TextChoices):
+        ACTIVE = "active", "Active"
+        FINALIZED = "finalized", "Finalized"
+        ABANDONED = "abandoned", "Abandoned"
+
+    user = models.ForeignKey(
+        "auth.User", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    state = models.CharField(max_length=20, choices=State.choices, default=State.ACTIVE)
+
+    class Meta:
+        ordering = ["-started_at"]
+        constraints = [
+            # At most one active session at a time.
+            models.UniqueConstraint(
+                fields=["state"],
+                condition=models.Q(state="active"),
+                name="unique_active_audit_session",
+            )
+        ]
+
+    def __str__(self):
+        return f"Audit #{self.pk} ({self.state})"
+
+    @classmethod
+    def active(cls):
+        return cls.objects.filter(state=cls.State.ACTIVE).first()
+
+    def mark_finished(self, state):
+        self.state = state
+        self.finished_at = now()
+        self.save(update_fields=["state", "finished_at"])
+
+
+class AuditEvent(models.Model):
+    """Append-only log of what happened to an item during an audit session."""
+
+    class Action(models.TextChoices):
+        VISITED = "visited", "Location visited"
+        SCANNED_PRESENT = "scanned_present", "Scanned present"
+        MOVED_IN = "moved_in", "Moved in"
+        REVIVED = "revived", "Revived"
+        FLAGGED_UNKNOWN = "flagged_unknown", "Flagged unknown"
+        CLOSED = "closed", "Location closed"
+
+    session = models.ForeignKey(
+        AuditSession, on_delete=models.CASCADE, related_name="events"
+    )
+    item = models.ForeignKey(
+        "InventoryItem", on_delete=models.CASCADE, null=True, blank=True
+    )
+    location = models.ForeignKey(
+        "Location", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    action = models.CharField(max_length=20, choices=Action.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.action} ({self.item_id}) @ {self.location_id}"
