@@ -895,3 +895,44 @@ class AuditScanUpcViewTests(TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(AuditUnknownScan.objects.filter(upc="123123123123").count(), 1)
+
+
+class AuditUnknownsPageTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="up", password="pass")
+        self.client.login(username="up", password="pass")
+        self.loc = Location.objects.create(
+            name="UP1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.session = AuditSession.objects.create()
+        self.scan = AuditUnknownScan.objects.create(
+            session=self.session, upc="555000111000", location=self.loc
+        )
+
+    def test_list_shows_open_only(self):
+        AuditUnknownScan.objects.create(
+            session=self.session,
+            upc="DISMISSEDROW999",
+            location=self.loc,
+            resolved=True,
+        )
+        resp = self.client.get(reverse("audit_unknowns"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "555000111000")
+        self.assertNotContains(resp, "DISMISSEDROW999")
+
+    def test_dismiss_hides(self):
+        self.client.post(reverse("audit_unknown_dismiss", args=[self.scan.pk]))
+        self.scan.refresh_from_db()
+        self.assertTrue(self.scan.dismissed)
+
+    def test_resolve_sets_pending_inventory(self):
+        resp = self.client.post(reverse("audit_unknown_resolve", args=[self.scan.pk]))
+        self.assertEqual(resp.status_code, 302)
+        pending = self.client.session["pending_inventory"]
+        self.assertEqual(pending["upc"], "555000111000")
+        self.assertEqual(pending["location_id"], self.loc.id)
+        self.assertEqual(pending["unknown_scan_id"], self.scan.id)

@@ -1349,3 +1349,50 @@ class AuditAbandonView(LoginRequiredMixin, View):
             "Audit abandoned. Items flagged unknown were left as-is for review.",
         )
         return redirect("dashboard")
+
+
+class AuditUnknownsView(LoginRequiredMixin, TemplateView):
+    """Post-walk review of UPCs that matched no catalog Product."""
+
+    template_name = "inventory/audit_unknowns.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["scans"] = (
+            AuditUnknownScan.objects.filter(resolved=False, dismissed=False)
+            .select_related("location")
+            .order_by("created_at")
+        )
+        return context
+
+
+class AuditUnknownResolveView(LoginRequiredMixin, View):
+    """Hand a queued UPC into the existing add-product flow, threading the scan id
+    so item creation marks this queue row resolved (see _resolve_pending_unknown)."""
+
+    def post(self, request, pk):
+        scan = get_object_or_404(
+            AuditUnknownScan, pk=pk, resolved=False, dismissed=False
+        )
+        request.session["pending_inventory"] = {
+            "upc": scan.upc,
+            "sku": "",
+            "shipment": None,
+            "location_id": scan.location_id,
+            "unknown_scan_id": scan.id,
+        }
+        messages.info(
+            request, f"Add the product for UPC {scan.upc}, then it returns here."
+        )
+        return redirect("add_product_choice")
+
+
+class AuditUnknownDismissView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        scan = get_object_or_404(
+            AuditUnknownScan, pk=pk, resolved=False, dismissed=False
+        )
+        scan.dismissed = True
+        scan.save(update_fields=["dismissed"])
+        messages.info(request, f"Dismissed UPC {scan.upc}.")
+        return redirect("audit_unknowns")
