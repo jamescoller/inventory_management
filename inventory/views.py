@@ -36,6 +36,7 @@ from .models import (
     AMS,
     AuditEvent,
     AuditSession,
+    AuditUnknownScan,
     Dryer,
     Filament,
     Hardware,
@@ -320,6 +321,11 @@ class AddInventoryView(LoginRequiredMixin, CreateView):
 
     def get_initial(self):
         initial = super().get_initial()
+        # Drop a stale unknown_scan_id if the user navigated here directly.
+        pending = self.request.session.get("pending_inventory")
+        if pending and "unknown_scan_id" in pending and not self.request.GET.get("upc"):
+            pending.pop("unknown_scan_id", None)
+            self.request.session["pending_inventory"] = pending
         if InventoryItem.objects.exists():
             latest = InventoryItem.objects.order_by("-id").first()
             initial["shipment"] = latest.shipment
@@ -378,6 +384,7 @@ class AddInventoryView(LoginRequiredMixin, CreateView):
             shipment=shipment,
             location=location,
         )
+        _resolve_pending_unknown(request, new_item)
 
         messages.success(request, f"Added {product.name} to inventory")
         logger.info(f"Added {product.name} to inventory")
@@ -932,11 +939,16 @@ class BaseAddProductView(LoginRequiredMixin, CreateView):
         if self.request.GET.get("from_inventory"):
             pending = self.request.session.pop("pending_inventory", None)
             if pending:
-                InventoryItem.objects.create(
+                new_item = InventoryItem.objects.create(
                     product=self.object,
-                    shipment=pending.get("shipment"),
+                    shipment=pending.get("shipment") or "",
                     location_id=pending.get("location_id"),
                 )
+                scan_id = pending.get("unknown_scan_id")
+                if scan_id:
+                    AuditUnknownScan.objects.filter(pk=scan_id, resolved=False).update(
+                        resolved=True, resolved_item=new_item
+                    )
                 messages.success(
                     self.request, f"{self.object.name} and inventory item created."
                 )
@@ -1118,6 +1130,21 @@ class DryStorageOverviewView(LoginRequiredMixin, TemplateView):
 _AUDIT_ACTIVE_LOC_KEY = "audit_active_location_id"
 
 
+def _resolve_pending_unknown(request, item):
+    """If the current pending_inventory carries an unknown_scan_id, mark that
+    AuditUnknownScan resolved against the freshly created item, then drop the id
+    so a later unrelated add can't re-trigger on it. No-op otherwise."""
+    pending = request.session.get("pending_inventory") or {}
+    scan_id = pending.get("unknown_scan_id")
+    if not scan_id:
+        return
+    AuditUnknownScan.objects.filter(pk=scan_id, resolved=False).update(
+        resolved=True, resolved_item=item
+    )
+    pending.pop("unknown_scan_id", None)
+    request.session["pending_inventory"] = pending
+
+
 def _active_location(request):
     """The location currently in focus for this audit, or None.
 
@@ -1161,6 +1188,9 @@ def _audit_context(request, session, active_location, last_result=None):
         "active_location": active_location,
         "items_here": items_here,
         "unknown_items": audit.session_unknown_items(session),
+        "unknown_count": AuditUnknownScan.objects.filter(
+            resolved=False, dismissed=False
+        ).count(),
         "tally": {
             "moved": AuditEvent.objects.filter(
                 session=session, action=AuditEvent.Action.MOVED_IN
@@ -1173,6 +1203,9 @@ def _audit_context(request, session, active_location, last_result=None):
             ).count(),
             "closed": AuditEvent.objects.filter(
                 session=session, action=AuditEvent.Action.CLOSED
+            ).count(),
+            "added": AuditEvent.objects.filter(
+                session=session, action=AuditEvent.Action.ADDED
             ).count(),
         },
         "recent_events": (
@@ -1234,19 +1267,36 @@ class AuditScanView(LoginRequiredMixin, View):
         active = _active_location(request)
         last_result = None
         try:
-            kind, pk = audit.parse_code(request.POST.get("code", ""))
+            kind, value = audit.parse_code(request.POST.get("code", ""))
             if kind == "loc":
-                location = Location.objects.filter(pk=pk).first()
+                location = Location.objects.filter(pk=value).first()
                 if location is None:
-                    raise audit.AuditError(f"No location with id {pk}.")
+                    raise audit.AuditError(f"No location with id {value}.")
                 audit.visit_location(session, location, previous_location=active)
                 _set_active_location(request, location)
                 active = location
                 last_result = ("info", f"At {location.name}.")
+            elif kind == "upc":
+                outcome, obj = audit.add_or_queue_upc(session, active, value)
+                if outcome == "added":
+                    try:
+                        generate_and_print_barcode(obj, mode="unique")
+                    except Exception as e:  # label print is non-fatal
+                        messages.warning(request, f"Label printing failed: {e}")
+                        logger.error(f"Label printing failed: {e}")
+                    last_result = (
+                        "success",
+                        f"Added {obj.product.name} (INV-{obj.pk}).",
+                    )
+                else:  # queued
+                    last_result = (
+                        "warning",
+                        f"Unknown UPC {value} queued for review.",
+                    )
             else:  # item
-                item = InventoryItem.objects.filter(pk=pk).first()
+                item = InventoryItem.objects.filter(pk=value).first()
                 if item is None:
-                    raise audit.AuditError(f"No item with id {pk}.")
+                    raise audit.AuditError(f"No item with id {value}.")
                 action = audit.scan_item(session, active, item)
                 labels = {
                     AuditEvent.Action.SCANNED_PRESENT: ("success", "Present"),
@@ -1296,7 +1346,13 @@ class AuditFinalizeView(LoginRequiredMixin, View):
         return render(
             request,
             "inventory/audit_finalize.html",
-            {"session": session, "unknown_items": audit.session_unknown_items(session)},
+            {
+                "session": session,
+                "unknown_items": audit.session_unknown_items(session),
+                "unknown_count": AuditUnknownScan.objects.filter(
+                    resolved=False, dismissed=False
+                ).count(),
+            },
         )
 
     def post(self, request):
@@ -1325,3 +1381,50 @@ class AuditAbandonView(LoginRequiredMixin, View):
             "Audit abandoned. Items flagged unknown were left as-is for review.",
         )
         return redirect("dashboard")
+
+
+class AuditUnknownsView(LoginRequiredMixin, TemplateView):
+    """Post-walk review of UPCs that matched no catalog Product."""
+
+    template_name = "inventory/audit_unknowns.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["scans"] = (
+            AuditUnknownScan.objects.filter(resolved=False, dismissed=False)
+            .select_related("location")
+            .order_by("created_at")
+        )
+        return context
+
+
+class AuditUnknownResolveView(LoginRequiredMixin, View):
+    """Hand a queued UPC into the existing add-product flow, threading the scan id
+    so item creation marks this queue row resolved (see _resolve_pending_unknown)."""
+
+    def post(self, request, pk):
+        scan = get_object_or_404(
+            AuditUnknownScan, pk=pk, resolved=False, dismissed=False
+        )
+        request.session["pending_inventory"] = {
+            "upc": scan.upc,
+            "sku": "",
+            "shipment": None,
+            "location_id": scan.location_id,
+            "unknown_scan_id": scan.id,
+        }
+        messages.info(
+            request, f"Add the product for UPC {scan.upc}, then it returns here."
+        )
+        return redirect("add_product_choice")
+
+
+class AuditUnknownDismissView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        scan = get_object_or_404(
+            AuditUnknownScan, pk=pk, resolved=False, dismissed=False
+        )
+        scan.dismissed = True
+        scan.save(update_fields=["dismissed"])
+        messages.info(request, f"Dismissed UPC {scan.upc}.")
+        return redirect("audit_unknowns")

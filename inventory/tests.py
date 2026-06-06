@@ -4,6 +4,8 @@ from django.urls import reverse
 
 from .models import (
     AMS,
+    AuditSession,
+    AuditUnknownScan,
     Dryer,
     Filament,
     Hardware,
@@ -529,7 +531,7 @@ class InventoryEditFormTests(TestCase):
 
 
 from . import audit  # noqa: E402
-from .models import AuditEvent, AuditSession  # noqa: E402
+from .models import AuditEvent  # noqa: E402
 
 
 class StickyStatusGuardTests(TestCase):
@@ -739,3 +741,301 @@ class AuditViewTests(TestCase):
         missing.refresh_from_db()
         self.assertNotEqual(item.status, InventoryItem.Status.DEPLETED)
         self.assertEqual(missing.status, InventoryItem.Status.DEPLETED)
+
+
+class AuditUnknownScanModelTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="uq", password="pass")
+        self.loc = Location.objects.create(
+            name="Q1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+
+    def test_create_and_defaults(self):
+        session = AuditSession.objects.create(user=self.user)
+        scan = AuditUnknownScan.objects.create(
+            session=session, upc="111222333444", location=self.loc
+        )
+        self.assertFalse(scan.resolved)
+        self.assertFalse(scan.dismissed)
+        self.assertIsNone(scan.resolved_item)
+        self.assertIsNotNone(scan.created_at)
+
+    def test_added_action_exists(self):
+        self.assertEqual(AuditEvent.Action.ADDED, "added")
+
+    def test_open_duplicate_blocked(self):
+        from django.db import IntegrityError, transaction
+
+        session = AuditSession.objects.create(user=self.user)
+        AuditUnknownScan.objects.create(
+            session=session, upc="111222333444", location=self.loc
+        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                AuditUnknownScan.objects.create(
+                    session=session, upc="111222333444", location=self.loc
+                )
+
+    def test_resolved_duplicate_allowed(self):
+        session = AuditSession.objects.create(user=self.user)
+        first = AuditUnknownScan.objects.create(
+            session=session, upc="111222333444", location=self.loc
+        )
+        first.resolved = True
+        first.save(update_fields=["resolved"])
+        # A new open row for the same key is fine once the prior is resolved.
+        AuditUnknownScan.objects.create(
+            session=session, upc="111222333444", location=self.loc
+        )
+        self.assertEqual(AuditUnknownScan.objects.filter(upc="111222333444").count(), 2)
+
+
+class AuditAddOrQueueTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="aq", password="pass")
+        self.shelf = Location.objects.create(
+            name="AQ1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.rack = Location.objects.create(name="Rack", kind=Location.Kind.RACK)
+        self.product = Filament.objects.create(name="PLA Q", upc="600000000001")
+
+    def test_parse_code_upc(self):
+        self.assertEqual(audit.parse_code("600000000001"), ("upc", "600000000001"))
+        self.assertEqual(audit.parse_code("LOC-5"), ("loc", 5))
+        self.assertEqual(audit.parse_code("INV-12"), ("item", 12))
+        with self.assertRaises(audit.AuditError):
+            audit.parse_code("not-a-code")
+
+    def test_in_catalog_creates_item_present_immune(self):
+        session = audit.start_session(self.user)
+        outcome, obj = audit.add_or_queue_upc(session, self.shelf, "600000000001")
+        self.assertEqual(outcome, "added")
+        self.assertEqual(obj.product_id, self.product.id)
+        self.assertEqual(obj.location_id, self.shelf.id)
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                session=session, item=obj, action=AuditEvent.Action.ADDED
+            ).exists()
+        )
+        # Present-immune: closing the location must NOT flag the just-added item.
+        audit.close_location(session, self.shelf)
+        obj.refresh_from_db()
+        self.assertNotEqual(obj.status, InventoryItem.Status.UNKNOWN)
+
+    def test_unknown_upc_queues(self):
+        session = audit.start_session(self.user)
+        outcome, obj = audit.add_or_queue_upc(session, self.shelf, "999888777666")
+        self.assertEqual(outcome, "queued")
+        self.assertEqual(obj.upc, "999888777666")
+        self.assertEqual(obj.location_id, self.shelf.id)
+        self.assertFalse(obj.resolved)
+
+    def test_unknown_upc_dedup(self):
+        session = audit.start_session(self.user)
+        audit.add_or_queue_upc(session, self.shelf, "999888777666")
+        audit.add_or_queue_upc(session, self.shelf, "999888777666")
+        self.assertEqual(
+            AuditUnknownScan.objects.filter(
+                session=session, upc="999888777666", location=self.shelf
+            ).count(),
+            1,
+        )
+
+    def test_no_active_location_raises(self):
+        session = audit.start_session(self.user)
+        with self.assertRaises(audit.AuditError):
+            audit.add_or_queue_upc(session, None, "600000000001")
+
+    def test_container_location_raises(self):
+        session = audit.start_session(self.user)
+        with self.assertRaises(audit.AuditError):
+            audit.add_or_queue_upc(session, self.rack, "600000000001")
+
+
+@override_settings(ENABLE_BARCODE_PRINTING=False)
+class AuditScanUpcViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="su", password="pass")
+        self.client.login(username="su", password="pass")
+        self.shelf = Location.objects.create(
+            name="SU1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.product = Filament.objects.create(name="PLA SU", upc="700000000001")
+        self.client.post(reverse("audit_start"))
+        self.client.post(reverse("audit_scan"), {"code": f"LOC-{self.shelf.pk}"})
+
+    def test_scan_in_catalog_upc_creates_item(self):
+        before = InventoryItem.objects.count()
+        resp = self.client.post(
+            reverse("audit_scan"),
+            {"code": "700000000001"},
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(InventoryItem.objects.count(), before + 1)
+        new_item = InventoryItem.objects.latest("id")
+        self.assertEqual(new_item.location_id, self.shelf.id)
+        self.assertEqual(new_item.product_id, self.product.id)
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                item=new_item, action=AuditEvent.Action.ADDED
+            ).exists()
+        )
+
+    def test_scan_unknown_upc_queues(self):
+        resp = self.client.post(
+            reverse("audit_scan"),
+            {"code": "123123123123"},
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(AuditUnknownScan.objects.filter(upc="123123123123").count(), 1)
+
+
+class AuditUnknownsPageTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="up", password="pass")
+        self.client.login(username="up", password="pass")
+        self.loc = Location.objects.create(
+            name="UP1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.session = AuditSession.objects.create()
+        self.scan = AuditUnknownScan.objects.create(
+            session=self.session, upc="555000111000", location=self.loc
+        )
+
+    def test_list_shows_open_only(self):
+        AuditUnknownScan.objects.create(
+            session=self.session,
+            upc="DISMISSEDROW999",
+            location=self.loc,
+            resolved=True,
+        )
+        resp = self.client.get(reverse("audit_unknowns"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "555000111000")
+        self.assertNotContains(resp, "DISMISSEDROW999")
+
+    def test_dismiss_hides(self):
+        self.client.post(reverse("audit_unknown_dismiss", args=[self.scan.pk]))
+        self.scan.refresh_from_db()
+        self.assertTrue(self.scan.dismissed)
+
+    def test_resolve_sets_pending_inventory(self):
+        resp = self.client.post(reverse("audit_unknown_resolve", args=[self.scan.pk]))
+        self.assertEqual(resp.status_code, 302)
+        pending = self.client.session["pending_inventory"]
+        self.assertEqual(pending["upc"], "555000111000")
+        self.assertEqual(pending["location_id"], self.loc.id)
+        self.assertEqual(pending["unknown_scan_id"], self.scan.id)
+
+
+class AuditResolveLoopTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="rl", password="pass")
+        self.client.login(username="rl", password="pass")
+        self.loc = Location.objects.create(
+            name="RL1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.session = AuditSession.objects.create()
+        self.scan = AuditUnknownScan.objects.create(
+            session=self.session, upc="800000000001", location=self.loc
+        )
+
+    def test_in_catalog_add_marks_resolved(self):
+        # Product now exists in the catalog (added since the scan).
+        Filament.objects.create(name="PLA RL", upc="800000000001")
+        # Resolve handoff stashes pending_inventory incl. unknown_scan_id.
+        self.client.post(reverse("audit_unknown_resolve", args=[self.scan.pk]))
+        # The matched-product path of AddInventoryView creates the item.
+        self.client.post(reverse("add_inventory"), {"upc": "800000000001"})
+        self.scan.refresh_from_db()
+        self.assertTrue(self.scan.resolved)
+        self.assertIsNotNone(self.scan.resolved_item)
+        self.assertEqual(self.scan.resolved_item.product.upc, "800000000001")
+
+    def test_new_product_path_marks_resolved(self):
+        """AddFilamentView form_valid with ?from_inventory=1 must mark the scan
+        resolved and link resolved_item to the new inventory item."""
+        scan2 = AuditUnknownScan.objects.create(
+            session=self.session, upc="810000000002", location=self.loc
+        )
+        session = self.client.session
+        session["pending_inventory"] = {
+            "upc": "810000000002",
+            "sku": "",
+            "shipment": None,
+            "location_id": self.loc.id,
+            "unknown_scan_id": scan2.id,
+        }
+        session.save()
+        resp = self.client.post(
+            reverse("add_filament") + "?from_inventory=1",
+            {
+                "name": "PLA New",
+                "upc": "810000000002",
+                # All other FilamentForm fields are blank=True / null=True
+            },
+        )
+        # Should redirect on success; if 200 the form had errors
+        if resp.status_code == 200 and "form" in resp.context:
+            self.fail(f"Form invalid: {resp.context['form'].errors}")
+        scan2.refresh_from_db()
+        self.assertTrue(scan2.resolved)
+        self.assertIsNotNone(scan2.resolved_item)
+        self.assertEqual(scan2.resolved_item.product.upc, "810000000002")
+
+
+@override_settings(ENABLE_BARCODE_PRINTING=False)
+class AuditUiSurfaceTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="ui", password="pass")
+        self.client.login(username="ui", password="pass")
+        self.loc = Location.objects.create(
+            name="UI1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+
+    def test_finalize_notes_queued_unknowns(self):
+        self.client.post(reverse("audit_start"))
+        session = AuditSession.active()
+        AuditUnknownScan.objects.create(
+            session=session, upc="900000000001", location=self.loc
+        )
+        resp = self.client.get(reverse("audit_finalize"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "audit/unknowns")
+        self.assertContains(resp, "1 unknown UPC")
+
+    def test_body_shows_added_card(self):
+        Filament.objects.create(name="PLA UI", upc="900000000777")
+        self.client.post(reverse("audit_start"))
+        self.client.post(reverse("audit_scan"), {"code": f"LOC-{self.loc.pk}"})
+        before = InventoryItem.objects.count()
+        resp = self.client.post(
+            reverse("audit_scan"),
+            {"code": "900000000777"},
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Added")
+        # The scan actually added an item and logged an ADDED event.
+        self.assertEqual(InventoryItem.objects.count(), before + 1)
+        self.assertTrue(
+            AuditEvent.objects.filter(action=AuditEvent.Action.ADDED).exists()
+        )

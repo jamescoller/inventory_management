@@ -1,0 +1,51 @@
+{% extends "inventory/base.html" %}
+
+{% block content %}
+<div class="container py-3">
+  <h1 class="mb-3"><i class="bi bi-upc-scan"></i> Unknown UPCs</h1>
+  <p class="text-muted">
+    Spools scanned during an audit whose UPC matched no product in the catalog.
+    Add each one (it pre-fills the add-product form with the UPC and location), or
+    dismiss a mis-scan.
+  </p>
+
+  {% if scans %}
+    <table class="table align-middle">
+      <thead>
+        <tr><th>UPC</th><th>Location</th><th>Scanned</th><th class="text-end">Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for scan in scans %}
+          <tr>
+            <td><code>{{ scan.upc }}</code></td>
+            <td>{{ scan.location.name|default:"—" }}</td>
+            <td>{{ scan.created_at|date:"Y-m-d H:i" }}</td>
+            <td class="text-end">
+              <form class="d-inline" method="post"
+                    action="{% url 'audit_unknown_resolve' scan.pk %}">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-primary" type="submit">
+                  <i class="bi bi-plus-circle"></i> Add to inventory
+                </button>
+              </form>
+              <form class="d-inline" method="post"
+                    action="{% url 'audit_unknown_dismiss' scan.pk %}">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-outline-secondary" type="submit">
+                  Dismiss
+                </button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="alert alert-success">No unknown UPCs to review.</div>
+  {% endif %}
+
+  <a class="btn btn-outline-secondary" href="{% url 'audit_console' %}">
+    <i class="bi bi-arrow-left"></i> Back to audit
+  </a>
+</div>
+{% endblock content %}

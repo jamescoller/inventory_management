@@ -16,6 +16,9 @@ from .views import (
     AuditFinalizeView,
     AuditScanView,
     AuditStartView,
+    AuditUnknownDismissView,
+    AuditUnknownResolveView,
+    AuditUnknownsView,
     BarcodeRedirectView,
     BulkUpdateView,
     Dashboard,
@@ -91,4 +94,15 @@ urlpatterns = [
     ),
     path("audit/finalize/", AuditFinalizeView.as_view(), name="audit_finalize"),
     path("audit/abandon/", AuditAbandonView.as_view(), name="audit_abandon"),
+    path("audit/unknowns/", AuditUnknownsView.as_view(), name="audit_unknowns"),
+    path(
+        "audit/unknowns/<int:pk>/resolve/",
+        AuditUnknownResolveView.as_view(),
+        name="audit_unknown_resolve",
+    ),
+    path(
+        "audit/unknowns/<int:pk>/dismiss/",
+        AuditUnknownDismissView.as_view(),
+        name="audit_unknown_dismiss",
+    ),
 ]

@@ -889,6 +889,7 @@ class AuditEvent(models.Model):
         REVIVED = "revived", "Revived"
         FLAGGED_UNKNOWN = "flagged_unknown", "Flagged unknown"
         CLOSED = "closed", "Location closed"
+        ADDED = "added", "Added during audit"
 
     session = models.ForeignKey(
         AuditSession, on_delete=models.CASCADE, related_name="events"
@@ -907,3 +908,41 @@ class AuditEvent(models.Model):
 
     def __str__(self):
         return f"{self.action} ({self.item_id}) @ {self.location_id}"
+
+
+class AuditUnknownScan(models.Model):
+    """A UPC scanned during an audit that matched no catalog Product.
+
+    Captured at the active location and queued for post-walk review at
+    ``/audit/unknowns/``, where it is handed into the normal add-product flow.
+    """
+
+    session = models.ForeignKey(
+        AuditSession, on_delete=models.CASCADE, related_name="unknown_scans"
+    )
+    upc = models.CharField(max_length=64)
+    location = models.ForeignKey(
+        "Location", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved = models.BooleanField(default=False)
+    resolved_item = models.ForeignKey(
+        "InventoryItem", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    dismissed = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            # At most one OPEN (unresolved, undismissed) queue row per
+            # session+upc+location. Same UPC at a different location is a
+            # different physical spool, so location is part of the key.
+            models.UniqueConstraint(
+                fields=["session", "upc", "location"],
+                condition=models.Q(resolved=False, dismissed=False),
+                name="unique_open_unknown_scan",
+            )
+        ]
+
+    def __str__(self):
+        return f"UPC {self.upc} @ {self.location_id} ({'open' if not (self.resolved or self.dismissed) else 'closed'})"

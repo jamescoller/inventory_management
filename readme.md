@@ -87,3 +87,10 @@ scan a location barcode, scan the item tags physically present, and finalize —
 left unaccounted-for at visited locations are marked depleted. After first seeding,
 link each AMS/dryer slot group to its unit's inventory record via the `unit` field in
 the Location admin.
+
+During the walk you can also scan an **untracked spool's UPC** (its bare-numeric
+manufacturer barcode). If that UPC is already in the catalog, a new inventory item is
+created at the active location and its `INV-` label prints immediately. If it isn't,
+the scan is queued; clear the queue afterward at **Unknown UPCs** (`/audit/unknowns/`),
+which hands each one into the normal add-product form (pre-filled with the UPC and
+location) and marks it resolved once the item is created.

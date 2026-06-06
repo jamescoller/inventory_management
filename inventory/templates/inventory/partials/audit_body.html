@@ -19,11 +19,23 @@
     <div class="fw-bold fs-4">{{ tally.closed }}</div>
     <div class="text-muted small">Locations done</div>
   </div>
+  <div class="card text-center px-3 py-2">
+    <div class="fw-bold fs-4">{{ tally.added }}</div>
+    <div class="text-muted small">Added</div>
+  </div>
   <div class="card text-center px-3 py-2 {% if unknown_items %}border-warning{% endif %}">
     <div class="fw-bold fs-4">{{ unknown_items|length }}</div>
     <div class="text-muted small">Unknown</div>
   </div>
 </div>
+
+{% if unknown_count %}
+  <div class="mb-3">
+    <a class="btn btn-sm btn-outline-warning" href="{% url 'audit_unknowns' %}">
+      <i class="bi bi-upc-scan"></i> Unknown UPCs ({{ unknown_count }})
+    </a>
+  </div>
+{% endif %}
 
 <div class="row">
   <div class="col-12 col-lg-7">
