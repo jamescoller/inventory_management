@@ -321,6 +321,11 @@ class AddInventoryView(LoginRequiredMixin, CreateView):
 
     def get_initial(self):
         initial = super().get_initial()
+        # Drop a stale unknown_scan_id if the user navigated here directly.
+        pending = self.request.session.get("pending_inventory")
+        if pending and "unknown_scan_id" in pending and not self.request.GET.get("upc"):
+            pending.pop("unknown_scan_id", None)
+            self.request.session["pending_inventory"] = pending
         if InventoryItem.objects.exists():
             latest = InventoryItem.objects.order_by("-id").first()
             initial["shipment"] = latest.shipment
@@ -379,6 +384,7 @@ class AddInventoryView(LoginRequiredMixin, CreateView):
             shipment=shipment,
             location=location,
         )
+        _resolve_pending_unknown(request, new_item)
 
         messages.success(request, f"Added {product.name} to inventory")
         logger.info(f"Added {product.name} to inventory")
@@ -933,11 +939,16 @@ class BaseAddProductView(LoginRequiredMixin, CreateView):
         if self.request.GET.get("from_inventory"):
             pending = self.request.session.pop("pending_inventory", None)
             if pending:
-                InventoryItem.objects.create(
+                new_item = InventoryItem.objects.create(
                     product=self.object,
-                    shipment=pending.get("shipment"),
+                    shipment=pending.get("shipment") or "",
                     location_id=pending.get("location_id"),
                 )
+                scan_id = pending.get("unknown_scan_id")
+                if scan_id:
+                    AuditUnknownScan.objects.filter(pk=scan_id, resolved=False).update(
+                        resolved=True, resolved_item=new_item
+                    )
                 messages.success(
                     self.request, f"{self.object.name} and inventory item created."
                 )
@@ -1117,6 +1128,21 @@ class DryStorageOverviewView(LoginRequiredMixin, TemplateView):
 # ---------------------------------------------------------------------------
 
 _AUDIT_ACTIVE_LOC_KEY = "audit_active_location_id"
+
+
+def _resolve_pending_unknown(request, item):
+    """If the current pending_inventory carries an unknown_scan_id, mark that
+    AuditUnknownScan resolved against the freshly created item, then drop the id
+    so a later unrelated add can't re-trigger on it. No-op otherwise."""
+    pending = request.session.get("pending_inventory") or {}
+    scan_id = pending.get("unknown_scan_id")
+    if not scan_id:
+        return
+    AuditUnknownScan.objects.filter(pk=scan_id, resolved=False).update(
+        resolved=True, resolved_item=item
+    )
+    pending.pop("unknown_scan_id", None)
+    request.session["pending_inventory"] = pending
 
 
 def _active_location(request):

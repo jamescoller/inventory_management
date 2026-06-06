@@ -4,6 +4,8 @@ from django.urls import reverse
 
 from .models import (
     AMS,
+    AuditSession,
+    AuditUnknownScan,
     Dryer,
     Filament,
     Hardware,
@@ -529,7 +531,7 @@ class InventoryEditFormTests(TestCase):
 
 
 from . import audit  # noqa: E402
-from .models import AuditEvent, AuditSession, AuditUnknownScan  # noqa: E402
+from .models import AuditEvent  # noqa: E402
 
 
 class StickyStatusGuardTests(TestCase):
@@ -936,3 +938,62 @@ class AuditUnknownsPageTests(TestCase):
         self.assertEqual(pending["upc"], "555000111000")
         self.assertEqual(pending["location_id"], self.loc.id)
         self.assertEqual(pending["unknown_scan_id"], self.scan.id)
+
+
+class AuditResolveLoopTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="rl", password="pass")
+        self.client.login(username="rl", password="pass")
+        self.loc = Location.objects.create(
+            name="RL1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.session = AuditSession.objects.create()
+        self.scan = AuditUnknownScan.objects.create(
+            session=self.session, upc="800000000001", location=self.loc
+        )
+
+    def test_in_catalog_add_marks_resolved(self):
+        # Product now exists in the catalog (added since the scan).
+        Filament.objects.create(name="PLA RL", upc="800000000001")
+        # Resolve handoff stashes pending_inventory incl. unknown_scan_id.
+        self.client.post(reverse("audit_unknown_resolve", args=[self.scan.pk]))
+        # The matched-product path of AddInventoryView creates the item.
+        self.client.post(reverse("add_inventory"), {"upc": "800000000001"})
+        self.scan.refresh_from_db()
+        self.assertTrue(self.scan.resolved)
+        self.assertIsNotNone(self.scan.resolved_item)
+        self.assertEqual(self.scan.resolved_item.product.upc, "800000000001")
+
+    def test_new_product_path_marks_resolved(self):
+        """AddFilamentView form_valid with ?from_inventory=1 must mark the scan
+        resolved and link resolved_item to the new inventory item."""
+        scan2 = AuditUnknownScan.objects.create(
+            session=self.session, upc="810000000002", location=self.loc
+        )
+        session = self.client.session
+        session["pending_inventory"] = {
+            "upc": "810000000002",
+            "sku": "",
+            "shipment": None,
+            "location_id": self.loc.id,
+            "unknown_scan_id": scan2.id,
+        }
+        session.save()
+        resp = self.client.post(
+            reverse("add_filament") + "?from_inventory=1",
+            {
+                "name": "PLA New",
+                "upc": "810000000002",
+                # All other FilamentForm fields are blank=True / null=True
+            },
+        )
+        # Should redirect on success; if 200 the form had errors
+        if resp.status_code == 200 and "form" in resp.context:
+            self.fail(f"Form invalid: {resp.context['form'].errors}")
+        scan2.refresh_from_db()
+        self.assertTrue(scan2.resolved)
+        self.assertIsNotNone(scan2.resolved_item)
+        self.assertEqual(scan2.resolved_item.product.upc, "810000000002")
