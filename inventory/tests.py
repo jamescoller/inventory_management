@@ -529,7 +529,7 @@ class InventoryEditFormTests(TestCase):
 
 
 from . import audit  # noqa: E402
-from .models import AuditEvent, AuditSession  # noqa: E402
+from .models import AuditEvent, AuditSession, AuditUnknownScan  # noqa: E402
 
 
 class StickyStatusGuardTests(TestCase):
@@ -739,3 +739,52 @@ class AuditViewTests(TestCase):
         missing.refresh_from_db()
         self.assertNotEqual(item.status, InventoryItem.Status.DEPLETED)
         self.assertEqual(missing.status, InventoryItem.Status.DEPLETED)
+
+
+class AuditUnknownScanModelTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="uq", password="pass")
+        self.loc = Location.objects.create(
+            name="Q1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+
+    def test_create_and_defaults(self):
+        session = AuditSession.objects.create(user=self.user)
+        scan = AuditUnknownScan.objects.create(
+            session=session, upc="111222333444", location=self.loc
+        )
+        self.assertFalse(scan.resolved)
+        self.assertFalse(scan.dismissed)
+        self.assertIsNone(scan.resolved_item)
+        self.assertIsNotNone(scan.created_at)
+
+    def test_added_action_exists(self):
+        self.assertEqual(AuditEvent.Action.ADDED, "added")
+
+    def test_open_duplicate_blocked(self):
+        from django.db import IntegrityError, transaction
+
+        session = AuditSession.objects.create(user=self.user)
+        AuditUnknownScan.objects.create(
+            session=session, upc="111222333444", location=self.loc
+        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                AuditUnknownScan.objects.create(
+                    session=session, upc="111222333444", location=self.loc
+                )
+
+    def test_resolved_duplicate_allowed(self):
+        session = AuditSession.objects.create(user=self.user)
+        first = AuditUnknownScan.objects.create(
+            session=session, upc="111222333444", location=self.loc
+        )
+        first.resolved = True
+        first.save(update_fields=["resolved"])
+        # A new open row for the same key is fine once the prior is resolved.
+        AuditUnknownScan.objects.create(
+            session=session, upc="111222333444", location=self.loc
+        )
+        self.assertEqual(AuditUnknownScan.objects.filter(upc="111222333444").count(), 2)
