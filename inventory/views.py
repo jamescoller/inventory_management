@@ -36,6 +36,7 @@ from .models import (
     AMS,
     AuditEvent,
     AuditSession,
+    AuditUnknownScan,
     Dryer,
     Filament,
     Hardware,
@@ -1161,6 +1162,9 @@ def _audit_context(request, session, active_location, last_result=None):
         "active_location": active_location,
         "items_here": items_here,
         "unknown_items": audit.session_unknown_items(session),
+        "unknown_count": AuditUnknownScan.objects.filter(
+            resolved=False, dismissed=False
+        ).count(),
         "tally": {
             "moved": AuditEvent.objects.filter(
                 session=session, action=AuditEvent.Action.MOVED_IN
@@ -1173,6 +1177,9 @@ def _audit_context(request, session, active_location, last_result=None):
             ).count(),
             "closed": AuditEvent.objects.filter(
                 session=session, action=AuditEvent.Action.CLOSED
+            ).count(),
+            "added": AuditEvent.objects.filter(
+                session=session, action=AuditEvent.Action.ADDED
             ).count(),
         },
         "recent_events": (
@@ -1234,19 +1241,36 @@ class AuditScanView(LoginRequiredMixin, View):
         active = _active_location(request)
         last_result = None
         try:
-            kind, pk = audit.parse_code(request.POST.get("code", ""))
+            kind, value = audit.parse_code(request.POST.get("code", ""))
             if kind == "loc":
-                location = Location.objects.filter(pk=pk).first()
+                location = Location.objects.filter(pk=value).first()
                 if location is None:
-                    raise audit.AuditError(f"No location with id {pk}.")
+                    raise audit.AuditError(f"No location with id {value}.")
                 audit.visit_location(session, location, previous_location=active)
                 _set_active_location(request, location)
                 active = location
                 last_result = ("info", f"At {location.name}.")
+            elif kind == "upc":
+                outcome, obj = audit.add_or_queue_upc(session, active, value)
+                if outcome == "added":
+                    try:
+                        generate_and_print_barcode(obj, mode="unique")
+                    except Exception as e:  # label print is non-fatal
+                        messages.warning(request, f"Label printing failed: {e}")
+                        logger.error(f"Label printing failed: {e}")
+                    last_result = (
+                        "success",
+                        f"Added {obj.product.name} (INV-{obj.pk}).",
+                    )
+                else:  # queued
+                    last_result = (
+                        "warning",
+                        f"Unknown UPC {value} queued for review.",
+                    )
             else:  # item
-                item = InventoryItem.objects.filter(pk=pk).first()
+                item = InventoryItem.objects.filter(pk=value).first()
                 if item is None:
-                    raise audit.AuditError(f"No item with id {pk}.")
+                    raise audit.AuditError(f"No item with id {value}.")
                 action = audit.scan_item(session, active, item)
                 labels = {
                     AuditEvent.Action.SCANNED_PRESENT: ("success", "Present"),

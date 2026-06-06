@@ -852,3 +852,46 @@ class AuditAddOrQueueTests(TestCase):
         session = audit.start_session(self.user)
         with self.assertRaises(audit.AuditError):
             audit.add_or_queue_upc(session, self.rack, "600000000001")
+
+
+@override_settings(ENABLE_BARCODE_PRINTING=False)
+class AuditScanUpcViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="su", password="pass")
+        self.client.login(username="su", password="pass")
+        self.shelf = Location.objects.create(
+            name="SU1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.product = Filament.objects.create(name="PLA SU", upc="700000000001")
+        self.client.post(reverse("audit_start"))
+        self.client.post(reverse("audit_scan"), {"code": f"LOC-{self.shelf.pk}"})
+
+    def test_scan_in_catalog_upc_creates_item(self):
+        before = InventoryItem.objects.count()
+        resp = self.client.post(
+            reverse("audit_scan"),
+            {"code": "700000000001"},
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(InventoryItem.objects.count(), before + 1)
+        new_item = InventoryItem.objects.latest("id")
+        self.assertEqual(new_item.location_id, self.shelf.id)
+        self.assertEqual(new_item.product_id, self.product.id)
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                item=new_item, action=AuditEvent.Action.ADDED
+            ).exists()
+        )
+
+    def test_scan_unknown_upc_queues(self):
+        resp = self.client.post(
+            reverse("audit_scan"),
+            {"code": "123123123123"},
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(AuditUnknownScan.objects.filter(upc="123123123123").count(), 1)
