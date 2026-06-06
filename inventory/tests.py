@@ -788,3 +788,67 @@ class AuditUnknownScanModelTests(TestCase):
             session=session, upc="111222333444", location=self.loc
         )
         self.assertEqual(AuditUnknownScan.objects.filter(upc="111222333444").count(), 2)
+
+
+class AuditAddOrQueueTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="aq", password="pass")
+        self.shelf = Location.objects.create(
+            name="AQ1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.rack = Location.objects.create(name="Rack", kind=Location.Kind.RACK)
+        self.product = Filament.objects.create(name="PLA Q", upc="600000000001")
+
+    def test_parse_code_upc(self):
+        self.assertEqual(audit.parse_code("600000000001"), ("upc", "600000000001"))
+        self.assertEqual(audit.parse_code("LOC-5"), ("loc", 5))
+        self.assertEqual(audit.parse_code("INV-12"), ("item", 12))
+        with self.assertRaises(audit.AuditError):
+            audit.parse_code("not-a-code")
+
+    def test_in_catalog_creates_item_present_immune(self):
+        session = audit.start_session(self.user)
+        outcome, obj = audit.add_or_queue_upc(session, self.shelf, "600000000001")
+        self.assertEqual(outcome, "added")
+        self.assertEqual(obj.product_id, self.product.id)
+        self.assertEqual(obj.location_id, self.shelf.id)
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                session=session, item=obj, action=AuditEvent.Action.ADDED
+            ).exists()
+        )
+        # Present-immune: closing the location must NOT flag the just-added item.
+        audit.close_location(session, self.shelf)
+        obj.refresh_from_db()
+        self.assertNotEqual(obj.status, InventoryItem.Status.UNKNOWN)
+
+    def test_unknown_upc_queues(self):
+        session = audit.start_session(self.user)
+        outcome, obj = audit.add_or_queue_upc(session, self.shelf, "999888777666")
+        self.assertEqual(outcome, "queued")
+        self.assertEqual(obj.upc, "999888777666")
+        self.assertEqual(obj.location_id, self.shelf.id)
+        self.assertFalse(obj.resolved)
+
+    def test_unknown_upc_dedup(self):
+        session = audit.start_session(self.user)
+        audit.add_or_queue_upc(session, self.shelf, "999888777666")
+        audit.add_or_queue_upc(session, self.shelf, "999888777666")
+        self.assertEqual(
+            AuditUnknownScan.objects.filter(
+                session=session, upc="999888777666", location=self.shelf
+            ).count(),
+            1,
+        )
+
+    def test_no_active_location_raises(self):
+        session = audit.start_session(self.user)
+        with self.assertRaises(audit.AuditError):
+            audit.add_or_queue_upc(session, None, "600000000001")
+
+    def test_container_location_raises(self):
+        session = audit.start_session(self.user)
+        with self.assertRaises(audit.AuditError):
+            audit.add_or_queue_upc(session, self.rack, "600000000001")

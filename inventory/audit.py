@@ -26,16 +26,22 @@ from .models import (
     AMS,
     AuditEvent,
     AuditSession,
+    AuditUnknownScan,
     Dryer,
     InventoryItem,
     Location,
     Printer,
+    Product,
 )
 
 logger = logging.getLogger("inventory")
 
 # Actions that mean "the item was physically accounted for at a location".
-PRESENT_ACTIONS = (AuditEvent.Action.SCANNED_PRESENT, AuditEvent.Action.MOVED_IN)
+PRESENT_ACTIONS = (
+    AuditEvent.Action.SCANNED_PRESENT,
+    AuditEvent.Action.MOVED_IN,
+    AuditEvent.Action.ADDED,
+)
 
 
 class AuditError(Exception):
@@ -43,9 +49,10 @@ class AuditError(Exception):
 
 
 def parse_code(raw):
-    """Classify a scanned string -> ``("loc"|"item", pk)``.
+    """Classify a scanned string -> ``("loc"|"item"|"upc", value)``.
 
-    Raises :class:`AuditError` for anything unrecognized or malformed.
+    ``LOC-``/``INV-`` carry an int pk; a bare-numeric scan is a manufacturer UPC
+    (returned as a string). Raises :class:`AuditError` for anything else.
     """
     code = (raw or "").strip().upper()
     for prefix, kind in (("LOC-", "loc"), ("INV-", "item")):
@@ -54,7 +61,9 @@ def parse_code(raw):
             if rest.isdigit():
                 return kind, int(rest)
             raise AuditError(f"Malformed code: {raw!r}")
-    raise AuditError(f"Unrecognized code {raw!r}. Expected LOC-… or INV-…")
+    if code.isdigit():
+        return "upc", code
+    raise AuditError(f"Unrecognized code {raw!r}. Expected LOC-…, INV-…, or a UPC.")
 
 
 def start_session(user):
@@ -142,6 +151,43 @@ def scan_item(session, location, item):
         session=session, item=item, location=location, action=action
     )
     return action
+
+
+def add_or_queue_upc(session, location, upc):
+    """Reconcile an untracked-spool UPC scan against the active location.
+
+    Catalog hit -> create an :class:`InventoryItem` here, log ``ADDED``, return
+    ``("added", item)``. Catalog miss -> queue an :class:`AuditUnknownScan`
+    (deduped on session+upc+location) and return ``("queued", scan)``.
+
+    The caller (view) is responsible for label printing on the ``added`` branch.
+    """
+    if location is None:
+        raise AuditError("Scan a location barcode first.")
+    if location.is_container:
+        raise AuditError(f"{location.name} is a container, not a storage spot.")
+
+    product = Product.objects.filter(upc=upc).first()
+    if product is None:
+        scan, _ = AuditUnknownScan.objects.get_or_create(
+            session=session,
+            upc=upc,
+            location=location,
+            resolved=False,
+            dismissed=False,
+        )
+        return "queued", scan
+
+    item = InventoryItem(product=product, location=location)
+    new_status = item.update_status()
+    if new_status:
+        item.status = new_status
+    item._skip_status_from_location = True  # status set explicitly above
+    item.save()
+    AuditEvent.objects.create(
+        session=session, item=item, location=location, action=AuditEvent.Action.ADDED
+    )
+    return "added", item
 
 
 def close_location(session, location):
