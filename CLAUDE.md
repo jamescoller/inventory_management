@@ -273,7 +273,7 @@ Tests foundation + small features. All items from todo.md Phase 4 completed.
 - Generated missing migration `0023_alter_material_options`.
 - Fixed `get_color_family()` to expand 3-digit hex codes before slicing.
 
-### Phase 5 — what was done (May 2026, PR #108 — open, pending merge)
+### Phase 5 — what was done (May 2026, PR #108 — MERGED)
 
 Filament Selection Guide Stage 1. Added 10 new fields to `Material` (spec said 13
 but `requires_drying`/`drying_temp_c`/`drying_time_hours` were redundant with
@@ -286,7 +286,7 @@ CSV template for data loading committed to `docs/filament-guide-data.csv`.
 Post-merge: fill CSV with guide data, then dispatch Haiku agents to load via
 Django shell. Unblocks Phase 7 (requirements picker).
 
-### Phase 6 — what was done (June 2026, PR #113 — open, pending merge)
+### Phase 6 — what was done (June 2026, PR #113 — MERGED `0b354ef`, deployed since 2026-06-02)
 
 Detailed location hierarchy + inventory audit mode, shipped together (one PR) to
 support a full physical re-inventory.
@@ -330,17 +330,51 @@ support a full physical re-inventory.
   (case-insensitive, printer-first). `kind` added with `default='shelf'`, so no
   NOT-NULL-without-default trap. Seeding is a management command, never a migration.
 
-Post-merge: run `seed_locations`, link slot `unit` FKs in admin, add the 2 new
-dryers, verify `/audit/` render against the live stack (tests only exercise it via
-the Django test client).
+Post-merge status (verified against live stack 2026-06-06): `seed_locations` **run on
+prod** (25 backfilled flat rows → 97; the 72-row hierarchy now exists). Still pending
+(James — needs admin/physical access): link slot `unit` FKs in admin, add the 2 new
+dryers, **reconcile the 20 old flat shelves against the 10 new rack-child shelves**
+(old flat rows hold current inventory; coexist with the new hierarchy), print
+`LOC-`/`INV-` labels, eyeball `/audit/` render.
+
+### Phase 6 follow-up — inline add-item during audit (June 2026, separate PR off master)
+
+Lets the audit scan stream handle untracked spools without leaving the console.
+Spec/plan in `docs/superpowers/`. Built subagent-driven (TDD, 6 tasks).
+
+- `parse_code` gains a third kind: a **bare-numeric** scan is a UPC (`LOC-`/`INV-`
+  keep prefixes — unambiguous). New `audit.add_or_queue_upc(session, location, upc)`:
+  catalog hit → create `InventoryItem` at the active location + log new
+  `AuditEvent.Action.ADDED`; catalog miss → queue an `AuditUnknownScan` row
+  (`get_or_create`, deduped). **Logic in `audit.py`; label printing stays in the
+  view** (`AuditScanView`), mirroring `AddInventoryView`.
+- `ADDED` folded into `audit.PRESENT_ACTIONS`, so a just-added item is immune to the
+  close-location UNKNOWN sweep (used identically in `close_location`, `_audit_context`,
+  tally).
+- `AuditUnknownScan` model + migration `0027` (additive): partial `UniqueConstraint`
+  on `(session, upc, location)` WHERE `not resolved and not dismissed` → race-safe
+  open-row dedup; same UPC at two locations = two rows (intended).
+- Review page `/audit/unknowns/` (`AuditUnknownsView`/`ResolveView`/`DismissView`,
+  login-required, POST mutations). Resolve stashes `pending_inventory` (incl. a
+  threaded `unknown_scan_id`) and redirects into the **existing** add-product flow;
+  `_resolve_pending_unknown` (matched-product path) + an inline `.update()` (new-product
+  path in `BaseAddProductView.form_valid`) mark the scan `resolved` on item creation
+  and pop the id. The list is **global/cross-session by design** (cleared after
+  finalize, when no session is active — do NOT scope it to the active session).
+- UI: "Added" stat card + "Unknown UPCs (N)" badge in the console body; finalize-page
+  note when the queue is non-empty; `AuditUnknownScanAdmin`.
+- Bug fixed in passing: `BaseAddProductView.form_valid` passed `shipment=None` into a
+  non-nullable `CharField` (latent 500 on the add-product-from-inventory flow) →
+  `shipment=pending.get("shipment") or ""`.
 
 ### Roadmap (as of June 2026)
 
 Phases 5–8 documented in `todo.md`. Summary:
-- **Phase 5**: PR #108 open. After merge + deploy, fill `docs/filament-guide-data.csv` and run Haiku data-loading task.
-- **Phase 6**: ✅ Location hierarchy + audit mode done (PR #113, open). Remaining: #49
-  standalone read-only location page; phone camera scanning (`@zxing/browser` →
-  POST decoded code to the already input-agnostic `/audit/scan/`).
+- **Phase 5**: ✅ PR #108 merged. Next: fill `docs/filament-guide-data.csv` and run the Haiku data-loading task.
+- **Phase 6**: ✅ Location hierarchy + audit mode merged+deployed (PR #113). Inline
+  add-item follow-up done (separate PR). Remaining: #49 standalone read-only location
+  page; phone camera scanning (`@zxing/browser` → POST decoded code to the already
+  input-agnostic `/audit/scan/`); the manual prod setup listed above.
 - **Phase 7**: Filament Selection Guide Stage 2 — requirements picker (depends on Phase 5 data loading).
 - **Phase 8**: Data visualizations (spool weight; usage over time needs `ConsumptionEvent` design first).
 - **Django upgrade**: ✅ Done (issue #109 closed May 2026). Now on Django 6.0.5 in
