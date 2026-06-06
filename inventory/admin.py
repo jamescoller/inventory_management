@@ -13,6 +13,7 @@ from polymorphic.admin import PolymorphicChildModelAdmin, PolymorphicParentModel
 from .forms import InventoryItemForm
 from .models import (
     AMS,
+    AuditUnknownScan,
     Dryer,
     Filament,
     Hardware,
@@ -476,3 +477,11 @@ class MaterialAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+
+@admin.register(AuditUnknownScan)
+class AuditUnknownScanAdmin(admin.ModelAdmin):
+    list_display = ("upc", "location", "created_at", "resolved", "dismissed")
+    list_filter = ("resolved", "dismissed")
+    search_fields = ("upc",)
+    list_select_related = ("location",)

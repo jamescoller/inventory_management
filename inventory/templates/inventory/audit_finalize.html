@@ -12,6 +12,14 @@
         need to keep should be scanned back in before you confirm.
       </p>
 
+      {% if unknown_count %}
+        <div class="alert alert-warning">
+          <i class="bi bi-upc-scan"></i>
+          {{ unknown_count }} unknown UPC{{ unknown_count|pluralize }} still queued —
+          <a href="{% url 'audit_unknowns' %}">review them</a> after finalizing.
+        </div>
+      {% endif %}
+
       <div class="card mb-3">
         <div class="card-header">
           {{ unknown_items|length }} item{{ unknown_items|length|pluralize }} to be depleted

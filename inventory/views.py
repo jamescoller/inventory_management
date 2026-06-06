@@ -1346,7 +1346,13 @@ class AuditFinalizeView(LoginRequiredMixin, View):
         return render(
             request,
             "inventory/audit_finalize.html",
-            {"session": session, "unknown_items": audit.session_unknown_items(session)},
+            {
+                "session": session,
+                "unknown_items": audit.session_unknown_items(session),
+                "unknown_count": AuditUnknownScan.objects.filter(
+                    resolved=False, dismissed=False
+                ).count(),
+            },
         )
 
     def post(self, request):

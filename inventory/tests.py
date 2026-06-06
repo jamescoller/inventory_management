@@ -997,3 +997,45 @@ class AuditResolveLoopTests(TestCase):
         self.assertTrue(scan2.resolved)
         self.assertIsNotNone(scan2.resolved_item)
         self.assertEqual(scan2.resolved_item.product.upc, "810000000002")
+
+
+@override_settings(ENABLE_BARCODE_PRINTING=False)
+class AuditUiSurfaceTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="ui", password="pass")
+        self.client.login(username="ui", password="pass")
+        self.loc = Location.objects.create(
+            name="UI1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+
+    def test_finalize_notes_queued_unknowns(self):
+        self.client.post(reverse("audit_start"))
+        session = AuditSession.active()
+        AuditUnknownScan.objects.create(
+            session=session, upc="900000000001", location=self.loc
+        )
+        resp = self.client.get(reverse("audit_finalize"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "audit/unknowns")
+        self.assertContains(resp, "1 unknown UPC")
+
+    def test_body_shows_added_card(self):
+        Filament.objects.create(name="PLA UI", upc="900000000777")
+        self.client.post(reverse("audit_start"))
+        self.client.post(reverse("audit_scan"), {"code": f"LOC-{self.loc.pk}"})
+        before = InventoryItem.objects.count()
+        resp = self.client.post(
+            reverse("audit_scan"),
+            {"code": "900000000777"},
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Added")
+        # The scan actually added an item and logged an ADDED event.
+        self.assertEqual(InventoryItem.objects.count(), before + 1)
+        self.assertTrue(
+            AuditEvent.objects.filter(action=AuditEvent.Action.ADDED).exists()
+        )
