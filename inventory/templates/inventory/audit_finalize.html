@@ -7,9 +7,11 @@
       <h1><i class="bi bi-check2-circle"></i> Finalize Audit #{{ session.pk }}</h1>
       <p class="text-muted">
         The locations you visited have been reconciled. The items below were recorded
-        at a visited location but never scanned during this audit. Finalizing will mark
-        them <strong>depleted</strong> and clear their location. Anything you still
-        need to keep should be scanned back in before you confirm.
+        at a visited location but never scanned during this audit. By default they are
+        marked <strong>depleted</strong> and their location cleared. Tick
+        <em>keep unknown</em> on anything you'd rather leave in limbo for now (e.g.
+        something found out of place you'll re-shelve later) — it stays
+        <strong>unknown</strong> instead of being depleted.
       </p>
 
       {% if unknown_count %}
@@ -20,41 +22,81 @@
         </div>
       {% endif %}
 
-      <div class="card mb-3">
-        <div class="card-header">
-          {{ unknown_items|length }} item{{ unknown_items|length|pluralize }} to be depleted
+      {% if added_items %}
+        <div class="card mb-3 border-info">
+          <div class="card-header">
+            <i class="bi bi-plus-circle"></i>
+            {{ added_items|length }} item{{ added_items|length|pluralize }} added this audit
+          </div>
+          <ul class="list-group list-group-flush">
+            {% for item in added_items %}
+              <li class="list-group-item d-flex align-items-center">
+                <span>
+                  {{ item.product.name }}
+                  <small class="text-muted">INV-{{ item.pk }}
+                    {% if item.location %}· {{ item.location.name }}{% endif %}</small>
+                </span>
+                <form class="ms-auto" method="post"
+                      action="{% url 'audit_undo_add' item.pk %}"
+                      onsubmit="return confirm('Remove {{ item.product.name }} (INV-{{ item.pk }})? This deletes the item created by the scan.');">
+                  {% csrf_token %}
+                  <input type="hidden" name="next" value="finalize">
+                  <button class="btn btn-sm btn-outline-danger" type="submit">
+                    <i class="bi bi-trash"></i> Remove
+                  </button>
+                </form>
+              </li>
+            {% endfor %}
+          </ul>
+          <div class="card-footer text-muted small">
+            Added a UPC by mistake instead of scanning its INV tag? Remove it here.
+          </div>
         </div>
-        <ul class="list-group list-group-flush">
-          {% for item in unknown_items %}
-            <li class="list-group-item d-flex align-items-center">
-              <span>
-                {{ item.product.name }}
-                <small class="text-muted">INV-{{ item.pk }}</small>
-              </span>
-              <span class="text-muted ms-auto">
-                last seen: {{ item.location.name|default:"—" }}
-              </span>
-            </li>
-          {% empty %}
-            <li class="list-group-item text-muted">
-              Nothing is unaccounted for — finalizing just closes the audit.
-            </li>
-          {% endfor %}
-        </ul>
-      </div>
+      {% endif %}
 
-      <div class="d-flex gap-2">
-        <a class="btn btn-outline-secondary" href="{% url 'audit_console' %}">
-          <i class="bi bi-arrow-left"></i> Back to scanning
-        </a>
-        <form method="post" action="{% url 'audit_finalize' %}"
-              onsubmit="return confirm('Mark {{ unknown_items|length }} item(s) depleted and finalize the audit?');">
-          {% csrf_token %}
+      <form method="post" action="{% url 'audit_finalize' %}"
+            onsubmit="return confirm('Finalize the audit? Unchecked items are depleted; checked stay unknown.');">
+        {% csrf_token %}
+        <div class="card mb-3">
+          <div class="card-header">
+            {{ unknown_items|length }} unaccounted-for item{{ unknown_items|length|pluralize }}
+          </div>
+          <ul class="list-group list-group-flush">
+            {% for item in unknown_items %}
+              <li class="list-group-item d-flex align-items-center gap-2">
+                <span>
+                  {{ item.product.name }}
+                  <small class="text-muted">INV-{{ item.pk }}</small>
+                </span>
+                <span class="text-muted ms-auto me-3">
+                  last seen: {{ item.location.name|default:"—" }}
+                </span>
+                <div class="form-check mb-0">
+                  <input class="form-check-input" type="checkbox"
+                         name="keep_unknown" value="{{ item.pk }}"
+                         id="keep-{{ item.pk }}">
+                  <label class="form-check-label small" for="keep-{{ item.pk }}">
+                    keep unknown
+                  </label>
+                </div>
+              </li>
+            {% empty %}
+              <li class="list-group-item text-muted">
+                Nothing is unaccounted for — finalizing just closes the audit.
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <div class="d-flex gap-2">
+          <a class="btn btn-outline-secondary" href="{% url 'audit_console' %}">
+            <i class="bi bi-arrow-left"></i> Back to scanning
+          </a>
           <button class="btn btn-success" type="submit">
             <i class="bi bi-check2-circle"></i> Confirm &amp; Finalize
           </button>
-        </form>
-      </div>
+        </div>
+      </form>
     </div>
   </div>
 </div>

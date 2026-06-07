@@ -41,11 +41,14 @@
   <div class="col-12 col-lg-7">
     {% if active_location %}
       <div class="card mb-3">
-        <div class="card-header d-flex align-items-center">
+        <div class="card-header d-flex align-items-center flex-wrap gap-2">
           <span>
             <i class="bi bi-geo-alt-fill"></i>
             <strong>{{ active_location.name }}</strong>
             <span class="badge bg-light text-dark">{{ active_location.get_kind_display }}</span>
+            {% if active_is_unit %}
+              <span class="badge bg-info text-dark">whole unit</span>
+            {% endif %}
           </span>
           <form class="ms-auto" method="post" action="{% url 'audit_close_location' %}">
             {% csrf_token %}
@@ -53,6 +56,11 @@
               Close location
             </button>
           </form>
+        </div>
+        <div class="card-body py-2 d-flex gap-3 flex-wrap small border-bottom">
+          <span><strong>{{ expected_count }}</strong> expected here</span>
+          <span class="text-success"><strong>{{ present_count }}</strong> scanned</span>
+          <span class="text-warning"><strong>{{ pending_count }}</strong> not yet scanned</span>
         </div>
         <ul class="list-group list-group-flush">
           {% for item in items_here %}
@@ -65,6 +73,9 @@
               <span>
                 {{ item.product.name }}
                 <small class="text-muted">INV-{{ item.pk }}</small>
+                {% if active_is_unit %}
+                  <small class="text-muted">· {{ item.location.name }}</small>
+                {% endif %}
               </span>
               {% if not item.audit_scanned %}
                 <span class="badge bg-warning text-dark ms-auto">will be unknown</span>
@@ -78,6 +89,38 @@
     {% else %}
       <div class="alert alert-info">
         <i class="bi bi-upc-scan"></i> Scan a location barcode to begin.
+      </div>
+    {% endif %}
+
+    {% if added_items %}
+      <div class="card mb-3 border-info">
+        <div class="card-header d-flex align-items-center">
+          <span><i class="bi bi-plus-circle"></i> Added this session</span>
+          <span class="badge bg-info text-dark ms-2">{{ added_items|length }}</span>
+        </div>
+        <ul class="list-group list-group-flush">
+          {% for item in added_items %}
+            <li class="list-group-item d-flex align-items-center">
+              <span>
+                {{ item.product.name }}
+                <small class="text-muted">INV-{{ item.pk }}
+                  {% if item.location %}· {{ item.location.name }}{% endif %}</small>
+              </span>
+              <form class="ms-auto" method="post"
+                    hx-post="{% url 'audit_undo_add' item.pk %}"
+                    hx-target="#audit-body" hx-swap="innerHTML"
+                    hx-confirm="Remove {{ item.product.name }} (INV-{{ item.pk }})? This deletes the item created by the mistaken scan.">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-outline-danger" type="submit">
+                  <i class="bi bi-trash"></i> Undo
+                </button>
+              </form>
+            </li>
+          {% endfor %}
+        </ul>
+        <div class="card-footer text-muted small">
+          Scanned a UPC by mistake instead of an INV tag? Undo removes the item it created.
+        </div>
       </div>
     {% endif %}
   </div>
