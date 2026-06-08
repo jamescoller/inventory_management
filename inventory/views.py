@@ -157,6 +157,29 @@ class AddProductChoiceView(LoginRequiredMixin, CreateView):
         return render(request, "inventory/add_product_choice.html", {"upc": upc})
 
 
+def _expanded_location_ids(term):
+    """Resolve a location search term to a set of Location ids, expanded to the
+    full subtree of any matched container.
+
+    Accepts a name fragment (case-insensitive) or a ``LOC-<id>`` code. So
+    searching "AMS RP-1", a rack, or dry storage returns items in all child
+    slots/shelves, not just items pinned to the container itself. Returns an
+    empty set when nothing matches.
+    """
+    term = (term or "").strip()
+    if not term:
+        return set()
+    loc_match = re.match(r"^LOC-(\d+)$", term, re.IGNORECASE)
+    if loc_match:
+        matched = Location.objects.filter(pk=int(loc_match.group(1)))
+    else:
+        matched = Location.objects.filter(name__icontains=term)
+    ids = set()
+    for loc in matched:
+        ids |= loc.descendant_ids()
+    return ids
+
+
 class InventorySearchView(LoginRequiredMixin, View):
     def get(self, request):
         # Get search parameters from the query string
@@ -180,14 +203,19 @@ class InventorySearchView(LoginRequiredMixin, View):
 
         # If there's a simple search from the navbar, search across multiple fields
         if name and not any([sku, upc, location, serial_number, item_id]):
-            items = items.filter(
+            name_q = (
                 Q(product__name__icontains=name)
                 | Q(product__sku__icontains=name)
                 | Q(product__upc__icontains=name)
-                | Q(location__name__icontains=name)
                 | Q(serial_number__icontains=name)
                 | Q(id__icontains=name)
             )
+            # Location dimension: expand a matched container to its whole subtree
+            # (and support a typed LOC-<id>). Covers direct name matches too.
+            loc_ids = _expanded_location_ids(name)
+            if loc_ids:
+                name_q |= Q(location_id__in=loc_ids)
+            items = items.filter(name_q)
         else:
             # Apply specific filters
             if sku:
@@ -197,7 +225,7 @@ class InventorySearchView(LoginRequiredMixin, View):
             if name:
                 items = items.filter(product__name__icontains=name)
             if location:
-                items = items.filter(location__name__icontains=location)
+                items = items.filter(location_id__in=_expanded_location_ids(location))
             if serial_number:
                 items = items.filter(serial_number=serial_number)
             if item_id:

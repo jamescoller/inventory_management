@@ -756,6 +756,25 @@ class Location(models.Model):
             "parent__name", "name"
         )
 
+    def descendant_ids(self):
+        """Return this location's id plus every descendant id (BFS over `parent`).
+
+        Used by location search so that searching a container (a rack, dry
+        storage, an AMS/dryer) returns items in all of its child locations
+        (shelves/slots), not just items pinned directly to the container.
+        """
+        ids = {self.id}
+        frontier = [self.id]
+        while frontier:
+            children = list(
+                Location.objects.filter(parent_id__in=frontier).values_list(
+                    "id", flat=True
+                )
+            )
+            frontier = [cid for cid in children if cid not in ids]
+            ids.update(frontier)
+        return ids
+
 
 class Material(models.Model):
     """

@@ -1445,3 +1445,72 @@ class PrinterReachabilityTests(TestCase):
         with patch("inventory.barcode_utils._printer_reachable", return_value=False):
             with self.assertRaises(barcode_utils.PrinterUnreachableError):
                 barcode_utils.generate_and_print_label("INV-1")
+
+
+class HierarchicalLocationSearchTests(TestCase):
+    """Searching a container location returns items in all of its child
+    locations (and supports a typed LOC-<id>), per the audit/search request.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="ls", password="pass")
+        self.client.login(username="ls", password="pass")
+
+        K = Location.Kind
+        self.rack = Location.objects.create(name="Rack RP-1", kind=K.RACK)
+        self.shelf1 = Location.objects.create(
+            name="Shelf One", kind=K.SHELF, parent=self.rack
+        )
+        self.shelf2 = Location.objects.create(
+            name="Shelf Two", kind=K.SHELF, parent=self.rack
+        )
+        self.ams = Location.objects.create(name="AMS RP-1", kind=K.AMS)
+        self.slot1 = Location.objects.create(
+            name="Bay Alpha", kind=K.AMS_SLOT, parent=self.ams
+        )
+        self.slot2 = Location.objects.create(
+            name="Bay Beta", kind=K.AMS_SLOT, parent=self.ams
+        )
+        self.dry = Location.objects.create(name="Dry Box", kind=K.DRY_STORAGE)
+
+        prod = Filament.objects.create(name="PLA Zed", upc="8000000000001")
+        self.i_shelf1 = InventoryItem.objects.create(product=prod, location=self.shelf1)
+        self.i_shelf2 = InventoryItem.objects.create(product=prod, location=self.shelf2)
+        self.i_slot1 = InventoryItem.objects.create(product=prod, location=self.slot1)
+        self.i_slot2 = InventoryItem.objects.create(product=prod, location=self.slot2)
+        self.i_dry = InventoryItem.objects.create(product=prod, location=self.dry)
+
+    def _ids(self, resp):
+        return {i.id for i in resp.context["items"]}
+
+    def test_descendant_ids(self):
+        self.assertEqual(
+            self.rack.descendant_ids(), {self.rack.id, self.shelf1.id, self.shelf2.id}
+        )
+        self.assertEqual(
+            self.ams.descendant_ids(), {self.ams.id, self.slot1.id, self.slot2.id}
+        )
+        self.assertEqual(self.dry.descendant_ids(), {self.dry.id})
+
+    def test_explicit_location_filter_expands_container_to_children(self):
+        resp = self.client.get(reverse("inventory_search"), {"location": "AMS RP-1"})
+        self.assertEqual(self._ids(resp), {self.i_slot1.id, self.i_slot2.id})
+
+    def test_explicit_location_filter_by_loc_id(self):
+        resp = self.client.get(
+            reverse("inventory_search"), {"location": f"LOC-{self.rack.id}"}
+        )
+        self.assertEqual(self._ids(resp), {self.i_shelf1.id, self.i_shelf2.id})
+
+    def test_navbar_search_expands_container_to_children(self):
+        resp = self.client.get(reverse("inventory_search"), {"name": "Rack RP-1"})
+        self.assertEqual(self._ids(resp), {self.i_shelf1.id, self.i_shelf2.id})
+
+    def test_leaf_location_returns_only_that_leaf(self):
+        resp = self.client.get(reverse("inventory_search"), {"location": "Bay Alpha"})
+        self.assertEqual(self._ids(resp), {self.i_slot1.id})
+
+    def test_unknown_location_returns_nothing(self):
+        resp = self.client.get(reverse("inventory_search"), {"location": "Nowhere"})
+        self.assertEqual(self._ids(resp), set())
