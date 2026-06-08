@@ -1514,3 +1514,56 @@ class HierarchicalLocationSearchTests(TestCase):
     def test_unknown_location_returns_nothing(self):
         resp = self.client.get(reverse("inventory_search"), {"location": "Nowhere"})
         self.assertEqual(self._ids(resp), set())
+
+
+@override_settings(LOW_QUANTITY=3)
+class LowStockAlertTests(TestCase):
+    """Low-stock alerts must key off the SKU's true active count.
+
+    Regression: out-of-stock was computed as ``depleted_map - active_map`` where
+    active_map was pre-filtered to ``active_count < LOW_QUANTITY``. A well-stocked
+    SKU (>= LOW_QUANTITY) was therefore absent from active_map, so any such SKU
+    with a depletion in the last 30 days was falsely flagged "Out of Stock" with
+    count 0 -- e.g. PLA Basic Black showing out of stock while 3 rolls exist.
+    """
+
+    def _deplete(self, item, days_ago=1):
+        from datetime import timedelta
+
+        from django.utils.timezone import now
+
+        InventoryItem.objects.filter(pk=item.pk).update(
+            status=InventoryItem.Status.DEPLETED,
+            date_depleted=now() - timedelta(days=days_ago),
+        )
+
+    def _alerts_by_sku(self):
+        from .views import _build_low_stock_alerts
+
+        return {a["product__sku"]: a for a in _build_low_stock_alerts()}
+
+    def test_well_stocked_recently_depleted_is_not_flagged(self):
+        p = Filament.objects.create(
+            name="PLA Basic Black", sku="10101", upc="9000000000001"
+        )
+        for _ in range(3):
+            InventoryItem.objects.create(product=p)  # 3 active (== LOW_QUANTITY)
+        self._deplete(InventoryItem.objects.create(product=p))  # recent depletion
+        self.assertNotIn("10101", self._alerts_by_sku())
+
+    def test_zero_active_recently_depleted_is_out_of_stock(self):
+        p = Filament.objects.create(
+            name="PETG HF Black", sku="33102", upc="9000000000002"
+        )
+        self._deplete(InventoryItem.objects.create(product=p))
+        alerts = self._alerts_by_sku()
+        self.assertIn("33102", alerts)
+        self.assertEqual(alerts["33102"]["active_count"], 0)
+        self.assertEqual(alerts["33102"]["urgency_label"], "Out of Stock")
+
+    def test_low_but_present_is_low_stock(self):
+        p = Filament.objects.create(name="ABS Red", sku="40200", upc="9000000000003")
+        InventoryItem.objects.create(product=p)  # 1 active, below LOW_QUANTITY
+        alerts = self._alerts_by_sku()
+        self.assertIn("40200", alerts)
+        self.assertEqual(alerts["40200"]["active_count"], 1)
