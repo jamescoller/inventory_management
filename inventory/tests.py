@@ -1320,3 +1320,46 @@ class SearchBulkActionWiringTests(TestCase):
             "the #select-all checkbox -> submit handler never attaches. Use "
             "columnDefs instead.",
         )
+
+
+class FilamentColorGuideCountTests(TestCase):
+    """The `/filament-color-guide/` header must count spools (inventory items),
+    not distinct color/SKU rows.
+
+    Regression: the view set ``total_filaments = len(filaments)`` -- the number
+    of distinct Filament rows with active stock -- so the "N spools on hand"
+    header under-reported (e.g. 165 vs the Dashboard's 478 actual spools).
+    """
+
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="cg", password="pass")
+        self.client.login(username="cg", password="pass")
+        mat = Material.objects.create(name="PLA", material_type="")
+        red = Filament.objects.create(
+            name="PLA Red",
+            upc="7000000000001",
+            material=mat,
+            color="Red",
+            color_family="RED",
+            weight=1.0,
+        )
+        blue = Filament.objects.create(
+            name="PLA Blue",
+            upc="7000000000002",
+            material=mat,
+            color="Blue",
+            color_family="BLUE",
+            weight=1.0,
+        )
+        # 5 spools total across 2 distinct filaments (default status NEW = active)
+        for _ in range(3):
+            InventoryItem.objects.create(product=red)
+        for _ in range(2):
+            InventoryItem.objects.create(product=blue)
+
+    def test_header_counts_spools_not_distinct_filaments(self):
+        resp = self.client.get(reverse("filament_color_guide"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["total_spools"], 5)
+        self.assertContains(resp, "5 spools on hand")
