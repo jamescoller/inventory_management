@@ -1363,3 +1363,85 @@ class FilamentColorGuideCountTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.context["total_spools"], 5)
         self.assertContains(resp, "5 spools on hand")
+
+
+class PrinterReachabilityTests(TestCase):
+    """Printing must fail fast when the label printer is offline, instead of
+    blocking the request on the OS socket timeout (the "Add inventory appears
+    frozen" report).
+    """
+
+    def setUp(self):
+        from PIL import Image
+
+        self.img = Image.new("L", (10, 10), 255)
+
+    def test_host_port_parsing(self):
+        from .barcode_utils import BROTHER_QL_PORT, _printer_host_port
+
+        self.assertEqual(
+            _printer_host_port("10.10.40.2"), ("10.10.40.2", BROTHER_QL_PORT)
+        )
+        self.assertEqual(
+            _printer_host_port("tcp://10.10.40.2"), ("10.10.40.2", BROTHER_QL_PORT)
+        )
+        self.assertEqual(_printer_host_port("10.10.40.2:9999"), ("10.10.40.2", 9999))
+
+    def test_reachable_false_on_connection_error(self):
+        from unittest.mock import patch
+
+        from . import barcode_utils
+
+        with patch(
+            "inventory.barcode_utils.socket.create_connection", side_effect=OSError
+        ):
+            self.assertFalse(barcode_utils._printer_reachable())
+
+    def test_reachable_true_on_success(self):
+        from unittest.mock import MagicMock, patch
+
+        from . import barcode_utils
+
+        with patch(
+            "inventory.barcode_utils.socket.create_connection", return_value=MagicMock()
+        ):
+            self.assertTrue(barcode_utils._printer_reachable())
+
+    def test_print_label_image_raises_fast_when_unreachable(self):
+        from unittest.mock import patch
+
+        from . import barcode_utils
+
+        with patch(
+            "inventory.barcode_utils._printer_reachable", return_value=False
+        ), patch("inventory.barcode_utils.convert") as mock_convert:
+            with self.assertRaises(barcode_utils.PrinterUnreachableError):
+                barcode_utils.print_label_image(self.img)
+        # Must bail out before doing any conversion / network work.
+        mock_convert.assert_not_called()
+
+    def test_print_label_image_prints_when_reachable(self):
+        from unittest.mock import MagicMock, patch
+
+        from . import barcode_utils
+
+        backend = MagicMock()
+        with patch(
+            "inventory.barcode_utils._printer_reachable", return_value=True
+        ), patch(
+            "inventory.barcode_utils.convert", return_value=b"instructions"
+        ), patch(
+            "inventory.barcode_utils._get_backend", return_value=backend
+        ):
+            barcode_utils.print_label_image(self.img)
+        backend.write.assert_called_once_with(b"instructions")
+
+    @override_settings(ENABLE_BARCODE_PRINTING=True)
+    def test_generate_and_print_label_fails_fast_end_to_end(self):
+        from unittest.mock import patch
+
+        from . import barcode_utils
+
+        with patch("inventory.barcode_utils._printer_reachable", return_value=False):
+            with self.assertRaises(barcode_utils.PrinterUnreachableError):
+                barcode_utils.generate_and_print_label("INV-1")
