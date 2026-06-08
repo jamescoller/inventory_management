@@ -11,16 +11,16 @@
         <span class="badge badge-stored">Stored</span>
         <span class="badge badge-depleted">Depleted</span>
     </div>
-{% endblock %}
+{% endblock content_title %}
 
 {% block object-tools %}
 	{{ block.super }}
 	<li>
 		<a href="{% url 'admin:inventory-log' %}" class="button">View Log</a>
 	</li>
-{% endblock %}
+{% endblock object-tools %}
 
 {% block extrahead %}
     {{ block.super }}
     {{ media }}
-{% endblock %}
+{% endblock extrahead %}
