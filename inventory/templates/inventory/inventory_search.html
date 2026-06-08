@@ -193,17 +193,17 @@
                 pageLength: 25,
                 lengthMenu: [[25, 50, 100, -1], [25, 50, 100, "All"]],
                 searching: false,
-                columns: [
-                    {title: "", orderable: false, searchable: false},
-                    {title: "Product"},
-                    {title: "SKU"},
-                    {title: "UPC"},
-                    {title: "Date Added"},
-                    {title: "Status"},
-                    {title: "Location"},
-                    {title: "Serial Number"},
-                    {title: "Item ID"},
-                    {title: "Action", orderable: false}
+                // Set per-column flags via columnDefs, never via a per-column
+                // header label in the `columns` option. That label option makes
+                // DataTables overwrite each header cell's HTML — the empty label
+                // on column 0 wiped out the <input id="select-all"> checkbox, and
+                // the resulting getElementById('select-all') === null threw before
+                // the form submit handler (which injects item_ids) was attached,
+                // silently breaking both "Apply" and "Reprint tags". Headers come
+                // from the existing <th> text instead.
+                columnDefs: [
+                    {targets: 0, orderable: false, searchable: false},
+                    {targets: -1, orderable: false}
                 ]
             });
 
