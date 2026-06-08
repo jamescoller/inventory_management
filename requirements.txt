@@ -2,11 +2,10 @@ asgiref==3.11.1
 crispy-bootstrap5==2026.3
 Django>=6.0.5,<7.0
 django-crispy-forms==2.6
-django-polymorphic==4.11.3
+django-polymorphic==4.11.4
 et_xmlfile==2.0.0
 gunicorn==26.0.0
 openpyxl==3.1.5
-packaging==25.0
 pillow>=12.2.0
 python-dateutil==2.9.0.post0
 python-barcode>=0.16.1
