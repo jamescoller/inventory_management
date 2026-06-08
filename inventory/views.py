@@ -141,12 +141,8 @@ class BarcodeRedirectView(LoginRequiredMixin, View):
             location = Location.objects.filter(pk=loc_id).first()
             if location is None:
                 return HttpResponse("Unknown location", status=404)
-            if location.is_container:
-                messages.warning(
-                    request, f"{location.name} is a container, not a storage spot."
-                )
-                return redirect("dashboard")
             # A scanned location barcode jumps into the audit console focused there.
+            # Containers (AMS/dryer/rack) audit all their slots together.
             return redirect(f"{reverse('audit_console')}?loc={location.pk}")
         return HttpResponse("Invalid barcode", status=400)
 
@@ -424,28 +420,94 @@ class Index(TemplateView):
     template_name = "inventory/index.html"
 
 
+MAX_BULK = 200
+
+
+def _bulk_redirect_back(request):
+    """Round-trip back to the search results, preserving the active filters."""
+    filter_keys = (
+        "sku",
+        "upc",
+        "name",
+        "status",
+        "location",
+        "serial_number",
+        "item_id",
+    )
+    params = {
+        k: request.POST.get(k, "") for k in filter_keys if request.POST.get(k, "")
+    }
+    url = reverse("inventory_search")
+    if params:
+        url += "?" + urlencode(params)
+    return redirect(url)
+
+
+def _parse_bulk_item_ids(request):
+    """Parse selected item ids from a bulk form. Returns ``(ids, redirect)`` where
+    exactly one is truthy: a non-empty id list, or a redirect carrying an error
+    message for the empty/invalid/too-many cases."""
+    raw_ids = request.POST.getlist("item_ids")
+    try:
+        item_ids = [int(i) for i in raw_ids if str(i).strip()]
+    except (ValueError, TypeError):
+        messages.warning(request, "Invalid item selection.")
+        return None, _bulk_redirect_back(request)
+    if not item_ids:
+        messages.warning(request, "No items selected.")
+        return None, _bulk_redirect_back(request)
+    if len(item_ids) > MAX_BULK:
+        messages.error(request, f"Cannot act on more than {MAX_BULK} items at once.")
+        return None, _bulk_redirect_back(request)
+    return item_ids, None
+
+
+class BulkReprintLabelsView(LoginRequiredMixin, View):
+    """Reprint the INV-XXX barcode tags for the selected search results — used to
+    replace missing or unreadable tags found during an audit."""
+
+    def get(self, request):
+        return redirect("inventory_search")
+
+    def post(self, request):
+        item_ids, early = _parse_bulk_item_ids(request)
+        if early:
+            return early
+
+        items = list(
+            InventoryItem.objects.filter(id__in=item_ids).select_related("product")
+        )
+        printed = 0
+        failed = 0
+        for item in items:
+            try:
+                generate_and_print_barcode(item, mode="unique")
+                printed += 1
+            except Exception as e:
+                failed += 1
+                logger.error(f"Reprint failed for INV-{item.id}: {e}")
+
+        if printed:
+            messages.success(
+                request,
+                f"Reprinted {printed} inventory tag{'' if printed == 1 else 's'}.",
+            )
+        if failed:
+            messages.error(
+                request,
+                f"{failed} tag{'' if failed == 1 else 's'} failed to print — see logs.",
+            )
+        return _bulk_redirect_back(request)
+
+
 class BulkUpdateView(LoginRequiredMixin, View):
     def get(self, request):
         return redirect("inventory_search")
 
     def post(self, request):
-        raw_ids = request.POST.getlist("item_ids")
-        try:
-            item_ids = [int(i) for i in raw_ids if str(i).strip()]
-        except (ValueError, TypeError):
-            messages.warning(request, "Invalid item selection.")
-            return self._redirect_back(request)
-
-        if not item_ids:
-            messages.warning(request, "No items selected.")
-            return self._redirect_back(request)
-
-        MAX_BULK = 200
-        if len(item_ids) > MAX_BULK:
-            messages.error(
-                request, f"Cannot update more than {MAX_BULK} items at once."
-            )
-            return self._redirect_back(request)
+        item_ids, early = _parse_bulk_item_ids(request)
+        if early:
+            return early
 
         new_status_raw = request.POST.get("bulk_status", "").strip()
         new_location_id = request.POST.get("bulk_location", "").strip()
@@ -453,7 +515,7 @@ class BulkUpdateView(LoginRequiredMixin, View):
 
         if new_shipment and len(new_shipment) > 100:
             messages.error(request, "Shipment value is too long (max 100 characters).")
-            return self._redirect_back(request)
+            return _bulk_redirect_back(request)
 
         new_status = None
         if new_status_raw:
@@ -463,7 +525,7 @@ class BulkUpdateView(LoginRequiredMixin, View):
                 new_status = val
             except ValueError:
                 messages.error(request, "Invalid status value.")
-                return self._redirect_back(request)
+                return _bulk_redirect_back(request)
 
         new_location = None
         if new_location_id:
@@ -471,17 +533,17 @@ class BulkUpdateView(LoginRequiredMixin, View):
                 new_location = Location.objects.get(pk=new_location_id)
             except Location.DoesNotExist:
                 messages.error(request, "Invalid location.")
-                return self._redirect_back(request)
+                return _bulk_redirect_back(request)
             if new_location.is_container:
                 messages.error(
                     request,
                     f"{new_location.name} is a container and can't hold items.",
                 )
-                return self._redirect_back(request)
+                return _bulk_redirect_back(request)
 
         if new_status is None and new_location is None and new_shipment is None:
             messages.warning(request, "No fields selected — nothing was changed.")
-            return self._redirect_back(request)
+            return _bulk_redirect_back(request)
 
         count = 0
         with transaction.atomic():
@@ -503,25 +565,7 @@ class BulkUpdateView(LoginRequiredMixin, View):
                 count += 1
 
         messages.success(request, f"Updated {count} item{'s' if count != 1 else ''}.")
-        return self._redirect_back(request)
-
-    def _redirect_back(self, request):
-        filter_keys = (
-            "sku",
-            "upc",
-            "name",
-            "status",
-            "location",
-            "serial_number",
-            "item_id",
-        )
-        params = {
-            k: request.POST.get(k, "") for k in filter_keys if request.POST.get(k, "")
-        }
-        url = reverse("inventory_search")
-        if params:
-            url += "?" + urlencode(params)
-        return redirect(url)
+        return _bulk_redirect_back(request)
 
 
 class SignUpView(View):
@@ -1167,26 +1211,36 @@ def _set_active_location(request, location):
 def _audit_context(request, session, active_location, last_result=None):
     """Build the context shared by the console page and its HTMX body partial."""
     items_here = []
+    present_here = 0
     if active_location is not None:
+        leaves = audit.focus_leaves(active_location)
+        leaf_ids = [leaf.id for leaf in leaves]
         scanned_ids = set(
             AuditEvent.objects.filter(
                 session=session,
-                location=active_location,
+                location_id__in=leaf_ids,
                 action__in=audit.PRESENT_ACTIONS,
             ).values_list("item_id", flat=True)
         )
         for item in (
-            InventoryItem.objects.filter(location=active_location)
-            .select_related("product")
-            .order_by("id")
+            InventoryItem.objects.filter(location_id__in=leaf_ids)
+            .select_related("product", "location")
+            .order_by("location__slot_index", "location__name", "id")
         ):
             item.audit_scanned = item.id in scanned_ids
+            if item.audit_scanned:
+                present_here += 1
             items_here.append(item)
 
     return {
         "session": session,
         "active_location": active_location,
+        "active_is_unit": active_location.is_container if active_location else False,
         "items_here": items_here,
+        "expected_count": len(items_here),
+        "present_count": present_here,
+        "pending_count": len(items_here) - present_here,
+        "added_items": audit.session_added_items(session),
         "unknown_items": audit.session_unknown_items(session),
         "unknown_count": AuditUnknownScan.objects.filter(
             resolved=False, dismissed=False
@@ -1245,10 +1299,14 @@ class AuditConsoleView(LoginRequiredMixin, TemplateView):
         active = _active_location(self.request)
         if loc_param:
             target = Location.objects.filter(pk=loc_param).first()
-            if target and not target.is_container:
-                audit.visit_location(session, target, previous_location=active)
-                _set_active_location(self.request, target)
-                active = target
+            if target:
+                try:
+                    audit.visit_location(session, target, previous_location=active)
+                except audit.AuditError as exc:
+                    messages.error(self.request, str(exc))
+                else:
+                    _set_active_location(self.request, target)
+                    active = target
 
         context.update(_audit_context(self.request, session, active))
         return context
@@ -1266,12 +1324,22 @@ class AuditScanView(LoginRequiredMixin, View):
 
         active = _active_location(request)
         last_result = None
+        raw_code = request.POST.get("code", "")
         try:
-            kind, value = audit.parse_code(request.POST.get("code", ""))
-            if kind == "loc":
-                location = Location.objects.filter(pk=value).first()
-                if location is None:
-                    raise audit.AuditError(f"No location with id {value}.")
+            try:
+                kind, value = audit.parse_code(raw_code)
+            except audit.AuditError:
+                # Fall back to a unit serial-number scan (e.g. an AMS/dryer/printer
+                # front-panel tag) before giving up on an unrecognized code.
+                value = audit.resolve_serial(raw_code.strip())
+                kind = "loc_obj"
+            if kind in ("loc", "loc_obj"):
+                if kind == "loc_obj":
+                    location = value  # already a resolved Location
+                else:
+                    location = Location.objects.filter(pk=value).first()
+                    if location is None:
+                        raise audit.AuditError(f"No location with id {value}.")
                 audit.visit_location(session, location, previous_location=active)
                 _set_active_location(request, location)
                 active = location
@@ -1322,12 +1390,13 @@ class AuditCloseLocationView(LoginRequiredMixin, View):
             return redirect("audit_console")
         active = _active_location(request)
         if active is not None:
+            present = audit.location_present_count(session, active)
             flagged = audit.close_location(session, active)
             _set_active_location(request, None)
             messages.info(
                 request,
-                f"Closed {active.name}. {len(flagged)} item"
-                f"{'' if len(flagged) == 1 else 's'} flagged unknown.",
+                f"Closed {active.name}. {present} accounted for, "
+                f"{len(flagged)} flagged unknown.",
             )
         return redirect("audit_console")
 
@@ -1349,6 +1418,7 @@ class AuditFinalizeView(LoginRequiredMixin, View):
             {
                 "session": session,
                 "unknown_items": audit.session_unknown_items(session),
+                "added_items": audit.session_added_items(session),
                 "unknown_count": AuditUnknownScan.objects.filter(
                     resolved=False, dismissed=False
                 ).count(),
@@ -1360,13 +1430,22 @@ class AuditFinalizeView(LoginRequiredMixin, View):
         if session is None:
             messages.error(request, "No audit in progress.")
             return redirect("audit_console")
-        depleted = audit.finalize(session, active_location=_active_location(request))
-        _set_active_location(request, None)
-        messages.success(
-            request,
-            f"Audit finalized. {len(depleted)} item"
-            f"{'' if len(depleted) == 1 else 's'} marked depleted.",
+        # Items the auditor chose to leave UNKNOWN ("in limbo") instead of depleting.
+        keep_ids = request.POST.getlist("keep_unknown")
+        depleted = audit.finalize(
+            session,
+            active_location=_active_location(request),
+            keep_unknown_ids=keep_ids,
         )
+        _set_active_location(request, None)
+        kept = len(keep_ids)
+        msg = (
+            f"Audit finalized. {len(depleted)} item"
+            f"{'' if len(depleted) == 1 else 's'} marked depleted."
+        )
+        if kept:
+            msg += f" {kept} left unknown for follow-up."
+        messages.success(request, msg)
         return redirect("dashboard")
 
 
@@ -1381,6 +1460,41 @@ class AuditAbandonView(LoginRequiredMixin, View):
             "Audit abandoned. Items flagged unknown were left as-is for review.",
         )
         return redirect("dashboard")
+
+
+class AuditUndoAddView(LoginRequiredMixin, View):
+    """Remove an item mistakenly added this session (e.g. a UPC scanned in place of
+    an INV tag). Re-renders the console body for HTMX, else redirects to the page
+    the request came from (console or finalize)."""
+
+    def post(self, request, item_id):
+        session = AuditSession.active()
+        if session is None:
+            messages.error(request, "No audit in progress.")
+            return redirect("audit_console")
+
+        item = get_object_or_404(InventoryItem, pk=item_id)
+        name = item.product.name
+        try:
+            audit.undo_added(session, item)
+        except audit.AuditError as exc:
+            last_result = ("danger", str(exc))
+        else:
+            last_result = ("success", f"Removed {name} (INV-{item_id}).")
+
+        if request.headers.get("HX-Request"):
+            active = _active_location(request)
+            context = _audit_context(request, session, active, last_result=last_result)
+            return render(request, "inventory/partials/audit_body.html", context)
+
+        messages.add_message(
+            request,
+            messages.SUCCESS if last_result[0] == "success" else messages.ERROR,
+            last_result[1],
+        )
+        if request.POST.get("next") == "finalize":
+            return redirect("audit_finalize")
+        return redirect("audit_console")
 
 
 class AuditUnknownsView(LoginRequiredMixin, TemplateView):

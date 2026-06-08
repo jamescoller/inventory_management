@@ -83,17 +83,78 @@ def _is_unit_item(item):
     return Location.objects.filter(unit=item).exists()
 
 
+def focus_leaves(location):
+    """The assignable leaf locations reconciled when ``location`` is focused.
+
+    A leaf location is itself; a *container* (AMS/dryer/rack) expands to its
+    assignable child slots so the whole unit can be audited at once. Ordered by
+    slot index so a move-in lands in the lowest slot.
+    """
+    if location.is_container:
+        return list(
+            location.children.filter(kind__in=Location.ASSIGNABLE_KINDS).order_by(
+                "slot_index", "name"
+            )
+        )
+    return [location]
+
+
+def resolve_serial(value):
+    """Resolve a scanned serial number to the :class:`Location` to focus.
+
+    The serial belongs to a tracked unit's :class:`InventoryItem`. We follow the
+    ``Location.unit`` links from that item to its slots: an AMS/dryer focuses the
+    whole unit (its parent container, audited slot-by-slot together); a single-slot
+    unit such as a printer focuses that leaf directly.
+
+    Note: serials are matched case-insensitively. A purely numeric scan is treated
+    as a UPC by :func:`parse_code` and never reaches here, so serials must contain
+    at least one non-digit (Bambu unit serials do). Raises :class:`AuditError` when
+    the serial is unknown, ambiguous, or not linked to any location.
+    """
+    items = list(
+        InventoryItem.objects.filter(serial_number__iexact=value).exclude(
+            serial_number=""
+        )
+    )
+    if not items:
+        raise AuditError(f"No tracked unit has serial {value!r}.")
+    if len(items) > 1:
+        raise AuditError(f"Serial {value!r} matches multiple items; scan a LOC code.")
+
+    item = items[0]
+    slot_locs = list(Location.objects.filter(unit=item).select_related("parent"))
+    if not slot_locs:
+        raise AuditError(
+            f"Serial {value!r} is a known unit but isn't linked to any location. "
+            "Link it in the admin or scan the LOC barcode."
+        )
+
+    # Prefer the shared parent container so the whole unit audits together.
+    parent_ids = {loc.parent_id for loc in slot_locs if loc.parent_id}
+    parents = list(
+        Location.objects.filter(id__in=parent_ids, kind__in=Location.CONTAINER_KINDS)
+    )
+    if len(parents) == 1:
+        return parents[0]
+    if len(slot_locs) == 1:
+        return slot_locs[0]
+    raise AuditError(
+        f"Serial {value!r} maps to several locations; scan the specific LOC barcode."
+    )
+
+
 def visit_location(session, location, previous_location=None):
     """Set focus to ``location``, auto-closing ``previous_location`` if different.
 
-    Returns the location. Raises :class:`AuditError` for container kinds.
+    ``location`` may be a leaf or a container (the latter audits all its slots at
+    once). Returns the location. Raises :class:`AuditError` if a container has no
+    auditable slots.
     """
-    if location.is_container:
-        raise AuditError(
-            f"{location.name} is a container, not a scannable storage spot."
-        )
     if previous_location and previous_location.id != location.id:
         close_location(session, previous_location)
+    if location.is_container and not focus_leaves(location):
+        raise AuditError(f"{location.name} has no storage slots to audit.")
     AuditEvent.objects.create(
         session=session, location=location, action=AuditEvent.Action.VISITED
     )
@@ -101,43 +162,50 @@ def visit_location(session, location, previous_location=None):
 
 
 def scan_item(session, location, item):
-    """Reconcile a scanned item against the active location.
+    """Reconcile a scanned item against the active focus (a leaf or whole unit).
 
     Returns the :class:`AuditEvent.Action` taken. Raises :class:`AuditError` if no
     location is active or the item is a unit container.
     """
     if location is None:
         raise AuditError("Scan a location barcode first.")
-    if location.is_container:
-        raise AuditError(f"{location.name} is a container, not a storage spot.")
     if _is_unit_item(item):
         raise AuditError(
             f"{item.product.name} is a tracked unit (AMS/dryer/printer), "
             "not slot contents — it isn't audited this way."
         )
 
+    leaves = focus_leaves(location)
+    leaf_ids = {leaf.id for leaf in leaves}
+    if not leaf_ids:
+        raise AuditError(f"{location.name} has no storage slots to audit.")
+
     sticky = item.status in InventoryItem.STICKY_STATUSES
 
-    if item.location_id == location.id and not sticky:
-        # Already here and in a normal state: confirm presence (deduplicated).
+    if item.location_id in leaf_ids and not sticky:
+        # Already in the focused unit and in a normal state: confirm presence at the
+        # specific slot it sits in (deduplicated).
         present = AuditEvent.objects.filter(
             session=session,
             item=item,
-            location=location,
+            location_id=item.location_id,
             action=AuditEvent.Action.SCANNED_PRESENT,
         ).exists()
         if not present:
             AuditEvent.objects.create(
                 session=session,
                 item=item,
-                location=location,
+                location_id=item.location_id,
                 action=AuditEvent.Action.SCANNED_PRESENT,
             )
         return AuditEvent.Action.SCANNED_PRESENT
 
-    # Item is elsewhere, or is reviving from a sticky status -> bring it here.
+    # Item is elsewhere, or reviving from a sticky status -> bring it into the unit.
+    # For a multi-slot unit it lands in the lowest slot; correct the slot later if
+    # needed.
+    target = leaves[0]
     revived = sticky
-    item.location = location
+    item.location = target
     item.date_depleted = None
     item.date_sold = None
     new_status = item.update_status()
@@ -148,7 +216,7 @@ def scan_item(session, location, item):
 
     action = AuditEvent.Action.REVIVED if revived else AuditEvent.Action.MOVED_IN
     AuditEvent.objects.create(
-        session=session, item=item, location=location, action=action
+        session=session, item=item, location=target, action=action
     )
     return action
 
@@ -191,13 +259,17 @@ def add_or_queue_upc(session, location, upc):
 
 
 def close_location(session, location):
-    """Idempotently reconcile a location.
+    """Idempotently reconcile a focus (a leaf or a whole unit's slots).
 
-    Flags every item still recorded at ``location`` but not scanned present/moved-in
-    this session as UNKNOWN (keeping its location). Returns the list of newly flagged
-    items. A no-op if the location was already closed this session.
+    Flags every item still recorded under ``location`` but not scanned
+    present/moved-in this session as UNKNOWN (keeping its location). Returns the
+    list of newly flagged items. A no-op if it was already closed this session.
     """
-    if location is None or location.is_container:
+    if location is None:
+        return []
+    leaves = focus_leaves(location)
+    leaf_ids = [leaf.id for leaf in leaves]
+    if not leaf_ids:
         return []
     if AuditEvent.objects.filter(
         session=session, location=location, action=AuditEvent.Action.CLOSED
@@ -206,13 +278,13 @@ def close_location(session, location):
 
     scanned_ids = list(
         AuditEvent.objects.filter(
-            session=session, location=location, action__in=PRESENT_ACTIONS
+            session=session, location_id__in=leaf_ids, action__in=PRESENT_ACTIONS
         ).values_list("item_id", flat=True)
     )
 
     flagged = []
     with transaction.atomic():
-        unscanned = InventoryItem.objects.filter(location=location).exclude(
+        unscanned = InventoryItem.objects.filter(location_id__in=leaf_ids).exclude(
             id__in=scanned_ids
         )
         for item in unscanned:
@@ -222,14 +294,61 @@ def close_location(session, location):
             AuditEvent.objects.create(
                 session=session,
                 item=item,
-                location=location,
+                location=item.location,
                 action=AuditEvent.Action.FLAGGED_UNKNOWN,
             )
             flagged.append(item)
+        # The CLOSED marker is keyed to the focus (leaf or container) for idempotency.
         AuditEvent.objects.create(
             session=session, location=location, action=AuditEvent.Action.CLOSED
         )
     return flagged
+
+
+def location_present_count(session, location):
+    """Distinct items scanned present/moved-in/added under ``location`` this session."""
+    leaf_ids = [leaf.id for leaf in focus_leaves(location)]
+    return (
+        AuditEvent.objects.filter(
+            session=session, location_id__in=leaf_ids, action__in=PRESENT_ACTIONS
+        )
+        .values("item_id")
+        .distinct()
+        .count()
+    )
+
+
+def session_added_items(session):
+    """Items created via an ADDED scan this session that still exist."""
+    added_ids = list(
+        AuditEvent.objects.filter(
+            session=session, action=AuditEvent.Action.ADDED
+        ).values_list("item_id", flat=True)
+    )
+    return (
+        InventoryItem.objects.filter(id__in=added_ids)
+        .select_related("product", "location")
+        .distinct()
+    )
+
+
+def undo_added(session, item):
+    """Delete an item that was mistakenly ADDED during this session (e.g. a UPC
+    scanned instead of an INV tag). Deleting cascades its audit events.
+
+    Raises :class:`AuditError` if the item wasn't added this session or is linked to
+    a location as a tracked unit.
+    """
+    if not AuditEvent.objects.filter(
+        session=session, item=item, action=AuditEvent.Action.ADDED
+    ).exists():
+        raise AuditError(
+            "That item wasn't added during this audit, so it can't be removed here."
+        )
+    if Location.objects.filter(unit=item).exists():
+        raise AuditError("That item is a tracked unit and can't be removed here.")
+    item.delete()
+    return True
 
 
 def session_unknown_items(session):
@@ -251,17 +370,23 @@ def session_unknown_items(session):
     )
 
 
-def finalize(session, active_location=None):
-    """Close any open location, then deplete the session's still-UNKNOWN items.
+def finalize(session, active_location=None, keep_unknown_ids=None):
+    """Close any open location, then resolve the session's still-UNKNOWN items.
 
-    Returns the list of depleted items and marks the session FINALIZED.
+    By default each still-UNKNOWN item is marked DEPLETED. Items whose id is in
+    ``keep_unknown_ids`` are intentionally left UNKNOWN ("in limbo") for later
+    follow-up — e.g. something found out of place mid-audit. Returns the list of
+    depleted items and marks the session FINALIZED.
     """
     if active_location is not None:
         close_location(session, active_location)
 
+    keep = {int(i) for i in (keep_unknown_ids or [])}
     depleted = []
     with transaction.atomic():
         for item in session_unknown_items(session):
+            if item.id in keep:
+                continue  # left UNKNOWN on purpose
             item.mark_depleted()  # status DEPLETED, clears location + date
             item._skip_status_from_location = True
             item.save()

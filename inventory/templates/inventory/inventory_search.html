@@ -166,6 +166,11 @@
                 <button type="submit" id="bulk-apply-btn" class="btn btn-primary btn-sm fw-bold">
                     Apply to 0 items
                 </button>
+                <button type="submit" id="bulk-reprint-btn" class="btn btn-warning btn-sm fw-bold"
+                        formaction="{% url 'bulk_reprint_labels' %}"
+                        title="Reprint the INV-XXX barcode tags for the selected items">
+                    <i class="bi bi-printer"></i> Reprint tags
+                </button>
                 <button type="button" id="bulk-clear-btn" class="btn btn-sm"
                         style="background:transparent; color:#94a3b8; border:1px solid #475569">
                     Clear

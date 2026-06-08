@@ -1039,3 +1039,201 @@ class AuditUiSurfaceTests(TestCase):
         self.assertTrue(
             AuditEvent.objects.filter(action=AuditEvent.Action.ADDED).exists()
         )
+
+
+class AuditWholeUnitTests(TestCase):
+    """Scanning a unit serial focuses the whole container; reconcile spans slots."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="wu", password="pass")
+        self.ams_container = Location.objects.create(
+            name="AMS 1", kind=Location.Kind.AMS
+        )
+        self.slot1 = Location.objects.create(
+            name="AMS 1 / Slot 1",
+            kind=Location.Kind.AMS_SLOT,
+            parent=self.ams_container,
+            slot_index=1,
+            default_status=InventoryItem.Status.IN_USE,
+        )
+        self.slot2 = Location.objects.create(
+            name="AMS 1 / Slot 2",
+            kind=Location.Kind.AMS_SLOT,
+            parent=self.ams_container,
+            slot_index=2,
+            default_status=InventoryItem.Status.IN_USE,
+        )
+        self.product = Filament.objects.create(name="PLA WU", upc="9600000000001")
+        # The physical AMS unit, linked to its slots via Location.unit.
+        ams_product = AMS.objects.create(name="AMS Phys", upc="9600000000099")
+        self.unit_item = InventoryItem.objects.create(
+            product=ams_product, serial_number="AMSER123"
+        )
+        self.slot1.unit = self.unit_item
+        self.slot2.unit = self.unit_item
+        self.slot1.save()
+        self.slot2.save()
+
+    def test_focus_leaves_expands_container(self):
+        leaves = audit.focus_leaves(self.ams_container)
+        self.assertEqual([leaf.id for leaf in leaves], [self.slot1.id, self.slot2.id])
+
+    def test_resolve_serial_returns_container(self):
+        self.assertEqual(audit.resolve_serial("AMSER123").id, self.ams_container.id)
+
+    def test_resolve_serial_case_insensitive(self):
+        self.assertEqual(audit.resolve_serial("amser123").id, self.ams_container.id)
+
+    def test_resolve_serial_unknown_raises(self):
+        with self.assertRaises(audit.AuditError):
+            audit.resolve_serial("NOPE")
+
+    def test_present_across_slots_not_flagged(self):
+        item1 = InventoryItem.objects.create(product=self.product, location=self.slot1)
+        item2 = InventoryItem.objects.create(product=self.product, location=self.slot2)
+        session = audit.start_session(self.user)
+        audit.visit_location(session, self.ams_container)
+        self.assertEqual(
+            audit.scan_item(session, self.ams_container, item1),
+            AuditEvent.Action.SCANNED_PRESENT,
+        )
+        self.assertEqual(
+            audit.scan_item(session, self.ams_container, item2),
+            AuditEvent.Action.SCANNED_PRESENT,
+        )
+        audit.close_location(session, self.ams_container)
+        item1.refresh_from_db()
+        item2.refresh_from_db()
+        self.assertEqual(item1.status, InventoryItem.Status.IN_USE)
+        self.assertEqual(item2.status, InventoryItem.Status.IN_USE)
+
+    def test_unscanned_slot_item_flagged_on_close(self):
+        item1 = InventoryItem.objects.create(product=self.product, location=self.slot1)
+        item2 = InventoryItem.objects.create(product=self.product, location=self.slot2)
+        session = audit.start_session(self.user)
+        audit.visit_location(session, self.ams_container)
+        audit.scan_item(session, self.ams_container, item1)  # only slot 1 scanned
+        flagged = audit.close_location(session, self.ams_container)
+        self.assertEqual([f.id for f in flagged], [item2.id])
+        item2.refresh_from_db()
+        self.assertEqual(item2.status, InventoryItem.Status.UNKNOWN)
+        self.assertEqual(item2.location_id, self.slot2.id)
+
+    def test_move_into_unit_lands_in_first_slot(self):
+        other = Location.objects.create(
+            name="Other",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        item = InventoryItem.objects.create(product=self.product, location=other)
+        session = audit.start_session(self.user)
+        audit.visit_location(session, self.ams_container)
+        action = audit.scan_item(session, self.ams_container, item)
+        self.assertEqual(action, AuditEvent.Action.MOVED_IN)
+        item.refresh_from_db()
+        self.assertEqual(item.location_id, self.slot1.id)
+
+
+class AuditUndoAddTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="ua", password="pass")
+        self.shelf = Location.objects.create(
+            name="UA1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.product = Filament.objects.create(name="PLA UA", upc="9700000000001")
+
+    def test_undo_added_deletes_item(self):
+        session = audit.start_session(self.user)
+        _, item = audit.add_or_queue_upc(session, self.shelf, "9700000000001")
+        item_id = item.id
+        self.assertTrue(audit.undo_added(session, item))
+        self.assertFalse(InventoryItem.objects.filter(id=item_id).exists())
+
+    def test_undo_non_added_rejected(self):
+        session = audit.start_session(self.user)
+        normal = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        with self.assertRaises(audit.AuditError):
+            audit.undo_added(session, normal)
+        self.assertTrue(InventoryItem.objects.filter(id=normal.id).exists())
+
+
+@override_settings(ENABLE_BARCODE_PRINTING=False)
+class AuditUndoAddViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="uav", password="pass")
+        self.client.login(username="uav", password="pass")
+        self.shelf = Location.objects.create(
+            name="UAV1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.product = Filament.objects.create(name="PLA UAV", upc="9800000000001")
+        self.client.post(reverse("audit_start"))
+        self.client.post(reverse("audit_scan"), {"code": f"LOC-{self.shelf.pk}"})
+
+    def test_undo_view_removes_item(self):
+        self.client.post(reverse("audit_scan"), {"code": "9800000000001"})
+        item = InventoryItem.objects.latest("id")
+        resp = self.client.post(
+            reverse("audit_undo_add", args=[item.pk]), HTTP_HX_REQUEST="true"
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(InventoryItem.objects.filter(id=item.pk).exists())
+
+
+class AuditFinalizeKeepUnknownTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="fk", password="pass")
+        self.client.login(username="fk", password="pass")
+        self.shelf = Location.objects.create(
+            name="FK1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.product = Filament.objects.create(name="PLA FK", upc="9900000000001")
+
+    def test_keep_unknown_skips_deplete(self):
+        keep = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        drop = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        self.client.post(reverse("audit_start"))
+        self.client.post(reverse("audit_scan"), {"code": f"LOC-{self.shelf.pk}"})
+        # Close so both become UNKNOWN, then finalize keeping one.
+        self.client.post(reverse("audit_close_location"))
+        self.client.post(reverse("audit_finalize"), {"keep_unknown": [keep.pk]})
+        keep.refresh_from_db()
+        drop.refresh_from_db()
+        self.assertEqual(keep.status, InventoryItem.Status.UNKNOWN)
+        self.assertEqual(drop.status, InventoryItem.Status.DEPLETED)
+
+
+@override_settings(ENABLE_BARCODE_PRINTING=False)
+class BulkReprintLabelsTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="br", password="pass")
+        self.client.login(username="br", password="pass")
+        self.shelf = Location.objects.create(
+            name="BR1",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.product = Filament.objects.create(name="PLA BR", upc="1100000000001")
+
+    def test_reprint_selected_items(self):
+        i1 = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        i2 = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        resp = self.client.post(
+            reverse("bulk_reprint_labels"),
+            {"item_ids": [i1.pk, i2.pk]},
+        )
+        self.assertEqual(resp.status_code, 302)  # redirect back to search
+        # Both items still exist; reprint is non-destructive.
+        self.assertEqual(InventoryItem.objects.count(), 2)
+
+    def test_reprint_no_selection_warns(self):
+        resp = self.client.post(reverse("bulk_reprint_labels"), {})
+        self.assertEqual(resp.status_code, 302)

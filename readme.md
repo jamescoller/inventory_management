@@ -84,13 +84,29 @@ docker exec -it <container> python manage.py seed_locations
 Print each location's `LOC-<id>` label from the Django admin (Locations → "Print
 location labels" action). Then run an audit from **Audit** in the nav (`/audit/`):
 scan a location barcode, scan the item tags physically present, and finalize — items
-left unaccounted-for at visited locations are marked depleted. After first seeding,
-link each AMS/dryer slot group to its unit's inventory record via the `unit` field in
-the Location admin.
+left unaccounted-for at visited locations are marked depleted by default. After first
+seeding, link each AMS/dryer slot group to its unit's inventory record via the `unit`
+field in the Location admin.
+
+To set a location you can scan its `LOC-` barcode **or** an AMS/dryer/printer's
+front-panel **serial number** — the serial focuses that whole unit and the console
+audits all of its slots together (this needs the `unit` links above). The location
+card shows how many items are *expected*, *scanned*, and *not yet scanned*, and the
+close-location message reports how many were accounted for vs. flagged unknown — handy
+for a quick count check.
 
 During the walk you can also scan an **untracked spool's UPC** (its bare-numeric
 manufacturer barcode). If that UPC is already in the catalog, a new inventory item is
 created at the active location and its `INV-` label prints immediately. If it isn't,
 the scan is queued; clear the queue afterward at **Unknown UPCs** (`/audit/unknowns/`),
 which hands each one into the normal add-product form (pre-filled with the UPC and
-location) and marks it resolved once the item is created.
+location) and marks it resolved once the item is created. Scanned a UPC by mistake
+instead of an INV tag? The console and finalize page list **items added this session**
+with an Undo/Remove button.
+
+At finalize, each unaccounted-for item can be left **unknown** ("in limbo") instead of
+depleted via a per-row checkbox — useful for something found out of place that you'll
+re-shelve after the walk.
+
+Missing or unreadable `INV-` tags can be reprinted in bulk: search for the items, tick
+the rows, and use the **Reprint tags** button in the selection bar.

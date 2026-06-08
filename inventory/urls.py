@@ -16,10 +16,12 @@ from .views import (
     AuditFinalizeView,
     AuditScanView,
     AuditStartView,
+    AuditUndoAddView,
     AuditUnknownDismissView,
     AuditUnknownResolveView,
     AuditUnknownsView,
     BarcodeRedirectView,
+    BulkReprintLabelsView,
     BulkUpdateView,
     Dashboard,
     DryStorageOverviewView,
@@ -61,6 +63,7 @@ urlpatterns = [
     path("add-dryer/", AddDryerView.as_view(), name="add_dryer"),
     path("search/", InventorySearchView.as_view(), name="inventory_search"),
     path("bulk-update/", BulkUpdateView.as_view(), name="bulk_update"),
+    path("bulk-reprint/", BulkReprintLabelsView.as_view(), name="bulk_reprint_labels"),
     path("edit/<int:item_id>/", InventoryEditView.as_view(), name="inventory_edit"),
     path("search/export/", InventoryExportView.as_view(), name="inventory_export"),
     path(
@@ -94,6 +97,11 @@ urlpatterns = [
     ),
     path("audit/finalize/", AuditFinalizeView.as_view(), name="audit_finalize"),
     path("audit/abandon/", AuditAbandonView.as_view(), name="audit_abandon"),
+    path(
+        "audit/undo-add/<int:item_id>/",
+        AuditUndoAddView.as_view(),
+        name="audit_undo_add",
+    ),
     path("audit/unknowns/", AuditUnknownsView.as_view(), name="audit_unknowns"),
     path(
         "audit/unknowns/<int:pk>/resolve/",
