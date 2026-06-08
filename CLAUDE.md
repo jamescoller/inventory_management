@@ -171,6 +171,16 @@ If a piece of work isn't ready for a PR, at least commit it to its branch and
 push (`git push -u origin <branch>`) so the remote has a copy. If there's truly
 nothing worth committing, say so explicitly before ending.
 
+**But the hook will NOT clean squash-merged branches.** Because PRs here are
+squash-merged by default, the squashed commit has a new SHA and `git branch -d`
+sees the original branch as "not fully merged" and refuses it (this is the same
+safety that protects unmerged work — the two are inseparable). Net effect:
+`[gone]` feature branches pile up locally and the hook never removes them. To
+clear them, run the `/clean_gone` skill (force-deletes `[gone]` branches and
+their worktrees). Also `git checkout master` after pushing rather than ending a
+session parked on the just-merged feature branch — the hook can't delete the
+checked-out branch either (and `awk` grabs the `*` marker instead of its name).
+
 ## Working from todo.md
 
 `todo.md` is the canonical roadmap. Phases are ordered by priority; within a
