@@ -1237,3 +1237,48 @@ class BulkReprintLabelsTests(TestCase):
     def test_reprint_no_selection_warns(self):
         resp = self.client.post(reverse("bulk_reprint_labels"), {})
         self.assertEqual(resp.status_code, 302)
+
+
+class LocationAdminUnitFieldTests(TestCase):
+    """The slot->unit picker must be selectable by serial number.
+
+    Regression: ``unit`` used an autocomplete that rendered every option as
+    ``InventoryItem.__str__`` (product UPC + date) and searched only UPC/name,
+    so multiple physical units sharing one product UPC were indistinguishable
+    and could not be searched by serial number.
+    """
+
+    def setUp(self):
+        from django.test import RequestFactory
+
+        self.factory = RequestFactory()
+        self.user = User.objects.create_superuser("uadmin", "u@a.co", "pass")
+        self.filament_item = InventoryItem.objects.create(
+            product=Filament.objects.create(name="PLA", upc="1000000000001"),
+        )
+        self.ams_item = InventoryItem.objects.create(
+            product=AMS.objects.create(name="AMS Phys", upc="1000000000099"),
+            serial_number="SD-1",
+        )
+
+    def _unit_formfield(self):
+        from django.contrib.admin.sites import AdminSite
+
+        from .admin import LocationAdmin
+
+        admin_obj = LocationAdmin(Location, AdminSite())
+        request = self.factory.get("/")
+        request.user = self.user
+        return admin_obj.formfield_for_foreignkey(
+            Location._meta.get_field("unit"), request
+        )
+
+    def test_unit_queryset_limited_to_physical_units(self):
+        qs = self._unit_formfield().queryset
+        ids = set(qs.values_list("id", flat=True))
+        self.assertIn(self.ams_item.id, ids)
+        self.assertNotIn(self.filament_item.id, ids)
+
+    def test_unit_label_shows_serial_number(self):
+        label = self._unit_formfield().label_from_instance(self.ams_item)
+        self.assertIn("SD-1", label)
