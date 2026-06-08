@@ -630,7 +630,10 @@ def _build_low_stock_alerts():
     low_qty = getattr(settings, "LOW_QUANTITY", 3)
     thirty_days_ago = timezone_now() - timedelta(days=30)
 
-    # Products with some active inventory that is running low
+    # TRUE active (non-depleted, non-sold) count per SKU — every SKU with at
+    # least one active item. NOT pre-filtered to < LOW_QUANTITY: a well-stocked
+    # SKU must still be recorded here so it can't fall through to "out of stock"
+    # just because it isn't "low" (the prior bug).
     active_map = {
         row["product__sku"]: {
             "product__name": row["product__name"],
@@ -646,7 +649,6 @@ def _build_low_stock_alerts():
             active_count=Count("id"),
             in_use_count=Count("id", filter=Q(status=InventoryItem.Status.IN_USE)),
         )
-        .filter(active_count__lt=low_qty)
     }
 
     # Products depleted in the last 30 days (captures active consumption)
@@ -660,9 +662,15 @@ def _build_low_stock_alerts():
         .annotate(recently_depleted=Count("id"))
     }
 
-    # Alert candidates: low active stock + products that ran out recently
+    # Alert candidates:
+    #  - low_skus: have some active stock but below LOW_QUANTITY
+    #  - out_of_stock_skus: genuinely zero active (absent from active_map) AND
+    #    recently depleted
+    # Well-stocked SKUs (active_count >= LOW_QUANTITY) are intentionally NOT
+    # alerted, even if a roll was depleted in the window.
+    low_skus = {sku for sku, row in active_map.items() if row["active_count"] < low_qty}
     out_of_stock_skus = set(depleted_map) - set(active_map)
-    alert_skus = set(active_map) | out_of_stock_skus
+    alert_skus = low_skus | out_of_stock_skus
 
     urgency_rank = {"danger": 0, "warning": 1, "secondary": 2}
     alerts = []
