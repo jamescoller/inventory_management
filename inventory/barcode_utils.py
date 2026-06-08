@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+import socket
 import warnings
 from dataclasses import dataclass
 from io import BytesIO
@@ -45,6 +46,16 @@ DEFAULT_DPI = int(os.environ.get("BROTHER_QL_DPI", "300"))
 # Try a couple of environment variable names for the printer host.
 BROTHER_QL_HOST = (
     os.environ.get("BROTHER_QL_HOST") or os.environ.get("PRINTER_IP") or "10.10.40.2"
+)
+
+# Raw-print (JetDirect) TCP port for the Brother QL, and how long to wait for a
+# connection before declaring the printer unreachable. Without this, an offline
+# printer makes the print socket block for the full OS TCP timeout (~1-2 min),
+# hanging the request (e.g. "Add inventory" appears frozen). Env-overridable to
+# match the rest of this module's config style.
+BROTHER_QL_PORT = int(os.environ.get("BROTHER_QL_PORT", "9100"))
+BROTHER_QL_CONNECT_TIMEOUT_S = float(
+    os.environ.get("BROTHER_QL_CONNECT_TIMEOUT", "2.0")
 )
 
 BROTHER_QL_MODEL = os.environ.get("BROTHER_QL_MODEL", "QL-810W")
@@ -356,6 +367,42 @@ def _get_backend() -> BrotherQLBackendNetwork:
     return BrotherQLBackendNetwork(BROTHER_QL_HOST)
 
 
+class PrinterUnreachableError(RuntimeError):
+    """Raised when the label printer can't be reached within the connect timeout.
+
+    Callers already wrap printing in try/except and surface the message to the
+    user, so raising this (instead of letting the socket block) lets the request
+    finish promptly while still reporting that the label was not printed.
+    """
+
+
+def _printer_host_port(identifier: str = BROTHER_QL_HOST) -> tuple[str, int]:
+    """Extract (host, port) from the configured printer identifier.
+
+    Accepts a bare IP/host ("10.10.40.2"), an optional scheme ("tcp://10.10.40.2"),
+    and an optional ":port" suffix; falls back to BROTHER_QL_PORT.
+    """
+    ident = identifier or ""
+    if "://" in ident:
+        ident = ident.split("://", 1)[1]
+    host, sep, port_str = ident.partition(":")
+    if sep and port_str.isdigit():
+        return host, int(port_str)
+    return host, BROTHER_QL_PORT
+
+
+def _printer_reachable(timeout: float = BROTHER_QL_CONNECT_TIMEOUT_S) -> bool:
+    """Return True if a TCP connection to the printer opens within `timeout`."""
+    host, port = _printer_host_port()
+    if not host:
+        return False
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def print_label_image(
     img: Image.Image,
     label: str | None = None,
@@ -370,7 +417,19 @@ def print_label_image(
     Parameters map directly to brother_ql.conversion.convert():
     - label: Brother label code string (e.g. "17x54").
     - rotate: "auto", "0", "90", "180", or "270".
+
+    Fails fast with PrinterUnreachableError if the printer doesn't accept a TCP
+    connection within BROTHER_QL_CONNECT_TIMEOUT_S, rather than blocking on the
+    OS socket timeout.
     """
+    if not _printer_reachable():
+        host, port = _printer_host_port()
+        raise PrinterUnreachableError(
+            f"Label printer at {host}:{port} is not reachable "
+            f"(no connection within {BROTHER_QL_CONNECT_TIMEOUT_S:g}s); "
+            f"label not printed."
+        )
+
     qlr = _get_raster()
 
     if label is None:
