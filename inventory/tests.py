@@ -1282,3 +1282,41 @@ class LocationAdminUnitFieldTests(TestCase):
     def test_unit_label_shows_serial_number(self):
         label = self._unit_formfield().label_from_instance(self.ams_item)
         self.assertIn("SD-1", label)
+
+
+class SearchBulkActionWiringTests(TestCase):
+    """Guard the search-page bulk-action client wiring.
+
+    Regression (Reprint tags / Apply silently no-op'd with "No items selected"):
+    the DataTables init passed ``columns: [{title: ...}]``. DataTables overwrites
+    each header cell's HTML with the ``title`` string, and column 0's title was
+    ``""`` -- which destroyed the ``<input id="select-all">`` checkbox in the
+    header. The inline script then hit ``getElementById('select-all')`` (null),
+    threw, and aborted *before* attaching the form ``submit`` listener that
+    injects the selected ``item_ids``. Row selection still worked (its listener
+    attaches earlier), so the bar showed a count but every submit posted empty.
+
+    Fix: use ``columnDefs`` (sets orderable/searchable without rewriting the
+    header), keeping the select-all checkbox intact. These assertions fail if the
+    header-overwriting ``title`` config is reintroduced.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="searcher", password="pass")
+        self.client.login(username="searcher", password="pass")
+
+    def test_search_page_preserves_select_all_and_avoids_title_overwrite(self):
+        html = self.client.get(reverse("inventory_search")).content.decode()
+        # The header select-all checkbox must be server-rendered ...
+        self.assertIn('id="select-all"', html)
+        # ... and the DataTables config must not overwrite headers (which would
+        # delete that checkbox). columnDefs sets flags without touching headers.
+        self.assertIn("columnDefs", html)
+        self.assertNotIn(
+            "{title:",
+            html,
+            msg="DataTables per-column `title` overwrites the header and deletes "
+            "the #select-all checkbox -> submit handler never attaches. Use "
+            "columnDefs instead.",
+        )
