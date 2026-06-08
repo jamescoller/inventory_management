@@ -396,8 +396,40 @@ class LocationAdmin(admin.ModelAdmin):
     list_filter = ["kind", "default_status"]
     list_select_related = ["parent", "unit"]
     search_fields = ["name"]
-    autocomplete_fields = ["parent", "unit"]
+    autocomplete_fields = ["parent"]
     actions = ["print_location_labels"]
+
+    # Polymorphic product types that represent a trackable physical machine a
+    # slot can belong to. Filament/Hardware are never a slot's ``unit``.
+    UNIT_PRODUCT_CTYPES = ("ams", "dryer", "printer")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Make the slot->unit picker usable.
+
+        ``unit`` is *not* an autocomplete field (the autocomplete view renders
+        options from ``InventoryItem.__str__`` -- product UPC + date -- which is
+        identical across units sharing a UPC, and cannot be searched by serial
+        number). Instead, give it a plain select that is (a) limited to physical
+        unit products and (b) labelled by serial number so the specific item is
+        selectable.
+        """
+        formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+        if db_field.name == "unit":
+            formfield.queryset = (
+                InventoryItem.objects.filter(
+                    product__polymorphic_ctype__model__in=self.UNIT_PRODUCT_CTYPES
+                )
+                .select_related("product", "product__polymorphic_ctype")
+                .order_by("serial_number", "id")
+            )
+            formfield.label_from_instance = self._unit_label
+        return formfield
+
+    @staticmethod
+    def _unit_label(obj):
+        sn = (obj.serial_number or "").strip() or "(no serial #)"
+        kind = obj.product.polymorphic_ctype.model.upper()
+        return f"{sn} — {kind}: {obj.product}"
 
     @admin.action(description="Print location labels (LOC-<id>)")
     def print_location_labels(self, request, queryset):
