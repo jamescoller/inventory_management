@@ -703,7 +703,9 @@ class FilamentColorGuideView(LoginRequiredMixin, TemplateView):
                 ordered[k] = v
 
         context["grouped_filaments"] = ordered
-        context["total_filaments"] = len(filaments)
+        # Spools on hand = active inventory items, NOT the number of distinct
+        # color/SKU rows (len(filaments)), which badly under-counted the header.
+        context["total_spools"] = sum(f.active_count for f in filaments)
         return context
 
 
