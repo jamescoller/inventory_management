@@ -1507,6 +1507,17 @@ class HierarchicalLocationSearchTests(TestCase):
         resp = self.client.get(reverse("inventory_search"), {"name": "Rack RP-1"})
         self.assertEqual(self._ids(resp), {self.i_shelf1.id, self.i_shelf2.id})
 
+    def test_navbar_typed_loc_id_filters_not_redirects(self):
+        """A typed LOC-<id> in the navbar search FILTERS results (expands the
+        location's subtree); it does NOT redirect to the audit console. (Only a
+        *scanned* LOC- barcode, via BarcodeRedirectView, jumps to the console.)
+        """
+        resp = self.client.get(
+            reverse("inventory_search"), {"name": f"LOC-{self.rack.id}"}
+        )
+        self.assertEqual(resp.status_code, 200)  # filtered page, not a 302 redirect
+        self.assertEqual(self._ids(resp), {self.i_shelf1.id, self.i_shelf2.id})
+
     def test_leaf_location_returns_only_that_leaf(self):
         resp = self.client.get(reverse("inventory_search"), {"location": "Bay Alpha"})
         self.assertEqual(self._ids(resp), {self.i_slot1.id})
