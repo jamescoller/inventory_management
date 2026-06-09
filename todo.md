@@ -64,16 +64,16 @@ consolidation + inline-JS extraction (18.2), and the **visual/UX beauty** pass (
   refactored view. Extract the 114 lines of inline JS to `static/inventory/js/`.
 
 ### 11.3 — Foundation refactor  *(gates Phase 12; non-behavioral, high blast radius)*
-- [ ] Extract `inventory/items.py`: `move_to(item, location, *, status=None, …)`,
+- [x] Extract `inventory/items.py`: `move_to(item, location, *, status=None, …)`,
   `deplete(item, *, reason="")`, `set_status(item, status)` — these **own** the
   `_skip_status_from_location` / sticky-status dance that is currently copy-pasted across
   `audit.py` (214, 253, 291, 391), `BulkUpdateView` (`views.py:582`), admin (`admin.py:387`).
   Keep the model mechanism (`models.py:529–560`); just relocate it so **no view touches the
   flags**.
-- [ ] Add `Location.capacity` (PositiveSmallInteger, null=unlimited; slots default 1) +
+- [x] Add `Location.capacity` (PositiveSmallInteger, null=unlimited; slots default 1) +
   fold the container/slot rejection (duplicated in `views.py:565`, `audit.py:235`) into the
   one move guard.
-- [ ] Strong tests — the audit reconcile suite is the canary; a subtle change here can
+- [x] Strong tests — the audit reconcile suite is the canary; a subtle change here can
   silently corrupt reconciliation or re-derive a depleted item's status.
 
 ---

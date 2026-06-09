@@ -1616,3 +1616,248 @@ class LowStockAlertTests(TestCase):
         alerts = self._alerts_by_sku()
         self.assertIn("40200", alerts)
         self.assertEqual(alerts["40200"]["active_count"], 1)
+
+
+from . import items  # noqa: E402
+
+
+class MoveServiceTests(TestCase):
+    """The inventory.items service is the single chokepoint for move/deplete/
+    set_status. It owns the _skip_status_from_location dance and the move guard
+    (container + slot-capacity rejection)."""
+
+    def setUp(self):
+        self.product = Filament.objects.create(name="PLA Move", upc="9400000000001")
+        self.shelf = Location.objects.create(
+            name="Move Shelf",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.dry = Location.objects.create(
+            name="Move Dry",
+            kind=Location.Kind.DRY_STORAGE,
+            default_status=InventoryItem.Status.STORED,
+        )
+        self.printer = Location.objects.create(
+            name="Move Printer",
+            kind=Location.Kind.PRINTER,
+            default_status=InventoryItem.Status.IN_USE,
+        )
+        self.rack = Location.objects.create(name="Move Rack", kind=Location.Kind.RACK)
+
+    # --- status derivation -------------------------------------------------
+    def test_move_derives_status_from_default(self):
+        item = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        result = items.move_to(item, self.dry)
+        self.assertTrue(result.ok)
+        item.refresh_from_db()
+        self.assertEqual(item.location_id, self.dry.id)
+        self.assertEqual(item.status, InventoryItem.Status.STORED)
+
+    def test_move_explicit_status_overrides_default(self):
+        item = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        result = items.move_to(item, self.dry, status=InventoryItem.Status.DRYING)
+        self.assertTrue(result.ok)
+        item.refresh_from_db()
+        self.assertEqual(item.location_id, self.dry.id)
+        self.assertEqual(item.status, InventoryItem.Status.DRYING)
+
+    def test_move_to_location_without_default_keeps_status(self):
+        # A leaf with no default_status leaves the current status untouched.
+        no_default = Location.objects.create(
+            name="No Default Leaf", kind=Location.Kind.SHELF, default_status=None
+        )
+        item = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        item.status = InventoryItem.Status.IN_USE
+        item._skip_status_from_location = True
+        item.save()
+        result = items.move_to(item, no_default)
+        self.assertTrue(result.ok)
+        item.refresh_from_db()
+        self.assertEqual(item.location_id, no_default.id)
+        self.assertEqual(item.status, InventoryItem.Status.IN_USE)
+
+    # --- sticky preservation ----------------------------------------------
+    def test_move_preserves_sticky_unknown(self):
+        item = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        item.status = InventoryItem.Status.UNKNOWN
+        item._skip_status_from_location = True
+        item.save()
+        item = InventoryItem.objects.get(pk=item.pk)  # drop transient flag
+        result = items.move_to(item, self.dry)
+        self.assertTrue(result.ok)
+        item.refresh_from_db()
+        self.assertEqual(item.status, InventoryItem.Status.UNKNOWN)
+        self.assertEqual(item.location_id, self.dry.id)
+
+    def test_move_preserves_sticky_depleted(self):
+        item = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        item.status = InventoryItem.Status.DEPLETED
+        item.save()
+        item = InventoryItem.objects.get(pk=item.pk)
+        result = items.move_to(item, self.dry)
+        self.assertTrue(result.ok)
+        item.refresh_from_db()
+        # Sticky status is preserved; mark_depleted re-clears location on save.
+        self.assertEqual(item.status, InventoryItem.Status.DEPLETED)
+
+    def test_explicit_status_can_revive_sticky_item(self):
+        # Passing status= bypasses the sticky guard via the skip flag (audit revive).
+        item = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        item.status = InventoryItem.Status.UNKNOWN
+        item._skip_status_from_location = True
+        item.save()
+        item = InventoryItem.objects.get(pk=item.pk)
+        result = items.move_to(item, self.dry, status=InventoryItem.Status.STORED)
+        self.assertTrue(result.ok)
+        item.refresh_from_db()
+        self.assertEqual(item.status, InventoryItem.Status.STORED)
+        self.assertEqual(item.location_id, self.dry.id)
+
+    # --- container rejection ----------------------------------------------
+    def test_move_into_container_rejected(self):
+        item = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        result = items.move_to(item, self.rack)
+        self.assertFalse(result.ok)
+        self.assertIn("container", result.message.lower())
+        item.refresh_from_db()
+        self.assertEqual(item.location_id, self.shelf.id)  # unchanged
+
+    # --- capacity rejection -----------------------------------------------
+    def test_move_into_full_slot_rejected(self):
+        slot = Location.objects.create(
+            name="Cap Slot",
+            kind=Location.Kind.AMS_SLOT,
+            default_status=InventoryItem.Status.STORED,
+            capacity=1,
+        )
+        first = InventoryItem.objects.create(product=self.product)
+        items.move_to(first, slot)
+        second = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        result = items.move_to(second, slot)
+        self.assertFalse(result.ok)
+        self.assertIn("full", result.message.lower())
+        second.refresh_from_db()
+        self.assertEqual(second.location_id, self.shelf.id)
+
+    def test_capacity_counts_only_active_items(self):
+        # A depleted item sitting at a slot does not consume capacity.
+        slot = Location.objects.create(
+            name="Cap Slot 2",
+            kind=Location.Kind.AMS_SLOT,
+            default_status=InventoryItem.Status.STORED,
+            capacity=1,
+        )
+        stale = InventoryItem.objects.create(product=self.product, location=slot)
+        # Force a DEPLETED row that still records this slot (mark_depleted would
+        # clear the location); a bare .update() bypasses save() so the fixture
+        # mirrors stale data — a depleted item must not consume slot capacity.
+        InventoryItem.objects.filter(pk=stale.pk).update(
+            status=InventoryItem.Status.DEPLETED, location=slot
+        )
+        live = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        result = items.move_to(live, slot)
+        self.assertTrue(result.ok)
+        live.refresh_from_db()
+        self.assertEqual(live.location_id, slot.id)
+
+    def test_unlimited_capacity_allows_many(self):
+        # A shelf (capacity null) holds an arbitrary number of items.
+        for _ in range(5):
+            it = InventoryItem.objects.create(product=self.product)
+            self.assertTrue(items.move_to(it, self.shelf).ok)
+
+    def test_moving_item_already_in_slot_not_blocked_by_itself(self):
+        slot = Location.objects.create(
+            name="Cap Slot 3",
+            kind=Location.Kind.AMS_SLOT,
+            default_status=InventoryItem.Status.STORED,
+            capacity=1,
+        )
+        item = InventoryItem.objects.create(product=self.product)
+        items.move_to(item, slot)
+        # Re-moving the same item into the same full slot must not reject it.
+        result = items.move_to(item, slot)
+        self.assertTrue(result.ok)
+
+    # --- drying-warning surfacing -----------------------------------------
+    def test_drying_warning_surfaced_in_result(self):
+        mat = Material.objects.create(name="PLA Dry", drying_required=True)
+        fil = Filament.objects.create(
+            name="PLA Wet Move", upc="9400000000099", material=mat
+        )
+        item = InventoryItem.objects.create(product=fil)
+        item.status = InventoryItem.Status.NEW
+        item.save()
+        result = items.move_to(item, self.printer)
+        self.assertTrue(result.ok)
+        self.assertIsNotNone(result.drying_warning)
+        self.assertEqual(result.drying_warning[0], "warning")
+
+    def test_drying_warning_skipped_when_requested(self):
+        mat = Material.objects.create(name="PLA Dry2", drying_required=True)
+        fil = Filament.objects.create(
+            name="PLA Wet Move2", upc="9400000000098", material=mat
+        )
+        item = InventoryItem.objects.create(product=fil)
+        item.status = InventoryItem.Status.NEW
+        item.save()
+        result = items.move_to(item, self.printer, skip_drying_check=True)
+        self.assertTrue(result.ok)
+        self.assertIsNone(result.drying_warning)
+
+    # --- deplete -----------------------------------------------------------
+    def test_deplete_sets_status_and_clears_location(self):
+        item = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        result = items.deplete(item)
+        self.assertTrue(result.ok)
+        item.refresh_from_db()
+        self.assertEqual(item.status, InventoryItem.Status.DEPLETED)
+        self.assertIsNone(item.location_id)
+        self.assertIsNotNone(item.date_depleted)
+
+    def test_deplete_accepts_reason(self):
+        item = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        result = items.deplete(item, reason="used up")
+        self.assertTrue(result.ok)
+        self.assertEqual(result.reason, "used up")
+
+    # --- set_status --------------------------------------------------------
+    def test_set_status_does_not_recompute_from_location(self):
+        # Setting IN_USE while sitting on a NEW-default shelf must stick.
+        item = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        result = items.set_status(item, InventoryItem.Status.IN_USE)
+        self.assertTrue(result.ok)
+        item.refresh_from_db()
+        self.assertEqual(item.status, InventoryItem.Status.IN_USE)
+        self.assertEqual(item.location_id, self.shelf.id)
+
+    def test_set_status_sold_clears_location(self):
+        item = InventoryItem.objects.create(product=self.product, location=self.shelf)
+        result = items.set_status(item, InventoryItem.Status.SOLD)
+        self.assertTrue(result.ok)
+        item.refresh_from_db()
+        self.assertEqual(item.status, InventoryItem.Status.SOLD)
+        self.assertIsNone(item.location_id)
+
+
+class LocationCapacityTests(TestCase):
+    def test_slot_kinds_default_to_capacity_one(self):
+        ams_slot = Location.objects.create(
+            name="AMS Slot Cap", kind=Location.Kind.AMS_SLOT
+        )
+        dryer_slot = Location.objects.create(
+            name="Dryer Slot Cap", kind=Location.Kind.DRYER_SLOT
+        )
+        self.assertEqual(ams_slot.capacity, 1)
+        self.assertEqual(dryer_slot.capacity, 1)
+
+    def test_non_slot_assignables_default_unlimited(self):
+        shelf = Location.objects.create(name="Shelf Cap", kind=Location.Kind.SHELF)
+        dry = Location.objects.create(name="Dry Cap", kind=Location.Kind.DRY_STORAGE)
+        printer = Location.objects.create(
+            name="Printer Cap", kind=Location.Kind.PRINTER
+        )
+        self.assertIsNone(shelf.capacity)
+        self.assertIsNone(dry.capacity)
+        self.assertIsNone(printer.capacity)
