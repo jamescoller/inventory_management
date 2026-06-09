@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("inventory", "0027_audit_unknown_scan"),
+        ("inventory", "0028_location_capacity"),
     ]
 
     operations = [
