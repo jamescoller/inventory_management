@@ -37,8 +37,13 @@ from .views import (
     MaintenanceLogCreateView,
     MaintenanceSummaryView,
     PrintBarcodeView,
+    PrinterUtilizationDetailView,
+    PrintJobCreateView,
+    PrintJobDetailView,
+    PrintJobListView,
     SignUpView,
     UnitMaintenanceView,
+    UtilizationView,
 )
 
 urlpatterns = [
@@ -125,6 +130,19 @@ urlpatterns = [
         "audit/undo-add/<int:item_id>/",
         AuditUndoAddView.as_view(),
         name="audit_undo_add",
+    ),
+    path("print-jobs/", PrintJobListView.as_view(), name="print_job_list"),
+    path("print-jobs/new/", PrintJobCreateView.as_view(), name="print_job_create"),
+    path(
+        "print-jobs/<int:pk>/",
+        PrintJobDetailView.as_view(),
+        name="print_job_detail",
+    ),
+    path("utilization/", UtilizationView.as_view(), name="printer_utilization"),
+    path(
+        "utilization/<int:pk>/",
+        PrinterUtilizationDetailView.as_view(),
+        name="printer_utilization_detail",
     ),
     path("audit/unknowns/", AuditUnknownsView.as_view(), name="audit_unknowns"),
     path(

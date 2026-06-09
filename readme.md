@@ -115,3 +115,17 @@ depleted/sold/unknown), item type, location subtree, and date-added range.
 
 Missing or unreadable `INV-` tags can be reprinted in bulk: search for the items, tick
 the rows, and use the **Reprint tags** button in the selection bar.
+
+## Print jobs & utilization
+
+Log a print run from **Print Jobs** in the nav (`/print-jobs/`): pick the printer,
+enter the file name, start/end (or a duration), and the result, then add one
+**filament line per spool** used (grams used is preferred; percent used is the
+fallback when the spool's catalog weight is unknown). Saving applies consumption —
+each spool's `percent_remaining` is decremented, and a spool that reaches 0% is
+marked **depleted** automatically (no separate consumption log; `PrintJobFilament`
+*is* the consumption record). MQTT auto-population will write the same tables later.
+
+**Utilization** (`/utilization/`, also linked per-printer from a printer's item
+page) aggregates printer hours, job count, success rate, and kg consumed by
+material/color — all via DB aggregation.

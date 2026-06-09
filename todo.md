@@ -151,11 +151,11 @@ Models in [`docs/workflow-and-domain-design.md`](docs/workflow-and-domain-design
 - [x] Per-unit maintenance timeline reachable from the item page; admin inline.
 
 ### 15.2 — Print-jobs & utilization  *(item #10, manual side)*
-- [ ] `PrintJob` (printer, file name, start/end, duration, result, source=MANUAL|MQTT) +
+- [x] `PrintJob` (printer, file name, start/end, duration, result, source=MANUAL|MQTT) +
   `PrintJobFilament` (spool, AMS slot, grams/% used). Manual entry first.
-- [ ] Completion decrements `InventoryItem.percent_remaining` → `deplete()` at ~0.
+- [x] Completion decrements `InventoryItem.percent_remaining` → `deplete()` at ~0.
   **Subsumes the `ConsumptionEvent` backlog** — this *is* the consumption log.
-- [ ] Utilization view: printer hours, job count, success %, kg consumed by material/color.
+- [x] Utilization view: printer hours, job count, success %, kg consumed by material/color.
 
 ---
 

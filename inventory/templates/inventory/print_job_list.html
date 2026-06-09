@@ -1,0 +1,60 @@
+{% extends "inventory/base.html" %}
+{% block content %}
+    <div class="container-fluid mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2>Print Jobs</h2>
+            <div>
+                <a href="{% url 'printer_utilization' %}" class="btn btn-outline-primary">
+                    <i class="bi bi-bar-chart-line"></i> Utilization
+                </a>
+                <a href="{% url 'print_job_create' %}" class="btn btn-primary">
+                    <i class="bi bi-plus-lg"></i> Log Print Job
+                </a>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table id="print-job-table" class="table table-sm table-hover table-bordered w-100">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Job</th>
+                        <th>Printer</th>
+                        <th>Started</th>
+                        <th>Duration (h)</th>
+                        <th>Result</th>
+                        <th>Spools</th>
+                        <th>Source</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in jobs %}
+                        <tr>
+                            <td><a href="{% url 'print_job_detail' job.pk %}">{{ job.name|default:job }}</a></td>
+                            <td>{{ job.printer.product.get_real_instance }}</td>
+                            <td data-sort="{{ job.started_at|date:'U' }}">{{ job.started_at|date:"Y-m-d H:i"|default:"—" }}</td>
+                            <td data-sort="{{ job.effective_duration_s|default:0 }}" class="text-end">
+                                {% if job.duration_hours %}{{ job.duration_hours|floatformat:1 }}{% else %}—{% endif %}
+                            </td>
+                            <td>{{ job.get_result_display|title }}</td>
+                            <td class="text-end">{{ job.filaments.count }}</td>
+                            <td>{{ job.get_source_display|title }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted">No print jobs logged yet.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock content %}
+{% block extra_scripts %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            new DataTable('#print-job-table', {
+                order: [[2, 'desc']],
+                pageLength: 25,
+            });
+        });
+    </script>
+{% endblock extra_scripts %}

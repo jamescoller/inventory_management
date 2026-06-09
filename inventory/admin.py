@@ -25,6 +25,8 @@ from .models import (
     Material,
     NozzleConfig,
     Printer,
+    PrintJob,
+    PrintJobFilament,
     Product,
 )
 
@@ -576,3 +578,28 @@ class NozzleConfigAdmin(admin.ModelAdmin):
         "hotend_changed_at",
     )
     list_select_related = ("printer__product",)
+
+
+class PrintJobFilamentInline(admin.TabularInline):
+    model = PrintJobFilament
+    extra = 1
+    autocomplete_fields = ["item", "ams_slot"]
+
+
+@admin.register(PrintJob)
+class PrintJobAdmin(admin.ModelAdmin):
+    list_display = (
+        "__str__",
+        "printer",
+        "started_at",
+        "duration_s",
+        "result",
+        "source",
+        "completed",
+    )
+    list_filter = ("result", "source", "completed")
+    search_fields = ("name", "telemetry_task_id", "printer__serial_number")
+    list_select_related = ("printer",)
+    autocomplete_fields = ["printer"]
+    inlines = [PrintJobFilamentInline]
+    readonly_fields = ("created_at",)

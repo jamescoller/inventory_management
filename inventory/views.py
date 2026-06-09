@@ -20,7 +20,7 @@ from django.utils.timezone import localtime
 from django.utils.timezone import now as timezone_now
 from django.views.generic import CreateView, TemplateView, UpdateView, View
 
-from . import audit, items, maintenance
+from . import audit, items, maintenance, printjobs
 from .barcode_utils import generate_and_print_barcode
 from .forms import (
     AMSForm,
@@ -31,6 +31,8 @@ from .forms import (
     InventoryItemForm,
     MaintenanceEventForm,
     PrinterForm,
+    PrintJobFilamentFormSet,
+    PrintJobForm,
     UserRegisterForm,
 )
 from .models import (
@@ -47,6 +49,7 @@ from .models import (
     Material,
     NozzleConfig,
     Printer,
+    PrintJob,
     Product,
     is_machine_item,
 )
@@ -399,6 +402,7 @@ class InventoryEditView(LoginRequiredMixin, UpdateView):
                 "is_filament": isinstance(product, Filament),
                 "location_status_timeline": item.location_status_timeline(),
                 "is_machine": is_machine_item(item),
+                "is_printer": isinstance(product, Printer),
             },
         )
 
@@ -426,6 +430,7 @@ class InventoryEditView(LoginRequiredMixin, UpdateView):
             "is_filament": isinstance(product, Filament),
             "location_status_timeline": item.location_status_timeline(),
             "is_machine": is_machine_item(item),
+            "is_printer": isinstance(product, Printer),
         }
 
         if form.is_valid():
@@ -1947,3 +1952,105 @@ class AuditUnknownDismissView(LoginRequiredMixin, View):
         scan.save(update_fields=["dismissed"])
         messages.info(request, f"Dismissed UPC {scan.upc}.")
         return redirect("audit_unknowns")
+
+
+# ---- Print jobs & utilization (Phase 15.2) --------
+
+
+class PrintJobListView(LoginRequiredMixin, TemplateView):
+    template_name = "inventory/print_job_list.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["jobs"] = (
+            PrintJob.objects.select_related("printer__product")
+            .prefetch_related("filaments")
+            .all()
+        )
+        return ctx
+
+
+class PrintJobCreateView(LoginRequiredMixin, View):
+    """Create a PrintJob plus its filament lines, then apply consumption.
+
+    Thin view: it owns only form/formset wiring and the redirect. The actual
+    decrement/deplete logic lives in :func:`inventory.printjobs.complete_job`,
+    mirroring how ``AddInventoryView`` keeps label printing in the view but
+    inventory mutation in the service.
+    """
+
+    template_name = "inventory/print_job_form.html"
+
+    def get(self, request):
+        return render(
+            request,
+            self.template_name,
+            {"form": PrintJobForm(), "formset": PrintJobFilamentFormSet()},
+        )
+
+    def post(self, request):
+        form = PrintJobForm(request.POST)
+        formset = PrintJobFilamentFormSet(request.POST)
+        if form.is_valid() and formset.is_valid():
+            with transaction.atomic():
+                job = form.save()
+                formset.instance = job
+                formset.save()
+                # Manual entry is treated as a completed run: apply consumption
+                # to the referenced spools (decrement + deplete at ~0).
+                depleted = printjobs.complete_job(job)
+            messages.success(request, f"Logged print job '{job}'.")
+            for spool in depleted:
+                messages.warning(
+                    request, f"{spool} reached 0% and was marked depleted."
+                )
+            return redirect("print_job_detail", pk=job.pk)
+        return render(request, self.template_name, {"form": form, "formset": formset})
+
+
+class PrintJobDetailView(LoginRequiredMixin, TemplateView):
+    template_name = "inventory/print_job_detail.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["job"] = get_object_or_404(
+            PrintJob.objects.select_related("printer__product").prefetch_related(
+                "filaments__item__product"
+            ),
+            pk=kwargs["pk"],
+        )
+        return ctx
+
+
+class UtilizationView(LoginRequiredMixin, TemplateView):
+    """Fleet-wide printer utilization: hours, job count, success %, kg by material."""
+
+    template_name = "inventory/printer_utilization.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["printers"] = printjobs.utilization_summary()
+        ctx["consumption"] = printjobs.consumption_by_material()
+        ctx["total_jobs"] = sum(p["jobs"] for p in ctx["printers"])
+        ctx["total_hours"] = round(sum(p["hours"] for p in ctx["printers"]), 1)
+        ctx["total_kg"] = round(sum(p["kg"] for p in ctx["printers"]), 2)
+        return ctx
+
+
+class PrinterUtilizationDetailView(LoginRequiredMixin, TemplateView):
+    """Per-printer utilization, reachable from the machine's item page."""
+
+    template_name = "inventory/printer_utilization_detail.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        printer = get_object_or_404(
+            InventoryItem.objects.select_related("product"), pk=kwargs["pk"]
+        )
+        ctx["printer"] = printer
+        ctx["printer_name"] = str(printer.product.get_real_instance())
+        ctx["stats"] = printjobs.printer_utilization(printer)
+        ctx["jobs"] = (
+            PrintJob.objects.filter(printer=printer).prefetch_related("filaments").all()
+        )
+        return ctx

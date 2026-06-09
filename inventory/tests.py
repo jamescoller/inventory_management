@@ -6,7 +6,9 @@ from django.core.exceptions import ValidationError
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.timezone import now as timezone_now
 
+from . import items, printjobs
 from .models import (
     AMS,
     AuditSession,
@@ -20,6 +22,8 @@ from .models import (
     Material,
     NozzleConfig,
     Printer,
+    PrintJob,
+    PrintJobFilament,
 )
 
 
@@ -1843,9 +1847,6 @@ class LowStockAlertTests(TestCase):
         self.assertEqual(alerts["40200"]["active_count"], 1)
 
 
-from . import items  # noqa: E402
-
-
 class MoveServiceTests(TestCase):
     """The inventory.items service is the single chokepoint for move/deplete/
     set_status. It owns the _skip_status_from_location dance and the move guard
@@ -2931,3 +2932,277 @@ class LocationBarcodeRoutingTests(TestCase):
         resp = self.client.get(reverse("inventory_search"), {"name": f"LOC-{rack.id}"})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual({i.id for i in resp.context["items"]}, {it.id})
+
+
+class PrintJobModelTests(TestCase):
+    """Model creation + derived-duration round trips."""
+
+    def setUp(self):
+        printer_product = Printer.objects.create(
+            name="X1C", upc="9000000000001", num_extruders=1
+        )
+        self.printer = InventoryItem.objects.create(
+            product=printer_product, serial_number="PR-1"
+        )
+
+    def test_create_print_job_and_filament_line(self):
+        mat = Material.objects.create(name="PLA")
+        fil = Filament.objects.create(
+            name="PLA Red", upc="9000000000002", material=mat, weight=Decimal("1.00")
+        )
+        spool = InventoryItem.objects.create(product=fil)
+        job = PrintJob.objects.create(printer=self.printer, name="benchy.3mf")
+        line = PrintJobFilament.objects.create(
+            job=job, item=spool, grams_used=Decimal("12.50")
+        )
+        self.assertEqual(job.filaments.count(), 1)
+        self.assertEqual(line.job, job)
+        self.assertEqual(job.result, PrintJob.Result.SUCCESS)
+        self.assertEqual(job.source, PrintJob.Source.MANUAL)
+        self.assertFalse(job.completed)
+
+    def test_effective_duration_from_explicit_seconds(self):
+        job = PrintJob.objects.create(printer=self.printer, duration_s=7200)
+        self.assertEqual(job.effective_duration_s, 7200)
+        self.assertEqual(job.duration_hours, 2.0)
+
+    def test_effective_duration_derived_from_start_end(self):
+        start = timezone_now()
+        job = PrintJob.objects.create(
+            printer=self.printer,
+            started_at=start,
+            ended_at=start + timedelta(hours=3),
+        )
+        self.assertEqual(job.effective_duration_s, 3 * 3600)
+
+
+class PrintJobConsumptionTests(TestCase):
+    """complete_job decrements percent_remaining and depletes via items.deplete."""
+
+    def setUp(self):
+        printer_product = Printer.objects.create(
+            name="X1C", upc="9100000000001", num_extruders=1
+        )
+        self.printer = InventoryItem.objects.create(
+            product=printer_product, serial_number="PR-2"
+        )
+        self.mat = Material.objects.create(name="PLA")
+        # 1 kg spool → 1000 g full.
+        self.fil = Filament.objects.create(
+            name="PLA Blue",
+            upc="9100000000002",
+            material=self.mat,
+            weight=Decimal("1.00"),
+        )
+
+    def _spool(self, percent=Decimal("100")):
+        return InventoryItem.objects.create(product=self.fil, percent_remaining=percent)
+
+    def test_grams_decrement_partial(self):
+        spool = self._spool()
+        job = PrintJob.objects.create(printer=self.printer)
+        PrintJobFilament.objects.create(
+            job=job, item=spool, grams_used=Decimal("250.00")
+        )
+        depleted = printjobs.complete_job(job)
+        spool.refresh_from_db()
+        # 250 g of a 1000 g spool = 25% used → 75% remaining.
+        self.assertEqual(spool.percent_remaining, Decimal("75.00"))
+        self.assertEqual(spool.status, InventoryItem.Status.NEW)
+        self.assertEqual(depleted, [])
+
+    def test_percent_used_fallback_when_no_weight(self):
+        no_weight_fil = Filament.objects.create(
+            name="PLA NW", upc="9100000000003", material=self.mat, weight=None
+        )
+        spool = InventoryItem.objects.create(
+            product=no_weight_fil, percent_remaining=Decimal("100")
+        )
+        job = PrintJob.objects.create(printer=self.printer)
+        PrintJobFilament.objects.create(
+            job=job, item=spool, percent_used=Decimal("40.00")
+        )
+        printjobs.complete_job(job)
+        spool.refresh_from_db()
+        self.assertEqual(spool.percent_remaining, Decimal("60.00"))
+
+    def test_spool_hitting_zero_is_depleted_via_service(self):
+        spool = self._spool(percent=Decimal("20"))
+        job = PrintJob.objects.create(printer=self.printer)
+        # 250 g = 25% > remaining 20% → drives below zero → deplete.
+        PrintJobFilament.objects.create(
+            job=job, item=spool, grams_used=Decimal("250.00")
+        )
+        depleted = printjobs.complete_job(job)
+        spool.refresh_from_db()
+        self.assertEqual(spool.status, InventoryItem.Status.DEPLETED)
+        self.assertEqual(spool.percent_remaining, Decimal("0"))
+        self.assertIsNone(spool.location_id)
+        self.assertIsNotNone(spool.date_depleted)
+        self.assertEqual(depleted, [spool])
+
+    def test_completion_is_idempotent(self):
+        spool = self._spool()
+        job = PrintJob.objects.create(printer=self.printer)
+        PrintJobFilament.objects.create(
+            job=job, item=spool, grams_used=Decimal("100.00")
+        )
+        printjobs.complete_job(job)
+        job.refresh_from_db()
+        self.assertTrue(job.completed)
+        # A second call must not decrement again.
+        printjobs.complete_job(job)
+        spool.refresh_from_db()
+        self.assertEqual(spool.percent_remaining, Decimal("90.00"))
+
+    def test_already_depleted_spool_is_skipped(self):
+        spool = self._spool()
+        items.deplete(spool)
+        job = PrintJob.objects.create(printer=self.printer)
+        PrintJobFilament.objects.create(
+            job=job, item=spool, grams_used=Decimal("100.00")
+        )
+        depleted = printjobs.complete_job(job)
+        spool.refresh_from_db()
+        # Still depleted, percent untouched (was set to 0 by deplete? no — deplete
+        # doesn't zero percent), but the line is skipped entirely.
+        self.assertEqual(spool.status, InventoryItem.Status.DEPLETED)
+        self.assertEqual(depleted, [])
+
+    def test_ended_at_stamped_on_completion(self):
+        spool = self._spool()
+        job = PrintJob.objects.create(printer=self.printer)
+        PrintJobFilament.objects.create(
+            job=job, item=spool, grams_used=Decimal("50.00")
+        )
+        self.assertIsNone(job.ended_at)
+        printjobs.complete_job(job)
+        job.refresh_from_db()
+        self.assertIsNotNone(job.ended_at)
+
+
+class PrinterUtilizationTests(TestCase):
+    """DB-aggregated utilization: hours, success %, kg by material."""
+
+    def setUp(self):
+        printer_product = Printer.objects.create(
+            name="X1C", upc="9200000000001", num_extruders=1
+        )
+        self.printer = InventoryItem.objects.create(
+            product=printer_product, serial_number="PR-3"
+        )
+        self.mat = Material.objects.create(name="PLA")
+        self.fil = Filament.objects.create(
+            name="PLA Green",
+            upc="9200000000002",
+            material=self.mat,
+            color="Green",
+            color_family="GREEN",
+            weight=Decimal("1.00"),
+        )
+        # 3 jobs: 2 success, 1 failed. Hours 1 + 2 + 0.5 = 3.5. Grams 100+200+50.
+        for dur, res, grams in [
+            (3600, PrintJob.Result.SUCCESS, Decimal("100")),
+            (7200, PrintJob.Result.SUCCESS, Decimal("200")),
+            (1800, PrintJob.Result.FAILED, Decimal("50")),
+        ]:
+            j = PrintJob.objects.create(
+                printer=self.printer, duration_s=dur, result=res
+            )
+            spool = InventoryItem.objects.create(product=self.fil)
+            PrintJobFilament.objects.create(job=j, item=spool, grams_used=grams)
+
+    def test_printer_utilization_aggregations(self):
+        stats = printjobs.printer_utilization(self.printer)
+        self.assertEqual(stats["jobs"], 3)
+        self.assertEqual(stats["hours"], 3.5)
+        self.assertEqual(stats["success"], 2)
+        self.assertEqual(stats["success_rate"], round(2 / 3 * 100, 1))
+        self.assertEqual(stats["grams"], 350.0)
+        self.assertEqual(stats["kg"], 0.35)
+
+    def test_consumption_by_material(self):
+        rows = printjobs.consumption_by_material()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["material"], "PLA")
+        self.assertEqual(rows[0]["color"], "Green")
+        self.assertEqual(rows[0]["grams"], 350.0)
+
+    def test_utilization_summary_row_per_printer(self):
+        rows = printjobs.utilization_summary()
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row["printer_id"], self.printer.id)
+        self.assertEqual(row["jobs"], 3)
+        self.assertEqual(row["hours"], 3.5)
+        self.assertEqual(row["kg"], 0.35)
+
+
+class PrintJobViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="pj", password="pass")
+        self.client.login(username="pj", password="pass")
+        printer_product = Printer.objects.create(
+            name="X1C", upc="9300000000001", num_extruders=1
+        )
+        self.printer = InventoryItem.objects.create(
+            product=printer_product, serial_number="PR-4"
+        )
+        self.mat = Material.objects.create(name="PLA")
+        self.fil = Filament.objects.create(
+            name="PLA Red",
+            upc="9300000000002",
+            material=self.mat,
+            weight=Decimal("1.00"),
+        )
+        self.spool = InventoryItem.objects.create(product=self.fil)
+
+    def test_utilization_view_renders(self):
+        resp = self.client.get(reverse("printer_utilization"))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_print_job_list_renders(self):
+        PrintJob.objects.create(printer=self.printer, name="a.3mf", duration_s=3600)
+        resp = self.client.get(reverse("print_job_list"))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_create_view_renders(self):
+        resp = self.client.get(reverse("print_job_create"))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_create_job_with_filament_line_and_complete(self):
+        resp = self.client.post(
+            reverse("print_job_create"),
+            {
+                "printer": self.printer.pk,
+                "name": "cube.3mf",
+                "duration_s": 3600,
+                "result": PrintJob.Result.SUCCESS,
+                "filaments-TOTAL_FORMS": "1",
+                "filaments-INITIAL_FORMS": "0",
+                "filaments-MIN_NUM_FORMS": "0",
+                "filaments-MAX_NUM_FORMS": "1000",
+                "filaments-0-item": self.spool.pk,
+                "filaments-0-grams_used": "500.00",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        job = PrintJob.objects.get(name="cube.3mf")
+        self.assertTrue(job.completed)
+        self.spool.refresh_from_db()
+        # 500 g of a 1 kg spool = 50% used.
+        self.assertEqual(self.spool.percent_remaining, Decimal("50.00"))
+
+    def test_per_printer_utilization_view(self):
+        PrintJob.objects.create(printer=self.printer, duration_s=3600)
+        resp = self.client.get(
+            reverse("printer_utilization_detail", args=[self.printer.pk])
+        )
+        self.assertEqual(resp.status_code, 200)
+
+    def test_login_required(self):
+        self.client.logout()
+        resp = self.client.get(reverse("print_job_list"))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login", resp.url)

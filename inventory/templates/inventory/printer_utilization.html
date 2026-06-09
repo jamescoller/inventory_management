@@ -1,0 +1,95 @@
+{% extends "inventory/base.html" %}
+{% block content %}
+    <div class="container-fluid mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2>Printer Utilization</h2>
+            <a href="{% url 'print_job_list' %}" class="btn btn-outline-primary">
+                <i class="bi bi-list-ul"></i> Print Jobs
+            </a>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card text-center"><div class="card-body">
+                    <div class="display-6">{{ total_jobs }}</div><div class="text-muted">Jobs</div>
+                </div></div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center"><div class="card-body">
+                    <div class="display-6">{{ total_hours }}</div><div class="text-muted">Printer hours</div>
+                </div></div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center"><div class="card-body">
+                    <div class="display-6">{{ total_kg }}</div><div class="text-muted">kg consumed</div>
+                </div></div>
+            </div>
+        </div>
+
+        <h5>By Printer</h5>
+        <div class="table-responsive mb-5">
+            <table id="utilization-table" class="table table-sm table-hover table-bordered w-100">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Printer</th>
+                        <th>Serial</th>
+                        <th class="text-end">Jobs</th>
+                        <th class="text-end">Hours</th>
+                        <th class="text-end">Success %</th>
+                        <th class="text-end">kg</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in printers %}
+                        <tr>
+                            <td>{{ p.printer_name }}</td>
+                            <td>{{ p.serial_number|default:"—" }}</td>
+                            <td class="text-end">{{ p.jobs }}</td>
+                            <td class="text-end">{{ p.hours }}</td>
+                            <td class="text-end">{% if p.success_rate is not None %}{{ p.success_rate }}{% else %}—{% endif %}</td>
+                            <td class="text-end">{{ p.kg }}</td>
+                            <td><a href="{% url 'printer_utilization_detail' p.printer_id %}" class="btn btn-sm btn-outline-secondary">Detail</a></td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="7" class="text-center text-muted">No print jobs logged yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <h5>Consumption by Material / Color</h5>
+        <div class="table-responsive">
+            <table id="consumption-table" class="table table-sm table-hover table-bordered w-100">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Material</th>
+                        <th>Color</th>
+                        <th class="text-end">Grams</th>
+                        <th class="text-end">kg</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in consumption %}
+                        <tr>
+                            <td>{{ c.material }}</td>
+                            <td>{{ c.color|default:c.color_family|default:"—" }}</td>
+                            <td class="text-end">{{ c.grams }}</td>
+                            <td class="text-end">{{ c.kg }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="4" class="text-center text-muted">No consumption recorded.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock content %}
+{% block extra_scripts %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            new DataTable('#utilization-table', { paging: false, info: false, order: [[3, 'desc']] });
+            new DataTable('#consumption-table', { paging: false, info: false, order: [[2, 'desc']] });
+        });
+    </script>
+{% endblock extra_scripts %}
