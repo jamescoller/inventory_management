@@ -219,9 +219,13 @@ dev-time PDF lib (`pypdf`) — not a production image dep.*
   drop-in — existing `list_display`/`fieldsets`/actions/polymorphic/inline code carries over,
   ~2–3 h). Do **last** so it re-skins the *final* admin set (procurement/maintenance/telemetry)
   once. See [`docs/admin-2.0.md`](docs/admin-2.0.md).
-- [ ] **18.2 Filament-page consolidation + JS extraction** — merge `/filament-summary/`,
-  `/filament-color-guide/`, `/filament-guide/` into one hub with modes; move the ~435 lines of
-  inline JS (summary 220, search 114, dashboard 95) to `static/inventory/js/`.
+- [x] **18.2 Filament-page consolidation + JS extraction** — `/filament/` hub (`FilamentHubView`)
+  with mode tabs; the three pages (`/filament-summary/`, `/filament-color-guide/`,
+  `/filament-guide/`) keep their own URLs and each carries the shared tab bar (additive,
+  reversible). Extracted summary JS (220 lines) → `static/inventory/js/filament_summary.js` and
+  dashboard JS (95 lines) → `static/inventory/js/dashboard.js`, both via `{% static %}` with
+  server data passed through `json_script`. Search JS (114 lines, `inventory_search.html`)
+  deferred to the parallel `feat/search-redo` branch that owns that file.
 - [ ] **18.3 Visual beauty pass** — design tokens (replace hardcoded chart/badge colors),
   mobile polish (charts/bulk-bar/print buttons), component consistency, optional dark mode.
 
