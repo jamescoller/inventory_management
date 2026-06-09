@@ -86,7 +86,9 @@ location labels" action). Then run an audit from **Audit** in the nav (`/audit/`
 scan a location barcode, scan the item tags physically present, and finalize — items
 left unaccounted-for at visited locations are marked depleted by default. After first
 seeding, link each AMS/dryer slot group to its unit's inventory record via the `unit`
-field in the Location admin.
+field in the Location admin. The `unit` field accepts only physical AMS/dryer/printer
+inventory records — linking it to slot contents (a filament roll) is rejected, since
+that would make the audit treat the roll as a tracked machine instead of contents.
 
 To set a location you can scan its `LOC-` barcode **or** an AMS/dryer/printer's
 front-panel **serial number** — the serial focuses that whole unit and the console

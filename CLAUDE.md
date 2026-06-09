@@ -347,6 +347,13 @@ dryers, **reconcile the 20 old flat shelves against the 10 new rack-child shelve
 (old flat rows hold current inventory; coexist with the new hierarchy), print
 `LOC-`/`INV-` labels, eyeball `/audit/` render.
 
+**Watch when hand-linking slot `unit` FKs:** a slot's `Location.unit` must point at
+the physical AMS/dryer/printer's `InventoryItem`, never at slot contents. Anything a
+`Location.unit` references is treated as a tracked machine by `audit._is_unit_item`
+and becomes un-auditable as contents. AMS SD-1 slots 2–4 were mis-linked to a filament
+roll (INV-17) during this manual step — caught in Audit No. 15, fixed in PR #128, which
+also added a `Location.clean()` guard rejecting non-unit `unit` FKs at the model layer.
+
 ### Phase 6 follow-up — inline add-item during audit (June 2026, separate PR off master)
 
 Lets the audit scan stream handle untracked spools without leaving the console.
