@@ -10,8 +10,7 @@ once.
 ---
 
 ## 1. Current state (what we have, and it's more than it looks)
-No theme package is installed (`requirements.txt` / `INSTALLED_APPS` have none). But the admin
-is already meaningfully customized (`inventory/admin.py`, ~520 lines):
+No theme package is installed (`requirements.txt` / `INSTALLED_APPS` have none). But the admin is already meaningfully customized (`inventory/admin.py`, ~520 lines):
 - **10 registered models** with real `list_display` / `list_filter` / `search_fields` /
   `fieldsets`.
 - **Custom actions:** `bulk_update_material` (separate form view), `mark_depleted`,
@@ -50,6 +49,9 @@ existing `ModelAdmin` code.
 - `django-grappelli` — mature but dated aesthetic; less "2.0".
 - Stay vanilla + hand-CSS — lowest dependency, but reinvents what unfold gives for free.
 
+
+> ℹ️ **James' Feedback** : I really like how `django-unfold` looks! Let's implement that for sure. `django-jazzmin` would be my second choice, but `django-grappelli` is a no - it's too bland. I like `django-unfold` because it has a nice clean polished look, similar to the look of the public site itself. 
+
 ---
 
 ## 3. Lift estimate (~2–3 hours)
@@ -86,5 +88,4 @@ readonly, autocomplete, and the polymorphic parent/child admin all work unchange
 ## 5. Sequencing note
 Do this **after** the procurement (14), maintenance/print-jobs (15), and telemetry (16) admins
 exist, so unfold re-skins the complete set once rather than us theming-then-adding-then-
-re-theming. It's an independent, low-risk dependency swap that can land whenever 14–16's admins
-are in place.
+re-theming. It's an independent, low-risk dependency swap that can land whenever 14–16's admins are in place.

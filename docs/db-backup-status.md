@@ -38,8 +38,7 @@ container unprivileged. Full writeup: `~/projects/homelab/media_server.md` (§ "
 SMB/CIFS, not NFS"). Replicate for CT 105:
 
 1. **Synology:** enable **SMB** on the `inventory-backup` shared folder; give a service account
-   R/W (reuse `plexnfs` (DSM uid 1026) or make a dedicated `invbackup` account). The earlier NFS
-   export rule becomes unused — safe to remove (same as Plex).
+   R/W (reuse `plexnfs` (DSM uid 1026) or make a dedicated `invbackup` account). The earlier NFS export rule becomes unused — safe to remove (same as Plex).
 2. **Proxmox host `/etc/fstab`** — CIFS mount with a client-side uid/gid override set to the
    **host-mapped** IDs of the container's `jcoller` (in-container uid/gid **1000/1000** → host
    **101000/101000** under the unprivileged +100000 offset):

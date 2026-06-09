@@ -1,7 +1,6 @@
 # Bambu MQTT Integration — Design (2026-06-09)
 
-The "dedicated design session" the backlog asked for. Bambu MQTT flips the app from manual to
-**event-driven** and is the largest architectural bet in the roadmap, so it's **phased**:
+The "dedicated design session" the backlog asked for. Bambu MQTT flips the app from manual to **event-driven** and is the largest architectural bet in the roadmap, so it's **phased**:
 read-only **telemetry mirror first** (16.1/16.2), trust-gated **auto-sync later** (16.3).
 Phasing in [`../todo.md`](../todo.md); domain context in
 [`workflow-and-domain-design.md`](workflow-and-domain-design.md).
@@ -18,21 +17,21 @@ Each printer runs a **local MQTT broker** (same source HA's `bambu_lab` HACS int
   snapshot, then deltas arrive.
 
 ### Fields we care about (from `report.print` and `report.ams`)
-| Path | Meaning | Lands in |
-|---|---|---|
-| `print.gcode_state` | RUNNING / IDLE / PAUSE / FINISH / FAILED | `PrinterState.gcode_state` |
-| `print.mc_percent` | progress % | `PrinterState.mc_percent` |
-| `print.layer_num` / `total_layer_num` | layer counters | `PrinterState.layer_num/total_layers` |
-| `print.nozzle_temper` / `nozzle_target_temper` | hot-end temps | `PrinterState.nozzle_temp/target` |
-| `print.bed_temper` / `bed_target_temper` | bed temps | `PrinterState.bed_temp/target` |
-| `print.mc_remaining_time` | minutes left | `PrinterState.remaining_min` |
-| `print.subtask_name` / `gcode_file` | current file | `PrinterState.subtask_name`, `PrintJob.name` |
-| `print.task_id` / `subtask_id` | job identity | `PrintJob.telemetry_task_id` (dedup) |
-| `print.hms[]` | active HMS error codes | `PrinterState.hms_codes` → `MaintenanceEvent` |
-| `ams.ams[i].tray[j].tray_uuid` | **RFID/tray UUID** | `AMSChannelState.tray_uuid` ← phase-2 join key |
-| `ams.ams[i].tray[j].tray_info_idx` | Bambu filament id | `AMSChannelState.tray_info_idx` |
-| `ams.ams[i].tray[j].tray_type` / `tray_color` | material / `#RRGGBBAA` | `AMSChannelState.tray_type/color_hex` |
-| `ams.ams[i].tray[j].remain` | remaining % (−1 = unknown) | `AMSChannelState.remaining_pct` |
+| Path                                           | Meaning                                  | Lands in                                       |
+| ---------------------------------------------- | ---------------------------------------- | ---------------------------------------------- |
+| `print.gcode_state`                            | RUNNING / IDLE / PAUSE / FINISH / FAILED | `PrinterState.gcode_state`                     |
+| `print.mc_percent`                             | progress %                               | `PrinterState.mc_percent`                      |
+| `print.layer_num` / `total_layer_num`          | layer counters                           | `PrinterState.layer_num/total_layers`          |
+| `print.nozzle_temper` / `nozzle_target_temper` | hot-end temps                            | `PrinterState.nozzle_temp/target`              |
+| `print.bed_temper` / `bed_target_temper`       | bed temps                                | `PrinterState.bed_temp/target`                 |
+| `print.mc_remaining_time`                      | minutes left                             | `PrinterState.remaining_min`                   |
+| `print.subtask_name` / `gcode_file`            | current file                             | `PrinterState.subtask_name`, `PrintJob.name`   |
+| `print.task_id` / `subtask_id`                 | job identity                             | `PrintJob.telemetry_task_id` (dedup)           |
+| `print.hms[]`                                  | active HMS error codes                   | `PrinterState.hms_codes` → `MaintenanceEvent`  |
+| `ams.ams[i].tray[j].tray_uuid`                 | **RFID/tray UUID**                       | `AMSChannelState.tray_uuid` ← phase-2 join key |
+| `ams.ams[i].tray[j].tray_info_idx`             | Bambu filament id                        | `AMSChannelState.tray_info_idx`                |
+| `ams.ams[i].tray[j].tray_type` / `tray_color`  | material / `#RRGGBBAA`                   | `AMSChannelState.tray_type/color_hex`          |
+| `ams.ams[i].tray[j].remain`                    | remaining % (−1 = unknown)               | `AMSChannelState.remaining_pct`                |
 
 ---
 
@@ -152,7 +151,14 @@ hard.
 
 ## 6. Open questions for James
 - Printer serials + access codes (for `PrinterDevice` seed / `.env`).
-- AMS↔machine `Location.unit` links must be populated (the Phase-6 manual setup) before serial
-  focus + auto-sync work.
+
+| Printer Name | IP Address  | Serial No.      | LAN Access Code |
+| ------------ | ----------- | --------------- | --------------- |
+| Scooby Doo   | 10.10.30.14 | 00M09D460801722 | 0e25e952        |
+| RuPaul       | 10.10.30.13 | 00M09D461201098 | 7f61ae5d        |
+| H2Dreamy     | 10.10.30.12 | 0948AD532400186 | f3a1677b        |
+| H2Laser      | 10.10.30.11 | 0948CD531200537 | f28f4159        |
+
+- AMS↔machine `Location.unit` links must be populated (the Phase-6 manual setup) before serial focus + auto-sync work.
 - Confirm the DB-directory bind-mount migration window (brief downtime to move the file + add
   `-wal`/`-shm`).

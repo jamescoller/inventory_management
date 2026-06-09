@@ -251,6 +251,21 @@ blast radius; (3) MQTT auto-sync writing back to real inventory.
 
 ---
 
+## New Ideas
+- [ ] Expose "status" in the inventory item edit pages `/edit/`
+- [ ] Expose full system log in the admin panel; filterable and sortable 
+
+## Fixes 
+- [ ] On the `/edit/` pages with hardware (AMS, Printers, Dryers) that have the `Maintenance` option, the button itself for `Maintenance` does not match the styling of the other buttons. 
+- [ ] Error on utilization table: `DataTables warning: table id=utilization-table - Incorrect column count. For more information about this error, please see http://datatables.net/tn/18`
+- [ ] Error on the print job table: `DataTables warning: table id=print-job-table - Incorrect column count. For more information about this error, please see http://datatables.net/tn/18`
+- [ ] Error in the orders table: `DataTables warning: table id=po-table - Incorrect column count. For more information about this error, please see http://datatables.net/tn/18`
+- [ ] Fix static image needs that log warnings in the app log:
+	- [ ] `django.request WARNING 2026-06-09 18:04:42,262 log 10 137358581200576 Not Found: /favicon.ico`
+	- [ ] `django.request WARNING 2026-06-09 18:04:42,280 log 10 137358616917696 Not Found: /apple-touch-icon.png`
+	- [ ] `django.request WARNING 2026-06-09 18:04:42,358 log 9 137358616917696 Not Found: /apple-touch-icon-precomposed.png`
+	- [ ] 
+
 ## Backlog
 *Real value, no current phase slot. Revisit during sprint planning.*
 
