@@ -16,6 +16,7 @@ pip-selfcheck.json
 
 # IDEs and project settings
 .idea/
+.obsidian/
 
 # Environment variables
 .env
