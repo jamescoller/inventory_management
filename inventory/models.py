@@ -852,6 +852,10 @@ class Material(models.Model):
     dry_temp_ideal_degC (int, optional): Ideal drying temperature for the material in degrees
                                                                              Celsius.
     dry_time_hrs (int, optional): Recommended drying time in hours.
+    build_plate_compat (str, optional): Compatible build-plate surfaces, free text
+                                                                            read off the TDS (e.g. "Textured PEI Plate").
+    hot_end_compat (str, optional): Hot-end / nozzle compatibility note, free text
+                                                                    (e.g. "Hardened steel nozzle required").
     ams_capable (bool): Indicates if the material is compatible with AMS. Default is True.
     notes (str, optional): Additional notes or comments about the material.
     """
@@ -871,6 +875,14 @@ class Material(models.Model):
     dry_temp_max_degC = models.IntegerField(blank=True, null=True)
     dry_temp_ideal_degC = models.IntegerField(blank=True, null=True)
     dry_time_hrs = models.IntegerField(blank=True, null=True)
+
+    # Compatibility specs scraped from the manufacturer's Technical Data Sheet
+    # (Phase 17.1). Free-text on purpose: the values are a small, display-only set
+    # read straight off a TDS (e.g. "Cool Plate, High Temperature Plate, Textured
+    # PEI Plate"); a normalized table would be over-engineering for a household
+    # app. Revisit only if filtering by plate becomes a real workflow.
+    build_plate_compat = models.CharField(max_length=200, blank=True, default="")
+    hot_end_compat = models.CharField(max_length=120, blank=True, default="")
 
     ams_capable = models.BooleanField(default=True)  # Is it compatible with AMS?
     drying_required = models.BooleanField(

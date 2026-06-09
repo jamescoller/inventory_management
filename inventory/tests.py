@@ -2080,3 +2080,160 @@ class LocationCapacityTests(TestCase):
         self.assertIsNone(shelf.capacity)
         self.assertIsNone(dry.capacity)
         self.assertIsNone(printer.capacity)
+# ---------------------------------------------------------------------------
+# Phase 17.1 — Filament TDS parsing -> review CSV (no DB writes)
+# ---------------------------------------------------------------------------
+
+import csv  # noqa: E402
+import importlib.util  # noqa: E402
+import os  # noqa: E402
+import tempfile  # noqa: E402
+import unittest  # noqa: E402
+
+from django.conf import settings  # noqa: E402
+from django.core.management import call_command  # noqa: E402
+
+from inventory.filament_tds import (  # noqa: E402
+    CSV_FIELDS,
+    TdsRow,
+    parse_tds_text,
+)
+
+_FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "tests_fixtures")
+_HAS_PYPDF = importlib.util.find_spec("pypdf") is not None
+
+
+def _load_fixture(name):
+    with open(os.path.join(_FIXTURE_DIR, name), encoding="utf-8") as fh:
+        return fh.read()
+
+
+class FilamentTdsParserTests(TestCase):
+    """Unit-test the pure text parser against a committed real-TDS fixture.
+
+    The fixture is the pypdf-extracted text of
+    ``Bambu_PLA_Basic_Technical_Data_Sheet.pdf`` -- so these tests never need
+    ``pypdf`` (a dev-only dep that prod never installs).
+    """
+
+    def test_parses_pla_basic_fixture(self):
+        row = parse_tds_text(
+            _load_fixture("pla_basic_tds.txt"),
+            source_file="Bambu_PLA_Basic_Technical_Data_Sheet.pdf",
+        )
+        self.assertEqual(row.name, "PLA")
+        self.assertEqual(row.material_type, "Basic")
+        self.assertEqual(row.mfr, "Bambu Lab")
+        self.assertEqual(row.dry_temp_ideal_degC, 50)
+        self.assertEqual(row.dry_time_hrs, 8)
+        self.assertEqual(row.print_temp_min_degC, 190)
+        self.assertEqual(row.print_temp_max_degC, 230)
+        # build plate: comma-joined surfaces, "or" normalised to a comma
+        self.assertIn("Cool Plate", row.build_plate_compat)
+        self.assertIn("Textured PEI Plate", row.build_plate_compat)
+        self.assertNotIn(" or ", row.build_plate_compat)
+        # PLA Basic has no hardened-nozzle recommendation -> stays blank
+        self.assertEqual(row.hot_end_compat, "")
+
+    def test_drying_line_variants(self):
+        # ASCII comma + "hours" word + glued "DryingSettings" (PLA Sparkle style)
+        r1 = parse_tds_text("DryingSettings before Printing 55°C, 8 hours")
+        self.assertEqual((r1.dry_temp_ideal_degC, r1.dry_time_hrs), (55, 8))
+        # fullwidth comma + a time range "8 -12h" -> take the first value
+        r2 = parse_tds_text("Drying Settings before Printing 80°C，8 -12h")
+        self.assertEqual((r2.dry_temp_ideal_degC, r2.dry_time_hrs), (80, 8))
+
+    def test_build_plate_label_variants(self):
+        bed = parse_tds_text(
+            "Build Plate Type Cool Plate Supertack / Textured PEI Plate "
+            "Bed Temperature 65 - 75 °C"
+        )
+        self.assertEqual(
+            bed.build_plate_compat, "Cool Plate Supertack, Textured PEI Plate"
+        )
+
+    def test_hot_end_extracted_only_when_explicit(self):
+        # Marketing copy mentioning "wear resistance" must NOT trigger a match.
+        soft = parse_tds_text("ABS-GF inherits water resistance, wear resistance.")
+        self.assertEqual(soft.hot_end_compat, "")
+        # A genuine recommendation IS captured.
+        hard = parse_tds_text("A hardened steel nozzle is required for this filament.")
+        self.assertIn("hardened steel", hard.hot_end_compat.lower())
+
+    def test_name_type_split(self):
+        self.assertEqual(parse_tds_text("ABS-CF").name, "ABS")
+        self.assertEqual(parse_tds_text("ABS-CF").material_type, "CF")
+        self.assertEqual(parse_tds_text("PA6-GF").name, "PA6")
+        self.assertEqual(parse_tds_text("PA6-GF").material_type, "GF")
+        # base polymer + word subtype
+        wood = parse_tds_text("Bambu Filament Technical Data Sheet\nPLA Wood\n")
+        self.assertEqual((wood.name, wood.material_type), ("PLA", "Wood"))
+
+    def test_missing_fields_left_blank_not_guessed(self):
+        # Garbage with no recognisable rows yields an all-blank row, not a crash.
+        row = parse_tds_text("totally unrelated text with no settings table")
+        self.assertIsNone(row.dry_temp_ideal_degC)
+        self.assertIsNone(row.dry_time_hrs)
+        self.assertEqual(row.build_plate_compat, "")
+        self.assertEqual(row.hot_end_compat, "")
+
+    def test_csv_dict_renders_none_as_blank(self):
+        d = TdsRow(name="PLA", dry_temp_ideal_degC=None).as_csv_dict()
+        self.assertEqual(set(d.keys()), set(CSV_FIELDS))
+        self.assertEqual(d["dry_temp_ideal_degC"], "")
+        self.assertEqual(d["name"], "PLA")
+
+
+@unittest.skipUnless(_HAS_PYPDF, "pypdf (dev-only) not installed")
+class ParseFilamentTdsCommandTests(TestCase):
+    """The management command writes a review CSV and never touches the DB.
+
+    Skipped where ``pypdf`` is absent (prod), since reading the PDFs needs it.
+    """
+
+    def _write_pdf_dir(self):
+        """Point the command at the repo's real committed TDS directory."""
+        return os.path.join(settings.BASE_DIR, "filament_TDS")
+
+    def test_command_writes_csv_without_touching_db(self):
+        before = Material.objects.count()
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "review.csv")
+            call_command(
+                "parse_filament_tds",
+                tds_dir=self._write_pdf_dir(),
+                out=out,
+                verbosity=0,
+            )
+            self.assertTrue(os.path.exists(out))
+            with open(out, encoding="utf-8") as fh:
+                rows = list(csv.DictReader(fh))
+        # CSV has the expected header and at least one parsed sheet.
+        self.assertTrue(rows)
+        self.assertEqual(set(rows[0].keys()), set(CSV_FIELDS))
+        # PLA Basic is in the repo; assert it round-tripped through the CSV.
+        pla = [r for r in rows if r["name"] == "PLA" and r["material_type"] == "Basic"]
+        self.assertTrue(pla, "expected a PLA Basic row in the review CSV")
+        self.assertEqual(pla[0]["dry_temp_ideal_degC"], "50")
+        # The command must be read-only w.r.t. the DB.
+        self.assertEqual(Material.objects.count(), before)
+
+
+class MaterialTdsFieldsTests(TestCase):
+    """The new TDS compatibility fields save and round-trip."""
+
+    def test_build_plate_and_hot_end_persist(self):
+        m = Material.objects.create(
+            name="ASA",
+            material_type="CF",
+            build_plate_compat="Textured PEI Plate, Smooth PEI Plate",
+            hot_end_compat="Hardened steel nozzle required",
+        )
+        m.refresh_from_db()
+        self.assertEqual(m.build_plate_compat, "Textured PEI Plate, Smooth PEI Plate")
+        self.assertEqual(m.hot_end_compat, "Hardened steel nozzle required")
+
+    def test_fields_default_blank(self):
+        m = Material.objects.create(name="PLA", material_type="")
+        self.assertEqual(m.build_plate_compat, "")
+        self.assertEqual(m.hot_end_compat, "")
