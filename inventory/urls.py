@@ -33,8 +33,11 @@ from .views import (
     InventoryEditView,
     InventoryExportView,
     InventorySearchView,
+    MaintenanceLogCreateView,
+    MaintenanceSummaryView,
     PrintBarcodeView,
     SignUpView,
+    UnitMaintenanceView,
 )
 
 urlpatterns = [
@@ -86,6 +89,21 @@ urlpatterns = [
         "dry-storage-overview/",
         DryStorageOverviewView.as_view(),
         name="dry_storage_overview",
+    ),
+    path(
+        "maintenance/",
+        MaintenanceSummaryView.as_view(),
+        name="maintenance_summary",
+    ),
+    path(
+        "maintenance/unit/<int:item_id>/",
+        UnitMaintenanceView.as_view(),
+        name="unit_maintenance",
+    ),
+    path(
+        "maintenance/unit/<int:item_id>/log/",
+        MaintenanceLogCreateView.as_view(),
+        name="maintenance_log",
     ),
     path("audit/", AuditConsoleView.as_view(), name="audit_console"),
     path("audit/start/", AuditStartView.as_view(), name="audit_start"),

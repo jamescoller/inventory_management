@@ -1074,3 +1074,167 @@ class AuditUnknownScan(models.Model):
 
     def __str__(self):
         return f"UPC {self.upc} @ {self.location_id} ({'open' if not (self.resolved or self.dismissed) else 'closed'})"
+
+
+# Polymorphic product types that represent a physical, maintainable machine.
+# Maintenance/nozzle records only attach to InventoryItems of these product types.
+MACHINE_PRODUCT_TYPES = (Printer, AMS, Dryer)
+
+
+def is_machine_item(item):
+    """True if ``item`` is an InventoryItem whose product is a printer/AMS/dryer.
+
+    Maintenance is logged against the machine's stable physical identity (its
+    :class:`InventoryItem`); filament rolls and loose hardware are never machines.
+
+    ``get_real_instance()`` is used because a plain FK access to the polymorphic
+    ``Product`` may return the base class on a freshly fetched item; resolving the
+    concrete subclass first makes the ``isinstance`` check reliable.
+    """
+    return isinstance(item.product.get_real_instance(), MACHINE_PRODUCT_TYPES)
+
+
+class MaintenanceEvent(models.Model):
+    """An append-only record of upkeep performed on (or a fault raised against) a
+    machine :class:`InventoryItem` — a printer, AMS, or dryer.
+
+    The machine's ``InventoryItem`` is the only stable identity for "this specific
+    physical unit" (catalog ``Product`` rows describe a *model*, not the unit you
+    own), so events attach there. ``hms_code`` is reserved for the later
+    Bambu-MQTT integration, which will open ``FAULT`` events carrying the printer's
+    HMS error code — the column exists from day one so no schema change is needed
+    when that writer arrives.
+    """
+
+    class Kind(models.IntegerChoices):
+        FAULT = 1, "Fault"
+        REPAIR = 2, "Repair"
+        PART_REPLACE = 3, "Part replacement"
+        LUBRICATE = 4, "Lubricate"
+        CLEAN = 5, "Clean"
+        CALIBRATE = 6, "Calibrate"
+        HOTEND_SWAP = 7, "Hotend / nozzle swap"
+        FIRMWARE = 8, "Firmware update"
+        INSPECT = 9, "Inspect"
+        OTHER = 10, "Other"
+
+    class Severity(models.IntegerChoices):
+        INFO = 1, "Info"
+        MINOR = 2, "Minor"
+        MAJOR = 3, "Major"
+        CRITICAL = 4, "Critical"
+
+    unit = models.ForeignKey(
+        "InventoryItem",
+        on_delete=models.CASCADE,
+        related_name="maintenance_events",
+        help_text="The machine (printer/AMS/dryer) this event concerns.",
+    )
+    kind = models.PositiveSmallIntegerField(choices=Kind.choices, default=Kind.INSPECT)
+    severity = models.PositiveSmallIntegerField(
+        choices=Severity.choices, default=Severity.INFO
+    )
+    occurred_at = models.DateTimeField(default=now)
+    title = models.CharField(max_length=200)
+    detail = models.TextField(blank=True, default="")
+
+    part = models.ForeignKey(
+        "Hardware",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="maintenance_uses",
+        help_text="The Hardware product consumed (for part replacements / hotend swaps).",
+    )
+    part_item = models.ForeignKey(
+        "InventoryItem",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="installed_as",
+        help_text="The tracked InventoryItem consumed as the part, if any.",
+    )
+
+    cost = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    downtime_hours = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    hms_code = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        help_text="Bambu HMS error code (populated by the MQTT consumer later).",
+    )
+    resolved = models.BooleanField(
+        default=True, help_text="False = an open fault still needing attention."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-occurred_at", "-created_at"]
+        verbose_name = "Maintenance Event"
+        verbose_name_plural = "Maintenance Events"
+        indexes = [
+            models.Index(fields=["unit", "kind"]),
+            models.Index(fields=["occurred_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_kind_display()}: {self.title}"
+
+    def clean(self):
+        super().clean()
+        # Maintenance only makes sense for a physical machine. ``unit_id`` is
+        # checked first so a half-built form (no unit yet) defers to field-level
+        # required validation rather than dereferencing a missing FK.
+        if self.unit_id and not is_machine_item(self.unit):
+            raise ValidationError(
+                {
+                    "unit": (
+                        "Maintenance can only be logged against a machine "
+                        "(printer, AMS, or dryer) — not filament or hardware."
+                    )
+                }
+            )
+
+
+class NozzleConfig(models.Model):
+    """The *current* nozzle/hot-end state of a single printer.
+
+    Mirrors the audit split of append-only log (a ``HOTEND_SWAP``
+    :class:`MaintenanceEvent`) vs. live state (this row). One row per printer
+    InventoryItem; created lazily on the first swap. Print-job / slicer-mismatch
+    checks read the live diameter from here, not from the event history.
+    """
+
+    printer = models.OneToOneField(
+        "InventoryItem",
+        on_delete=models.CASCADE,
+        related_name="nozzle_config",
+        help_text="The printer InventoryItem this nozzle is installed on.",
+    )
+    nozzle_diameter_mm = models.DecimalField(
+        max_digits=3, decimal_places=2, null=True, blank=True
+    )
+    nozzle_type = models.CharField(
+        max_length=50, blank=True, default="", help_text="e.g. hardened steel, brass."
+    )
+    hotend_changed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Nozzle Configuration"
+        verbose_name_plural = "Nozzle Configurations"
+
+    def __str__(self):
+        dia = f"{self.nozzle_diameter_mm}mm" if self.nozzle_diameter_mm else "?"
+        return f"Nozzle {dia} on {self.printer_id}"
+
+    def clean(self):
+        super().clean()
+        # A nozzle belongs to a printer specifically (AMS/dryers have no hot-end).
+        if self.printer_id and not isinstance(
+            self.printer.product.get_real_instance(), Printer
+        ):
+            raise ValidationError(
+                {"printer": "A nozzle configuration must belong to a printer."}
+            )

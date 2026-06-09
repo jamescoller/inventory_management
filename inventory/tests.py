@@ -1,7 +1,11 @@
+from datetime import timedelta
+from decimal import Decimal
+
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from .models import (
     AMS,
@@ -12,7 +16,9 @@ from .models import (
     Hardware,
     InventoryItem,
     Location,
+    MaintenanceEvent,
     Material,
+    NozzleConfig,
     Printer,
 )
 
@@ -2345,3 +2351,351 @@ class ItemHistoryTests(TestCase):
         url = reverse("admin:inventory_inventoryitem_history", args=[item.pk])
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 200)
+
+
+from . import maintenance  # noqa: E402
+
+
+def _make_printer_item(upc, *, serial="", days_old=None, model=None, mfr=None):
+    """Helper: a Printer product + an owned InventoryItem, optionally back-dated.
+
+    ``model``/``mfr`` override the Printer subclass defaults so tests can create
+    distinct product models (the reliability rollup groups by product model).
+    """
+    extra = {}
+    if model is not None:
+        extra["model"] = model
+    if mfr is not None:
+        extra["mfr"] = mfr
+    product = Printer.objects.create(
+        name=f"Printer {upc}",
+        upc=upc,
+        num_extruders=1,
+        bed_length_mm=256,
+        bed_width_mm=256,
+        max_height_mm=256,
+        **extra,
+    )
+    item = InventoryItem.objects.create(product=product, serial_number=serial)
+    if days_old is not None:
+        # date_added is auto_now_add; back-date it with an UPDATE so MTBF age math
+        # has a known operating window.
+        past = timezone.now() - timedelta(days=days_old)
+        InventoryItem.objects.filter(pk=item.pk).update(date_added=past)
+        item.refresh_from_db()
+    return product, item
+
+
+class MaintenanceModelTests(TestCase):
+    def setUp(self):
+        _, self.printer_item = _make_printer_item("3000000000001")
+        self.hotend = Hardware.objects.create(
+            name="Hardened Hotend",
+            upc="3000000000010",
+            kind=Hardware.HardwareType.PARTS,
+        )
+        self.filament = Filament.objects.create(name="PLA", upc="3000000000020")
+        self.filament_item = InventoryItem.objects.create(product=self.filament)
+
+    def test_create_event_with_cost_downtime_and_part(self):
+        e = MaintenanceEvent.objects.create(
+            unit=self.printer_item,
+            kind=MaintenanceEvent.Kind.PART_REPLACE,
+            severity=MaintenanceEvent.Severity.MAJOR,
+            title="Replaced hotend",
+            part=self.hotend,
+            cost=Decimal("24.99"),
+            downtime_hours=Decimal("1.50"),
+        )
+        e.refresh_from_db()
+        self.assertEqual(e.cost, Decimal("24.99"))
+        self.assertEqual(e.downtime_hours, Decimal("1.50"))
+        self.assertEqual(e.part_id, self.hotend.pk)
+        self.assertEqual(e.kind, MaintenanceEvent.Kind.PART_REPLACE)
+        # related_name reachable from the machine item
+        self.assertIn(e, self.printer_item.maintenance_events.all())
+
+    def test_clean_rejects_non_machine_unit(self):
+        e = MaintenanceEvent(
+            unit=self.filament_item,
+            kind=MaintenanceEvent.Kind.CLEAN,
+            title="Nope",
+        )
+        with self.assertRaises(ValidationError):
+            e.full_clean()
+
+    def test_clean_accepts_machine_unit(self):
+        e = MaintenanceEvent(
+            unit=self.printer_item,
+            kind=MaintenanceEvent.Kind.CLEAN,
+            title="Wiped bed",
+        )
+        e.full_clean()  # must not raise
+
+    def test_hms_code_defaults_blank(self):
+        e = MaintenanceEvent.objects.create(
+            unit=self.printer_item,
+            title="Calibrate",
+            kind=MaintenanceEvent.Kind.CALIBRATE,
+        )
+        self.assertEqual(e.hms_code, "")
+        self.assertTrue(e.resolved)  # default resolved True
+
+    def test_nozzle_config_one_to_one(self):
+        cfg = NozzleConfig.objects.create(
+            printer=self.printer_item,
+            nozzle_diameter_mm=Decimal("0.40"),
+            nozzle_type="hardened steel",
+        )
+        self.assertEqual(self.printer_item.nozzle_config, cfg)
+
+    def test_nozzle_config_rejects_non_printer(self):
+        ams = AMS.objects.create(name="AMS", upc="3000000000030")
+        ams_item = InventoryItem.objects.create(product=ams)
+        cfg = NozzleConfig(printer=ams_item, nozzle_diameter_mm=Decimal("0.40"))
+        with self.assertRaises(ValidationError):
+            cfg.full_clean()
+
+
+class MaintenanceServiceTests(TestCase):
+    def setUp(self):
+        _, self.printer_item = _make_printer_item("3100000000001")
+        self.dryer = Dryer.objects.create(name="Dryer", upc="3100000000002")
+        self.dryer_item = InventoryItem.objects.create(product=self.dryer)
+        self.filament = Filament.objects.create(name="PLA", upc="3100000000020")
+        self.filament_item = InventoryItem.objects.create(product=self.filament)
+        self.hotend = Hardware.objects.create(name="Hotend", upc="3100000000010")
+
+    def test_log_event_rejects_non_machine(self):
+        with self.assertRaises(maintenance.MaintenanceError):
+            maintenance.log_event(
+                self.filament_item, kind=MaintenanceEvent.Kind.CLEAN, title="x"
+            )
+
+    def test_log_event_creates_for_machine(self):
+        e = maintenance.log_event(
+            self.dryer_item,
+            kind=MaintenanceEvent.Kind.CLEAN,
+            title="Cleaned dryer",
+            cost=Decimal("0.00"),
+        )
+        self.assertEqual(e.unit_id, self.dryer_item.pk)
+
+    def test_open_and_resolve_fault(self):
+        e = maintenance.open_fault(
+            self.printer_item, title="Heatbreak clog", hms_code="0300_0100"
+        )
+        self.assertFalse(e.resolved)
+        self.assertEqual(e.kind, MaintenanceEvent.Kind.FAULT)
+        self.assertEqual(e.hms_code, "0300_0100")
+        maintenance.resolve_fault(e)
+        e.refresh_from_db()
+        self.assertTrue(e.resolved)
+
+    def test_swap_hotend_writes_event_and_nozzle_config(self):
+        event, config = maintenance.swap_hotend(
+            self.printer_item,
+            nozzle_diameter_mm=Decimal("0.60"),
+            nozzle_type="hardened steel",
+            part=self.hotend,
+            cost=Decimal("19.99"),
+        )
+        self.assertEqual(event.kind, MaintenanceEvent.Kind.HOTEND_SWAP)
+        self.assertEqual(event.part_id, self.hotend.pk)
+        self.assertEqual(config.nozzle_diameter_mm, Decimal("0.60"))
+        self.assertIsNotNone(config.hotend_changed_at)
+        # Second swap updates the same (one-per-printer) config row.
+        _, config2 = maintenance.swap_hotend(
+            self.printer_item, nozzle_diameter_mm=Decimal("0.40")
+        )
+        self.assertEqual(config.pk, config2.pk)
+        self.assertEqual(config2.nozzle_diameter_mm, Decimal("0.40"))
+
+    def test_unit_summary_aggregates(self):
+        maintenance.open_fault(self.printer_item, title="f1")
+        maintenance.open_fault(self.printer_item, title="f2")
+        maintenance.log_event(
+            self.printer_item,
+            kind=MaintenanceEvent.Kind.REPAIR,
+            title="r1",
+            cost=Decimal("10.00"),
+            downtime_hours=Decimal("2.00"),
+        )
+        s = maintenance.unit_summary(self.printer_item)
+        self.assertEqual(s["faults"], 2)
+        self.assertEqual(s["open_faults"], 2)
+        self.assertEqual(s["total_events"], 3)
+        self.assertEqual(s["total_cost"], Decimal("10.00"))
+        self.assertEqual(s["total_downtime_hours"], Decimal("2.00"))
+
+
+class MaintenanceReliabilityTests(TestCase):
+    def test_model_reliability_math(self):
+        # Two physical units of the SAME catalog product (one product_id), one
+        # 200 days old, one 100 (fleet age 300) — they roll up into one model row.
+        product, p1 = _make_printer_item(
+            "3200000000001", days_old=200, model="X1 Carbon"
+        )
+        p2 = InventoryItem.objects.create(product=product, serial_number="P2")
+        past = timezone.now() - timedelta(days=100)
+        InventoryItem.objects.filter(pk=p2.pk).update(date_added=past)
+        p2.refresh_from_db()
+        # 3 faults on printers total + 1 repair.
+        maintenance.open_fault(p1, title="f1")
+        maintenance.open_fault(p1, title="f2")
+        maintenance.resolve_fault(maintenance.open_fault(p2, title="f3"))
+        maintenance.log_event(
+            p2,
+            kind=MaintenanceEvent.Kind.REPAIR,
+            title="repair",
+            cost=Decimal("50.00"),
+            downtime_hours=Decimal("4.00"),
+        )
+
+        rows = maintenance.model_reliability()
+        # Distinct product rows even within one polymorphic type → key by label.
+        by_label = {r["model_label"]: r for r in rows}
+        self.assertIn("Bambu Lab X1 Carbon", by_label)
+        printer = by_label["Bambu Lab X1 Carbon"]
+        self.assertEqual(printer["ctype"], "printer")
+        self.assertEqual(printer["units"], 2)
+        self.assertEqual(printer["faults"], 3)
+        self.assertEqual(printer["open_faults"], 2)  # f3 was resolved
+        self.assertEqual(printer["total_cost"], Decimal("50.00"))
+        self.assertEqual(printer["total_downtime_hours"], Decimal("4.00"))
+        self.assertAlmostEqual(printer["faults_per_unit"], 1.5, places=2)
+        # MTBF = fleet age (~300 d) / 3 faults ~= 100 d.
+        self.assertIsNotNone(printer["mtbf_days"])
+        self.assertAlmostEqual(printer["mtbf_days"], 100.0, delta=1.0)
+
+    def test_two_printer_models_yield_two_rows(self):
+        # Two DIFFERENT printer models — the rebuy/refund decision is per-model,
+        # so they must not collapse into one "printer" bucket.
+        _, x1 = _make_printer_item("3200000001001", days_old=100, model="X1 Carbon")
+        _, a1 = _make_printer_item("3200000001002", days_old=50, model="A1 mini")
+        # X1 Carbon: 2 faults; A1 mini: 1 fault.
+        maintenance.open_fault(x1, title="x-f1")
+        maintenance.open_fault(x1, title="x-f2")
+        maintenance.open_fault(a1, title="a-f1")
+
+        rows = maintenance.model_reliability()
+        by_label = {r["model_label"]: r for r in rows}
+        self.assertIn("Bambu Lab X1 Carbon", by_label)
+        self.assertIn("Bambu Lab A1 mini", by_label)
+        self.assertEqual(len(rows), 2)
+
+        x1_row = by_label["Bambu Lab X1 Carbon"]
+        a1_row = by_label["Bambu Lab A1 mini"]
+        # Both are printers by polymorphic type but distinct product models.
+        self.assertEqual(x1_row["ctype"], "printer")
+        self.assertEqual(a1_row["ctype"], "printer")
+        # Units and faults attributed to the correct model only.
+        self.assertEqual(x1_row["units"], 1)
+        self.assertEqual(a1_row["units"], 1)
+        self.assertEqual(x1_row["faults"], 2)
+        self.assertEqual(a1_row["faults"], 1)
+        # Worst-first ordering: X1 Carbon (2 faults/unit) before A1 mini (1).
+        self.assertEqual(rows[0]["model_label"], "Bambu Lab X1 Carbon")
+
+    def test_model_with_zero_faults_has_none_mtbf(self):
+        _make_printer_item("3200000000010", days_old=30)
+        rows = maintenance.model_reliability()
+        printer = next(r for r in rows if r["ctype"] == "printer")
+        self.assertEqual(printer["faults"], 0)
+        self.assertIsNone(printer["mtbf_days"])
+
+    def test_empty_fleet_returns_empty(self):
+        self.assertEqual(maintenance.model_reliability(), [])
+
+
+class MaintenanceViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="maint", password="pass")
+        self.client.login(username="maint", password="pass")
+        _, self.printer_item = _make_printer_item("3300000000001", serial="P1SER")
+        self.filament = Filament.objects.create(name="PLA", upc="3300000000020")
+        self.filament_item = InventoryItem.objects.create(product=self.filament)
+
+    def test_summary_view_renders(self):
+        maintenance.open_fault(self.printer_item, title="boom")
+        resp = self.client.get(reverse("maintenance_summary"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Reliability")
+
+    def test_unit_timeline_renders(self):
+        maintenance.log_event(
+            self.printer_item, kind=MaintenanceEvent.Kind.CLEAN, title="Wiped bed"
+        )
+        resp = self.client.get(reverse("unit_maintenance", args=[self.printer_item.id]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Wiped bed")
+
+    def test_log_create_get_renders(self):
+        resp = self.client.get(reverse("maintenance_log", args=[self.printer_item.id]))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_log_create_post_creates_event(self):
+        resp = self.client.post(
+            reverse("maintenance_log", args=[self.printer_item.id]),
+            {
+                "kind": MaintenanceEvent.Kind.CALIBRATE,
+                "severity": MaintenanceEvent.Severity.INFO,
+                "occurred_at": "2026-06-09T10:00",
+                "title": "Flow calibration",
+                "detail": "",
+                "cost": "",
+                "downtime_hours": "",
+                "resolved": "on",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        e = MaintenanceEvent.objects.get(unit=self.printer_item)
+        self.assertEqual(e.title, "Flow calibration")
+        self.assertEqual(e.kind, MaintenanceEvent.Kind.CALIBRATE)
+
+    def test_log_create_hotend_swap_updates_nozzle(self):
+        self.client.post(
+            reverse("maintenance_log", args=[self.printer_item.id]),
+            {
+                "kind": MaintenanceEvent.Kind.HOTEND_SWAP,
+                "severity": MaintenanceEvent.Severity.INFO,
+                "occurred_at": "2026-06-09T10:00",
+                "title": "Swapped to 0.6",
+                "detail": "",
+                "cost": "",
+                "downtime_hours": "",
+                "resolved": "on",
+            },
+        )
+        self.printer_item.refresh_from_db()
+        self.assertTrue(hasattr(self.printer_item, "nozzle_config"))
+        self.assertIsNotNone(self.printer_item.nozzle_config.hotend_changed_at)
+
+    def test_log_create_rejects_non_machine(self):
+        resp = self.client.get(reverse("maintenance_log", args=[self.filament_item.id]))
+        # Redirected back to the item edit page with an error message.
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(MaintenanceEvent.objects.count(), 0)
+
+    def test_item_page_shows_maintenance_link_for_machine(self):
+        resp = self.client.get(reverse("inventory_edit", args=[self.printer_item.id]))
+        self.assertContains(
+            resp, reverse("unit_maintenance", args=[self.printer_item.id])
+        )
+
+    def test_item_page_hides_maintenance_link_for_filament(self):
+        resp = self.client.get(reverse("inventory_edit", args=[self.filament_item.id]))
+        self.assertNotContains(
+            resp, reverse("unit_maintenance", args=[self.filament_item.id])
+        )
+
+    def test_maintenance_views_require_login(self):
+        self.client.logout()
+        for name, args in [
+            ("maintenance_summary", []),
+            ("unit_maintenance", [self.printer_item.id]),
+            ("maintenance_log", [self.printer_item.id]),
+        ]:
+            resp = self.client.get(reverse(name, args=args))
+            self.assertEqual(resp.status_code, 302)
+            self.assertIn("/login", resp.url)

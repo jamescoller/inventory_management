@@ -142,13 +142,13 @@ Models in [`docs/workflow-and-domain-design.md`](docs/workflow-and-domain-design
 ## Phase 15 — Maintenance & Print Logs  *(machine lifecycle; 15.1 ‖ 15.2)*
 
 ### 15.1 — Maintenance tracking  *(item #11)*
-- [ ] `MaintenanceEvent` on the machine `InventoryItem` (kind: fault/repair/part-replace/
+- [x] `MaintenanceEvent` on the machine `InventoryItem` (kind: fault/repair/part-replace/
   lubricate/clean/calibrate/hotend-swap/firmware/inspect; severity; cost; downtime;
   `hms_code` for the later MQTT link; `part`→Hardware product; `resolved`). Per-printer
   `NozzleConfig` (current nozzle diameter/type + last-swap) for "nozzle size changed".
-- [ ] **Reliability / "rebuy-or-refund" dashboard** — faults/unit/month, downtime, maint $,
+- [x] **Reliability / "rebuy-or-refund" dashboard** — faults/unit/month, downtime, maint $,
   MTBF, grouped by model (the brief's headline ask: *should I replace / refund / rebuy?*).
-- [ ] Per-unit maintenance timeline reachable from the item page; admin inline.
+- [x] Per-unit maintenance timeline reachable from the item page; admin inline.
 
 ### 15.2 — Print-jobs & utilization  *(item #10, manual side)*
 - [ ] `PrintJob` (printer, file name, start/end, duration, result, source=MANUAL|MQTT) +

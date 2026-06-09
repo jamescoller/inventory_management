@@ -11,6 +11,11 @@
 				<a href="{% url 'print_barcode' item.id 'unique' %}" class="btn btn-outline-primary">
 					<i class="bi bi-tag"></i> Print Inventory Tag
 				</a>
+				{% if is_machine %}
+					<a href="{% url 'unit_maintenance' item.id %}" class="btn btn-outline-secondary">
+						<i class="bi bi-tools"></i> Maintenance
+					</a>
+				{% endif %}
 			</div>
 		</div>
 
