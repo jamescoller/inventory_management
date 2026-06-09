@@ -38,10 +38,6 @@
                             <td class="text-end">{{ job.filaments.count }}</td>
                             <td>{{ job.get_source_display|title }}</td>
                         </tr>
-                    {% empty %}
-                        <tr>
-                            <td colspan="7" class="text-center text-muted">No print jobs logged yet.</td>
-                        </tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -54,6 +50,7 @@
             new DataTable('#print-job-table', {
                 order: [[2, 'desc']],
                 pageLength: 25,
+                language: { emptyTable: 'No print jobs logged yet.' },
             });
         });
     </script>

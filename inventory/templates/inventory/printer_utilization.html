@@ -51,8 +51,6 @@
                             <td class="text-end">{{ p.kg }}</td>
                             <td><a href="{% url 'printer_utilization_detail' p.printer_id %}" class="btn btn-sm btn-outline-secondary">Detail</a></td>
                         </tr>
-                    {% empty %}
-                        <tr><td colspan="7" class="text-center text-muted">No print jobs logged yet.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -77,8 +75,6 @@
                             <td class="text-end">{{ c.grams }}</td>
                             <td class="text-end">{{ c.kg }}</td>
                         </tr>
-                    {% empty %}
-                        <tr><td colspan="4" class="text-center text-muted">No consumption recorded.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -88,8 +84,14 @@
 {% block extra_scripts %}
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            new DataTable('#utilization-table', { paging: false, info: false, order: [[3, 'desc']] });
-            new DataTable('#consumption-table', { paging: false, info: false, order: [[2, 'desc']] });
+            new DataTable('#utilization-table', {
+                paging: false, info: false, order: [[3, 'desc']],
+                language: { emptyTable: 'No print jobs logged yet.' },
+            });
+            new DataTable('#consumption-table', {
+                paging: false, info: false, order: [[2, 'desc']],
+                language: { emptyTable: 'No consumption recorded.' },
+            });
         });
     </script>
 {% endblock extra_scripts %}
