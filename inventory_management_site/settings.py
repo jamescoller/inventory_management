@@ -8,9 +8,8 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
-import logging
 import os
-from os.path import dirname, join
+import warnings
 from pathlib import Path
 
 from decouple import config
@@ -20,8 +19,6 @@ from django.contrib.messages import constants as messages
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Ignore the stupid brother_ql depreciation warning
-import warnings
-
 warnings.filterwarnings(
     "ignore",
     category=DeprecationWarning,
@@ -65,6 +62,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.humanize",
     "polymorphic",
+    "simple_history",
 ]
 
 if DEBUG:

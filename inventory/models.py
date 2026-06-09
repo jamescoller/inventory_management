@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.timezone import now
 from polymorphic.models import PolymorphicModel
+from simple_history.models import HistoricalRecords
 
 
 # Polymorphic Base Product
@@ -518,6 +519,12 @@ class InventoryItem(models.Model):
         choices=Status.choices, default=Status.NEW, blank=True
     )
 
+    # Full-field change history (django-simple-history). A snapshot row is written
+    # on every save; the public item page derives a high-signal location+status
+    # timeline from it (see location_status_timeline). No actor tracking in v1
+    # (HistoryRequestMiddleware deliberately omitted).
+    history = HistoricalRecords()
+
     class Meta:
         # abstract = True
         verbose_name = "Inventory Item"
@@ -564,6 +571,46 @@ class InventoryItem(models.Model):
         instance = super().from_db(db, field_names, values)
         instance._original_location_id = instance.location_id
         return instance
+
+    def location_status_timeline(self):
+        """
+        Derive a high-signal location + status change timeline from the full
+        simple-history snapshots.
+
+        Walks consecutive historical pairs (oldest -> newest) and emits one entry
+        per save in which ``location`` and/or ``status`` actually changed. A move
+        that flips both fields in a single save is therefore one entry. The rest of
+        the captured fields stay in the DB, unsurfaced.
+
+        Returns a list of dicts (newest change first), each with resolved
+        ``location_from``/``location_to`` (real ``Location`` objects or ``None``),
+        ``status_from``/``status_to`` (``Status`` enum members), per-field
+        ``*_changed`` booleans, and ``changed_at`` (the newer record's timestamp).
+        """
+        # Oldest -> newest so diff_against(prev) reads left-to-right.
+        records = list(self.history.order_by("history_date", "history_id"))
+        timeline = []
+        for prev, curr in zip(records, records[1:], strict=False):
+            delta = curr.diff_against(
+                prev,
+                included_fields=["location", "status"],
+                foreign_keys_are_objs=True,
+            )
+            changed = {c.field for c in delta.changes}
+            if not changed:
+                continue
+            entry = {
+                "changed_at": curr.history_date,
+                "location_changed": "location" in changed,
+                "location_from": prev.location,
+                "location_to": curr.location,
+                "status_changed": "status" in changed,
+                "status_from": self.Status(prev.status) if prev.status else prev.status,
+                "status_to": self.Status(curr.status) if curr.status else curr.status,
+            }
+            timeline.append(entry)
+        timeline.reverse()  # newest change first
+        return timeline
 
     @property
     def depleted(self):

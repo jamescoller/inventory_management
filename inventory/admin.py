@@ -9,6 +9,7 @@ from django.template.response import TemplateResponse
 from django.urls import path
 from django.utils.html import format_html
 from polymorphic.admin import PolymorphicChildModelAdmin, PolymorphicParentModelAdmin
+from simple_history.admin import SimpleHistoryAdmin
 
 from . import items
 from .forms import InventoryItemForm
@@ -214,7 +215,7 @@ class ProductParentAdmin(PolymorphicParentModelAdmin):
 
 
 @admin.register(InventoryItem)
-class InventoryItemAdmin(admin.ModelAdmin):
+class InventoryItemAdmin(SimpleHistoryAdmin):
     form = InventoryItemForm
 
     change_list_template = "admin/inventory/inventoryitem/change_list.html"

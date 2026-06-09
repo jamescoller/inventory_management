@@ -388,6 +388,7 @@ class InventoryEditView(LoginRequiredMixin, UpdateView):
                 "item": item,
                 "product": product,
                 "is_filament": isinstance(product, Filament),
+                "location_status_timeline": item.location_status_timeline(),
             },
         )
 
@@ -413,6 +414,7 @@ class InventoryEditView(LoginRequiredMixin, UpdateView):
             "item": item,
             "product": product,
             "is_filament": isinstance(product, Filament),
+            "location_status_timeline": item.location_status_timeline(),
         }
 
         if form.is_valid():

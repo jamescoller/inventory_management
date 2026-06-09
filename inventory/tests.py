@@ -2080,6 +2080,8 @@ class LocationCapacityTests(TestCase):
         self.assertIsNone(shelf.capacity)
         self.assertIsNone(dry.capacity)
         self.assertIsNone(printer.capacity)
+
+
 # ---------------------------------------------------------------------------
 # Phase 17.1 — Filament TDS parsing -> review CSV (no DB writes)
 # ---------------------------------------------------------------------------
@@ -2237,3 +2239,109 @@ class MaterialTdsFieldsTests(TestCase):
         m = Material.objects.create(name="PLA", material_type="")
         self.assertEqual(m.build_plate_compat, "")
         self.assertEqual(m.hot_end_compat, "")
+
+
+class ItemHistoryTests(TestCase):
+    """django-simple-history capture + derived location/status timeline."""
+
+    def setUp(self):
+        self.product = Filament.objects.create(name="PLA Hist", upc="9300000000001")
+        self.loc_a = Location.objects.create(
+            name="Shelf 5",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.loc_b = Location.objects.create(
+            name="Shelf 4",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+
+    def test_save_creates_historical_row(self):
+        item = InventoryItem.objects.create(product=self.product, location=self.loc_a)
+        self.assertEqual(item.history.count(), 1)
+        item.serial_number = "ABC"
+        item.save()
+        self.assertEqual(item.history.count(), 2)
+
+    def test_timeline_records_location_change(self):
+        item = InventoryItem.objects.create(product=self.product, location=self.loc_a)
+        item.location = self.loc_b
+        item.save()
+        timeline = item.location_status_timeline()
+        self.assertEqual(len(timeline), 1)
+        entry = timeline[0]
+        self.assertTrue(entry["location_changed"])
+        self.assertEqual(entry["location_from"], self.loc_a)
+        self.assertEqual(entry["location_to"], self.loc_b)
+
+    def test_timeline_records_status_change(self):
+        item = InventoryItem.objects.create(product=self.product, location=self.loc_a)
+        item.status = InventoryItem.Status.IN_USE
+        item._skip_status_from_location = True
+        item.save()
+        timeline = item.location_status_timeline()
+        self.assertEqual(len(timeline), 1)
+        entry = timeline[0]
+        self.assertTrue(entry["status_changed"])
+        self.assertEqual(entry["status_from"], InventoryItem.Status.NEW)
+        self.assertEqual(entry["status_to"], InventoryItem.Status.IN_USE)
+
+    def test_combined_location_and_status_change_is_one_entry(self):
+        """An audit move that flips both fields reads as a single timeline entry."""
+        item = InventoryItem.objects.create(product=self.product, location=self.loc_a)
+        # One save changes both location and status.
+        item.location = self.loc_b
+        item.status = InventoryItem.Status.IN_USE
+        item._skip_status_from_location = True
+        item.save()
+        timeline = item.location_status_timeline()
+        self.assertEqual(len(timeline), 1)
+        entry = timeline[0]
+        self.assertTrue(entry["location_changed"])
+        self.assertTrue(entry["status_changed"])
+        self.assertEqual(entry["location_from"], self.loc_a)
+        self.assertEqual(entry["location_to"], self.loc_b)
+        self.assertEqual(entry["status_from"], InventoryItem.Status.NEW)
+        self.assertEqual(entry["status_to"], InventoryItem.Status.IN_USE)
+
+    def test_timeline_ignores_unrelated_field_change(self):
+        """A change to a non-location/status field does NOT appear in the timeline."""
+        item = InventoryItem.objects.create(product=self.product, location=self.loc_a)
+        item.serial_number = "XYZ-1"
+        item.save()
+        item.shipment = "TRACK-123"
+        item.save()
+        self.assertEqual(item.location_status_timeline(), [])
+
+    def test_timeline_is_newest_first(self):
+        item = InventoryItem.objects.create(product=self.product, location=self.loc_a)
+        item.location = self.loc_b
+        item.save()
+        item.location = self.loc_a
+        item.save()
+        timeline = item.location_status_timeline()
+        self.assertEqual(len(timeline), 2)
+        # Newest change (B -> A) first.
+        self.assertEqual(timeline[0]["location_to"], self.loc_a)
+        self.assertEqual(timeline[1]["location_to"], self.loc_b)
+
+    def test_item_edit_page_shows_timeline_section(self):
+        User.objects.create_user(username="hist", password="pass")
+        self.client.login(username="hist", password="pass")
+        item = InventoryItem.objects.create(product=self.product, location=self.loc_a)
+        item.location = self.loc_b
+        item.save()
+        resp = self.client.get(reverse("inventory_edit", kwargs={"item_id": item.id}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Location &amp; Status History")
+        self.assertContains(resp, "Shelf 5")
+        self.assertContains(resp, "Shelf 4")
+
+    def test_admin_history_url_loads(self):
+        User.objects.create_superuser(username="admin", password="pass", email="a@b.c")
+        self.client.login(username="admin", password="pass")
+        item = InventoryItem.objects.create(product=self.product, location=self.loc_a)
+        url = reverse("admin:inventory_inventoryitem_history", args=[item.pk])
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)

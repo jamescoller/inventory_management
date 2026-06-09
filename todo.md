@@ -110,12 +110,12 @@ consolidation + inline-JS extraction (18.2), and the **visual/UX beauty** pass (
 
 ## Phase 13 — Item Change History  *(item #5 / Phase 10)*
 *Lands right after 11.3 so the `move_to()` chokepoint makes capture complete by construction.*
-- [ ] `django-simple-history` (≥3.11.0). **Full design + plan already decided** in
+- [x] `django-simple-history` (≥3.11.0). **Full design + plan already decided** in
   [`docs/item-change-history.md`](docs/item-change-history.md): all-field capture in DB;
   **location+status timeline** on the public item page (via `diff_against(included_fields=…)`);
   admin history + revert (free). No actor tracking in v1 (middleware is a near-free later
   add); start fresh, no backfill.
-- [ ] New dependency → image rebuild (James accepted the dep gate). Distinct from
+- [x] New dependency → image rebuild (James accepted the dep gate). Distinct from
   `AuditEvent` (audit-session log) — they coexist.
 
 ---
@@ -363,7 +363,7 @@ blast radius; (3) MQTT auto-sync writing back to real inventory.
   (PR #123); djlint cleanup (PRs #125/#127).
 
 ## Phase 10 — Item change history  *(approach decided 2026-06-09)*
-- [ ] **→ Phase 13** (django-simple-history; design in `docs/item-change-history.md`).
+- [x] **→ Phase 13** (django-simple-history; design in `docs/item-change-history.md`).
 
 ## Completed Features
 - [x] **Bulk inventory editor** — checkbox select + sticky action bar; `POST /bulk-update/`.
