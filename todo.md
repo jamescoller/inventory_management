@@ -194,9 +194,11 @@ Models in [`docs/workflow-and-domain-design.md`](docs/workflow-and-domain-design
 Pipeline in [`docs/filament-data-pipeline.md`](docs/filament-data-pipeline.md). Needs a
 dev-time PDF lib (`pypdf`) — not a production image dep.*
 
-- [ ] **17.1 TDS → specs.** Add `build_plate_compat` + `hot_end_compat` to `Material`
-  (drying temp/time fields already exist). Parse `filament_TDS/*.pdf` → structured rows →
-  load via a management command. Backfill existing `Material` rows.
+- [x] **17.1 TDS → specs (schema + parsers).** Added `build_plate_compat` +
+  `hot_end_compat` to `Material` (migration `0028`); `inventory/filament_tds.py` parses
+  `filament_TDS/*.pdf` (dev-only `pypdf`) and `parse_filament_tds` writes a **review CSV**
+  to gitignored `filament_review/` — no DB writes. Backfilling existing `Material` rows is
+  the human-gated next step (review the CSV, then run a loader).
 - [ ] **17.2 Hex fill.** Parse `filament_hex/` — **text PDFs** (`pypdf`) and **website-
   screenshot PNGs** (vision/OCR; confirmed readable) → color→hex map → fill missing
   `Filament.hex_code`/`color_family`; seed a color catalog.

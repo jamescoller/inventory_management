@@ -1,0 +1,135 @@
+
+Bambu Filament
+Technical Data Sheet V3.0
+
+PLA Basic
+• Basic Info
+PLA is the most common material in 3D printing as it's easy to print and inexpensive.
+Meanwhile, its stiffness and strength can meet most printing needs. It is worth mentioning
+that it can biodegrade in some artificial composting conditions. Bambu PLA Basic is designed
+for high-speed printing. Compared to general PLA, it can easily achieve printing speeds up to
+250-300 mm/s and has excellent toughness and Z-layer strength.
+
+• Specifications
+Subjects Data
+Diameter 1.75 mm
+Net Filament Weight 1 kg
+Spool Material ABS (Temperature resistance 70 ° C)
+Spool Size Diameter: 200 mm; Height: 67 mm
+
+• Recommended Printing Settings
+Subjects Data
+Drying Settings before Printing Blast Drying Oven: 50 °C，8 h
+X1 Series Printer Heatbed: 60 - 70 ° C, 12 h
+Printing and Storage Humidity < 20% RH (Sealed with desiccant)
+Nozzle Size 0.2, 0.4, 0.6, 0.8 mm
+Nozzle Temperature 190 - 230 °C
+Bed Type Cool Plate, High Temperature Plate or
+Textured PEI Plate
+Bed Surface Preparation Glue
+Bed Temperature 35 - 45 °C
+Cooling Fan Turn on
+
+Printing Speed < 300 mm/s
+Retraction Length 0.6 - 1.0 mm
+Retraction Speed 20 - 40 mm/s
+Chamber Temperature 25 - 45 °C
+Max Overhang Angle 55°
+Max Bridging Length 30 mm
+Support Material Support for PLA
+
+• Properties
+Bambu Lab has tested the differing aspects in the performance of PLA Basic material, including
+physical, mechanical, and chemical properties. Typical values are listed as followed:
+
+Physical Properties
+Subjects Testing Methods Data
+Density ISO 1183 1.24 g/cm³
+Melt Index 210 ° C, 2.16 kg 23.2 ± 3.5 g/10 min
+Melting Temperature DSC, 10 ° C/min 160 °C
+Glass Transition Temperature DSC, 10 ° C/min 60 °C
+Crystallization Temperature DSC, 10 ° C/min N / A
+Vicar Softening Temperature ISO 306, GB/T 1633 57 °C
+Heat Deflection Temperature ISO 75 1.8 MPa 54 °C
+Heat Deflection Temperature ISO 75 0.45 MPa 57 °C
+Saturated Water Absorption Rate 25 ° C, 55% RH 0.43%
+
+Mechanical Properties
+Subjects Testing Methods Data
+Young's Modulus (X-Y) ISO 527, GB/T 1040 2580 ± 220 MPa
+Young's Modulus (Z) ISO 527, GB/T 1040 2060 ± 170 MPa
+Tensile Strength (X-Y) ISO 527, GB/T 1040 35 ± 4 MPa
+Tensile Strength (Z) ISO 527, GB/T 1040 31 ± 3 MPa
+Breaking Elongation Rate (X-Y) ISO 527, GB/T 1040 12.2 ± 1.8 %
+Breaking Elongation Rate (Z) ISO 527, GB/T 1040 7.5 ± 1.3 %
+Bending Modulus (X-Y) ISO 178, GB/T 9341 2750 ± 160 MPa
+Bending Modulus (Z) ISO 178, GB/T 9341 2370 ± 150 MPa
+Bending Strength (X-Y) ISO 178, GB/T 9341 76 ± 5 MPa
+Bending Strength (Z) ISO 178, GB/T 9341 59 ± 6 MPa
+
+Impact Strength (X-Y)
+
+ISO 179, GB/T 1043
+26.6 ± 2.8 kJ/m² ;
+7.9 ± 1.2 kJ/m²
+(notched)
+Impact Strength (Z) ISO 179, GB/T 1043 13.8 ± 0.9 kJ/m²
+
+
+
+Other Physical and Chemical Properties
+Subjects Data
+Odor Odorless
+Composition PLA
+Skin Hazards No hazard
+Chemical Stability Stable under normal storage and handling conditions
+Solubility Insoluble in water
+Resistance to Acid Not resistant
+Resistance to Alkali Not resistant
+Resistance to Organic Solvent Not resistant to some organic solvents
+Resistance to Oil and Grease Resistant to most kinds of oil and grease
+Flammability Flammable
+Combustion Products Water, carbon oxides
+Odor of Combustion Products Odorless
+• Specimen Test
+Specimen Printing Conditions
+Subjects Data
+Nozzle Temperature 220 °C
+Bed Temperature 35 °C
+Printing Speed 200 mm/s
+Infill Density 100%
+
+1. Tensile Testing
+
+
+
+
+
+
+2. Bending Testing
+
+
+3. Impact Testing
+*All the specimens were annealed and dried at 55 ° C for 8 h before testing. And the
+suggested annealing temperature of models printed with Bambu PLA Basic is 50 to
+60 ° C, and the time is 6 to 12 hours. The annealing effect depends on the annealing
+temperature, time and the model itself: size, structure, infill and other printing
+settings; some prints may deform and warp after annealing. When drying the filament
+and annealing the prints, it‘s required to use an oven that has big enough inside
+volume and can provides even temperature distribution, such as a blast drying oven
+(forced-air drying oven), and the filament and prints need to be away from the heater,
+and a micro-wave oven or kitchen oven is not compatible, otherwise the filament and
+prints can get damaged.
+
+
+
+• Disclaimer
+The performance values are tested by standard samples at Bambu Lab, and the values are for
+design reference and comparison only. Actual 3D printing model performance is related to
+many other factors, including printers, printing conditions, printing models, printing
+parameters, etc.
+
+In the process of using Bambu Lab 3D printing filaments, users are responsible for the legality,
+safety, and performance indicators of printing. Bambu Lab is not responsible for the use of
+materials and scenarios and is not responsible for any damage that occurs in the process of
+using our filaments.
