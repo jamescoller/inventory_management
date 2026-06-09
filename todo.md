@@ -1,323 +1,367 @@
 # Inventory Management — TODO / Roadmap
 
-Items are grouped by phase. Within each phase, bugs before enhancements.
-File:line references reflect the codebase as of May 2026.
+Forward work is grouped into **Phases 11–18**, dependency-ordered. Within a phase, bugs
+before enhancements. Completed Phases 1–10 are preserved in **[Archive](#archive--completed-phases-110)**
+at the bottom. File:line references reflect the codebase as of June 2026.
+
+> **How this roadmap was built:** a 10,000-ft review on 2026-06-09 (see
+> [`docs/architecture-review-2026-06-09.md`](docs/architecture-review-2026-06-09.md)).
+> Supporting design docs: [workflow & domain](docs/workflow-and-domain-design.md),
+> [Bambu MQTT](docs/bambu-mqtt-integration.md), [admin 2.0](docs/admin-2.0.md),
+> [filament data pipeline](docs/filament-data-pipeline.md), and brainstorm/wireframes in
+> [`ideas.md`](ideas.md).
 
 ---
 
-## Phase 1 — Critical Bug Fixes
+## Where James's 11 initiatives land
 
-These are confirmed crashes or security holes in currently-reachable code.
+| # | Initiative | Phase |
+|---|---|---|
+| 1 | Filament data (drying/plate/hot-end), guide build, hex fill, color sheets | **17** |
+| 2 | Search page redo (filters: location, type, status incl. UNKNOWN) | **11.2** |
+| 3 | Phase 6 #49 — location-based views | **12.1** |
+| 4 | Phone camera barcode scanning | **12.3** |
+| 5 | Phase 10 — item change history | **13** |
+| 6 | Back up the inventory DB | **11.1** |
+| 7 | Bambu MQTT integration | **16.1 / 16.3** |
+| 8 | Grafana dashboard in HA | **16.2** |
+| 9 | Bambu Store quick-link (+ price) | **17.4** (price → Trashed) |
+| 10 | Printer utilization from Bambu MQ | **15.2** (manual) / **16.3** (auto) |
+| 11 | Maintenance tracking (printers/AMS/dryers) | **15.1** |
 
-### Bugs
-
-- [x] **Search crashes on every request** — added `import re` to views.py.
-- [x] **Barcode print redirect broken** — fixed kwarg from `pk=` to `item_id=` in `PrintBarcodeView.post` and `BarcodeRedirectView.get`.
-- [x] **Every new Printer crashes on save** — added `bed_length_mm`, `bed_width_mm`, `max_height_mm` to `PrinterForm.Meta.fields`.
-- [x] **Admin dropdowns crash when any Filament has no Material** — added null guard in `Filament.__str__`.
-- [x] **Bulk update material admin action broken** — changed `queryset.update(new_matl=material)` to `queryset.update(material=material)`.
-- [x] **Hex code normalization silently broken** — fixed regex in `normalize_hex_code()` to match stripped (no-`#`) value.
-- [x] **Filament drying warning never fires** — changed `self.status == "NEW"` to `self.status == self.Status.NEW`.
-- [x] **Fix `DEBUG` env var cast** — added `cast=bool` to `config("DEBUG", ...)`.
-- [x] **Excel export broken** — fixed `item.location.name` crash when location is None.
-- [x] **`import_products.py` is orphaned and broken** — deleted. `numpy`/`pandas` removal deferred to Phase 3.
-
-### Security
-
-- [x] **Debug toolbar exposed in production** — wrapped `debug_toolbar` in `if DEBUG:` guards in `settings.py` (INSTALLED_APPS + MIDDLEWARE) and `urls.py`.
-- [x] **Stored XSS via chart labels** — replaced `{{ filament_chart_data.labels|safe }}` / `{{ filament_chart_data.data|safe }}` with `json_script` filter + `JSON.parse` in dashboard.html.
-- [x] **Stored XSS via tooltip HTML** — run `serial_number` and `color` through `django.utils.html.escape()` before building `tooltip_html` in both `InUseOverviewView` and `DryStorageOverviewView`.
-- [x] **Missing `LoginRequiredMixin`** — added to `PrintBarcodeView`, `BarcodeRedirectView`, `InUseOverviewView`, `DryStorageOverviewView`.
+Plus rework/additions from the review: the `move_to()`/slot-capacity **Foundation** (11.3),
+quick scan-to-move (12.2), full **Procurement** (14), print-job log (15.2), filament-page
+consolidation + inline-JS extraction (18.2), and the **visual/UX beauty** pass (18.3).
 
 ---
 
-## Phase 2 — Dead Code Removal & Cleanup
+## Phase 11 — Safety Net & Search
+*Daily-driver priority. Low risk, mostly parallelizable. 11.3 gates Phase 12.*
 
-Safe to delete without any user-visible impact.
+### 11.1 — Back up the SQLite DB to the NAS  *(item #6)*
+- [ ] Cron a **consistent** snapshot (`sqlite3 "$DB" ".backup '…'"` or `VACUUM INTO` — never
+  `cp` a live file) → timestamped file, rotate (keep N daily / M weekly), land on **Synology
+  Vol 1**.
+- [ ] Decide transport: NFS/SMB mount on the app LXC + direct write, `rsync`/`scp`, or a
+  NAS-side pull (Hyper Backup) — NAS-side pull avoids storing NAS creds on the LXC.
+  **Ask James:** confirm share path / IP / credentials.
+- [ ] Optionally verify restores periodically.
+- *Why first:* the live DB holds hand-entered data that can't be re-derived; it's the
+  prerequisite safety net before Phase 16 adds a sustained writer.
 
-### Delete entirely
+### 11.2 — Search page redo  *(item #2)*
+- [ ] **Bug — the `status` filter is dead.** The template renders a `status` text input
+  (`inventory_search.html:67`) that `InventorySearchView` never reads; the view hardcodes
+  `exclude(status=5)` so **DEPLETED/SOLD/UNKNOWN are unfindable**. This is the "I can't find
+  lost items" pain.
+- [ ] Real filters: **status** (multi-select, incl. UNKNOWN/SOLD/DEPLETED), **item type**
+  (Filament/Printer/AMS/Dryer/Hardware via `product__polymorphic_ctype`), **location
+  subtree** (reuse `Location.descendant_ids()`), date-added range.
+- [ ] **"Lost & Found" preset** — one click → `status=UNKNOWN` ∪ items at retired/empty
+  locations. Directly serves the audit-recovery workflow.
+- [ ] Implementation: wire `django-filter`'s `FilterView` (the code-audit's recommendation;
+  package was removed in the audit-quick-wins pass — re-add) **or** clean Q-objects in a
+  refactored view. Extract the 114 lines of inline JS to `static/inventory/js/`.
 
-- [x] `tables.py` — deleted; `django-tables2` removed from requirements and INSTALLED_APPS.
-- [x] `FilamentView` in views.py + `filament_view.html` — deleted.
-- [x] `Order` and `Shipment` models — deleted from models.py and admin.py; migration 0020 drops their DB tables.
-- [x] `inventory/import_products.py` — deleted in Phase 1.
-- [x] `inventory/templates/inventory/bulkadd.html` — deleted.
-- [x] `inventory/templates/inventory/delete_item.html` — deleted.
-- [x] `inventory/templates/inventory/search_results.html` — deleted.
-- [x] `inventory/templates/inventory/movement.html` — deleted.
-- [x] Commented-out URL patterns in `inventory/urls.py` — removed.
-- [x] `format_label` and `generate_barcode` in `barcode_utils.py` — deleted and removed from `__all__`.
-- [x] Hardcoded fallback printer IP `"192.168.68.93"` — replaced with correct LAN address `"10.10.40.2"`.
-
-### Fix `from X import *` antipattern
-
-- [x] Replace `from .models import *` in views.py with explicit imports.
-- [x] Replace `from .forms import *` in views.py with explicit imports.
-- [x] Replace `from .models import *` in forms.py with explicit imports.
-
-### Wire up or fix signals.py
-
-- [x] `inventory/apps.py` `ready()` now imports `inventory.signals`.
-- [x] Fixed `StatusChoices` typo → `Status`; switched from `post_save` to `pre_save` so old state is read from DB before the write.
-
-### Redundant boolean fields
-
-- [x] `depleted`, `in_use`, `sold` converted to `@property` on `InventoryItem`; DB columns dropped in migration 0020; admin `list_filter` updated.
-
----
-
-## Phase 3 — Code Quality & Architecture
-
-### Views
-
-- [x] **Consolidate the 5 Add Product views** — extracted `BaseAddProductView` mixin; each of the 5 subclasses is now ~5 lines.
-- [x] **Fix Dashboard N+1 queries** — replaced Python-side table scans with `values().annotate(Count(...))` DB aggregations.
-- [x] **Move UPC lookup logic out of `AddInventoryView.post()`** — replaced 10-line subclass loop with `Product.objects.filter(upc=upc).first()` (polymorphic queryset returns real instance directly).
-- [x] **Standardize CBV naming** — `inventoryEditView` → `InventoryEditView`, `addInventoryView` → `AddInventoryView`.
-
-### Models / Forms
-
-- [x] **Move hex validation to `Filament.clean()` + `FilamentForm.clean_hex_code()`** — invalid hex now shows as a form field error instead of a 500.
-- [x] **Move printer dimension validation to `Printer.clean()`** — removed `ValueError` from `Printer.save()`.
-- [x] **Fix `InventoryItem.save()` location-change detection** — added `from_db()` to store `_original_location_id`; `save()` compares against it instead of doing an extra SELECT.
-
-### Templates
-
-- [x] **Consolidate the 5 near-identical add-product templates** — replaced with single `add_product.html` that uses `{{ form_title }}` / `{{ submit_label }}` context vars.
-- [x] **Fix JS load order in `base.html`** — moved all JS library `<script>` tags before `{% block extra_scripts %}` so child template scripts always have jQuery/Bootstrap/Chart.js available.
-- [x] **Deduplicate DataTables CSS** — removed duplicate `<link>` (was in both `<head>` and after content block).
-- [x] **`in_use_overview.html` and `dry_storage_overview.html`** — extracted shared filament card body into `includes/filament_item_body.html` (show_name/show_location flags); tooltip init into `includes/tooltip_init.html`.
-
-### Admin
-
-- [x] **Fix `field` → `fields` typo** in `HardwareAdmin`, `DryerAdmin`, `AMSAdmin`.
-- [x] **Fix `DryerAdmin.field`** — corrected `'max_temp"degC'` → `'max_temp_degC'`.
-- [x] **Fix `display_product_details`** — fixed wrong reverse-accessor patterns; serial number now read from `obj` (InventoryItem) not from the product subclass.
-- [x] **Fix `ShipmentAdmin`** — already deleted in Phase 2 along with the Shipment model.
-- [x] **Fix `mark_depleted` admin action** — now iterates queryset and calls `instance.mark_depleted(); instance.save()` so `date_depleted` and `location` are kept in sync.
-- [x] **Fix `view_log`** — replaced `f.readlines()[-200:]` (reads whole file) with `subprocess + tail -n 200`.
-
-### Dependencies to clean up (after dead code removal)
-
-- [x] Remove `numpy` and `pandas` — done in Phase 2 (import_products.py deleted).
-- [x] Remove `django-tables2` — done in Phase 2 (tables.py deleted).
-- [x] Move `pre-commit` and `django-debug-toolbar` to a `requirements-dev.txt`.
-- [x] Pin `python-barcode`, `brother_ql`, `python-decouple` to explicit minimum versions.
-- [x] Remove `setuptools` from app requirements.
-
-### Tests
-
-- [ ] Add `tests.py` basics — at minimum one round-trip per view and one `save()` per model. The number of latent bugs caught by the analysis above suggests zero test coverage currently.
-
-### Bugs
-
-- [x] On view (`FilamentSummaryView`):
-  - [x] Material cards at the top of the page are sorted alphabetically by material name, instead of by the number of filament rolls in the inventory.
-  - [x] Color of the black swatches in the filament cards is approximately `#2c3e50` instead of `#000000`.
-  - [x] ** Enhancement: ** Center the filament cards and the totals cards on the page instead of having them flush to the left.
-  - [x] Missing filters for `subtype` on the table. This can be added just above the table on the left side. Add filters for material and color family here as well.
-  - [x] In the table, change the word `family` to `color family` in the column headers.
-  - [x] On the used filters (`7d`, `30d`, `1y`), the selected filter is shown by removing the border of the button. This is hard to see. Leave the border on and instead invert the colors of the font and background of the button.
-  - [x] Some colors, such as `TPU 95A HF` show the color written Black, but the color swatch is White. This could be due to the color hex not being written in the individual DB entries. Investigate and fix.
----
-
-## Code Audit (completed 2026-05-21)
-
-- [x] **Review complete.** Report: `docs/code-audit-2026-05-21.md`.
-
-Summary of where the audit landed:
-
-- **Backend Python:** healthy after Phases 1–3. Main targets are `FilamentSummaryView.get_context_data()` (split into helpers), `InventoryItem` custom QuerySet, `BaseProductForm` extraction, wiring `InventorySearchView` to `FilterView`.
-- **Templates:** the weakest area as expected — ~435 lines of inline JS across `filament_summary.html`, `inventory_search.html`, `dashboard.html`. Extract to `static/inventory/js/`. Plus accessibility quick wins (aria labels, decorative `aria-hidden`).
-- **Dependencies:** `pytz`, `six`, `typing_extensions` are pinned but unused — remove. `django-htmx` and `django-filter` are loaded but functionally unused — decide remove-vs-commit. Django 6.0 compatibility is clean (no deprecated APIs).
-- **Quick wins** (~30 min): dead-dep removal, one admin N+1, `{% block extra_head %}`, duplicate print CSS, ARIA labels.
-
-Quick wins completed 2026-05-22 (PR: chore/audit-quick-wins). See `docs/audit-quick-wins-2026-05-22.md` for full change log. Decisions made: `django-htmx` Python package removed (htmx CDN kept for Phase 6); `django-filter` removed (wiring FilterView deferred to medium-refactor phase). Implementation PRs follow — see Phase 4 for next steps.
+### 11.3 — Foundation refactor  *(gates Phase 12; non-behavioral, high blast radius)*
+- [ ] Extract `inventory/items.py`: `move_to(item, location, *, status=None, …)`,
+  `deplete(item, *, reason="")`, `set_status(item, status)` — these **own** the
+  `_skip_status_from_location` / sticky-status dance that is currently copy-pasted across
+  `audit.py` (214, 253, 291, 391), `BulkUpdateView` (`views.py:582`), admin (`admin.py:387`).
+  Keep the model mechanism (`models.py:529–560`); just relocate it so **no view touches the
+  flags**.
+- [ ] Add `Location.capacity` (PositiveSmallInteger, null=unlimited; slots default 1) +
+  fold the container/slot rejection (duplicated in `views.py:565`, `audit.py:235`) into the
+  one move guard.
+- [ ] Strong tests — the audit reconcile suite is the canary; a subtle change here can
+  silently corrupt reconciliation or re-derive a depleted item's status.
 
 ---
 
-## Phase 4 — Quick Wins & Test Foundation
+## Phase 12 — Quick-Move & Phone Scanning
+*The everyday workflow. Depends on 11.3. See wireframes B/C in [`ideas.md`](ideas.md).*
 
-Small, self-contained items plus the test coverage carryover from Phase 3. Ship as a single PR.
+### 12.1 — Location detail page  *(item #3 / Phase 6 #49)*
+- [ ] Read-only "what's here" list for a location (+ its subtree for containers), reachable
+  from a scanned `LOC-` and from search. Inline "edit this item's location" + "edit location".
+- [ ] AMS/Dryer render as a **slot map** (see 12.x / ideas) showing slot occupancy.
 
-### Carryover from Phase 3
+### 12.2 — Quick scan-to-move  *(workflow §3; no audit session)*
+- [ ] Phone-first flow: scan item (INV/QR) → item card → scan destination (`LOC-`/serial) →
+  `move_to()`; status follows the destination's `default_status`.
+- [ ] **Slot-capacity guard (item #3.1):** if the destination slot/unit is full, prompt
+  *"what's leaving to make room?"* (evict-and-place vs pick-another).
+- [ ] Drying-safety reuse: surface `filament_drying_warning()` on the move (wet filament →
+  dry storage blocked; → printer warned).
 
-- [x] Add `tests.py` basics — round-trip GET per view + `save()` per model, plus targeted form/signup tests. Tests caught two latent bugs fixed in the same PR (see below).
-
-### Cleanup
-
-- [x] Remove barcode printer MAC discovery from `barcode_utils.py`; use only the static IP `10.10.40.2`. *(Already done in Phase 2 / commit `e8466f6`; confirmed no MAC / scapy references remain.)*
-
-### Small Features
-
-- [x] **#38 — Show spool boolean in inventory editor** — `has_spool` is shown as a read-only badge in the Product Details card of `inventory_edit.html` (only when product is a Filament). Added `get_real_instance()` so polymorphic subclass attributes are accessible in the template.
-- [x] **#47 — Improve Item ID barcode rendering** — Bumped `initial_module_width_mm` 0.3 → 0.4, `quiet_zone_mm` 2.0 → 3.0, and raised `min_module_width_mm` 0.1 → 0.25 (GS1 Code 128 floor for handheld scanners).
-
-### Bugs surfaced by the test foundation (fixed in same PR)
-
-- [x] **`add_product.html` referenced non-existent URL** `'product_list'` → `NoReverseMatch` on every add-product GET when not coming from inventory. Pointed back-button at `dashboard` instead.
-- [x] **Missing migration `0023_alter_material_options`** — Phase 3 added `ordering = ['name', 'material_type']` to `Material.Meta` without generating a migration. Generated now.
-
-### Known limitation (now addressed)
-
-- [x] 3-digit hex codes (e.g. `#F00`) — `get_color_family()` now expands 3-digit hex to 6-digit before slicing. Test added in `ModelSaveTests`. Also fixed pre-existing `InventoryItem` method ordering (DJ012 violations) while touching models.py.
+### 12.3 — Phone camera barcode scanning  *(item #4)*
+- [ ] `@zxing/browser` camera modal → POST decoded code to the already input-agnostic
+  `/audit/scan/` and the new quick-move endpoint. Scan `LOC-` → location page; `INV-` → item.
+- [ ] **Add QR labels alongside Code128** — phone cameras decode QR far more reliably than
+  1-D barcodes; keep human-readable text. (Brother QL label template change.)
+- [ ] PWA "add to home screen" (manifest + icons already exist) for one-tap field access.
 
 ---
 
-## Phase 5 — Filament Selection Guide (Stage 1: Data Foundation)
-
-Spec: `docs/superpowers/specs/2026-05-21-filament-guide-design.md`
-
-Delivers the reference table immediately (useful for James). Lays the data foundation that Stage 2 (Phase 7) and the Haiku data-loading task depend on.
-
-**Status: PR #108 open (feat/phase-5), pending merge + deploy.**
-
-### Model
-
-- [x] Add 10 fields to `Material`: `uv_resistant`, `flexible`, `high_strength`, `heat_resistant`, `food_safe`, `easy_to_print`, `budget_friendly`, `impact_resistant`, `requires_enclosure`, `description`. *(Spec listed 13; `requires_drying`, `drying_temp_c`, `drying_time_hours` were redundant — `drying_required`, `dry_temp_ideal_degC`, `dry_time_hrs` already existed and are reused in the template.)*
-- [x] Generate and include migration `0024_material_*` (spec said 0023 but 0023 was taken by Phase 4).
-
-### Admin
-
-- [x] Add `Guide Properties` fieldset to `MaterialAdmin` grouping all new fields.
-
-### View + Template
-
-- [x] Add `FilamentGuideView` (GET, `LoginRequiredMixin`) at `/filament-guide/`.
-- [x] Template: reference table via DataTables. Boolean columns render ✓ / —. `requires_enclosure` and `drying_required` use warning colour on ✓. Stage 2 placeholder comment included.
-- [x] Add nav link to `navigation.html`.
-
-### Data loading (post-deploy, separate task)
-
-- [ ] Fill in `docs/filament-guide-data.csv` (template committed to repo, 38 rows pre-populated with exact `name`/`material_type` from live DB). Then dispatch Haiku agents to load via Django shell after PR #108 is merged and deployed.
+## Phase 13 — Item Change History  *(item #5 / Phase 10)*
+*Lands right after 11.3 so the `move_to()` chokepoint makes capture complete by construction.*
+- [ ] `django-simple-history` (≥3.11.0). **Full design + plan already decided** in
+  [`docs/item-change-history.md`](docs/item-change-history.md): all-field capture in DB;
+  **location+status timeline** on the public item page (via `diff_against(included_fields=…)`);
+  admin history + revert (free). No actor tracking in v1 (middleware is a near-free later
+  add); start fresh, no backfill.
+- [ ] New dependency → image rebuild (James accepted the dep gate). Distinct from
+  `AuditEvent` (audit-session log) — they coexist.
 
 ---
 
-## Phase 6 — Barcode & Location System
-
-These items share the same infrastructure and ship together. Camera scanning depends on good barcodes existing first.
-
-- [x] **Detailed location hierarchy** — `Location` gained `kind` (rack/shelf/dry_storage/ams/ams_slot/dryer/dryer_slot/printer), `parent`, `unit` (FK to the physical AMS/dryer InventoryItem), and `slot_index`; `default_status` now nullable for containers. `seed_locations` management command seeds 2 racks×5 shelves + 5 dry storage + 8 AMS×4 slots + 3 dryers×4 slots (72 rows, idempotent). Drying-warning logic now keys off `kind` instead of the hardcoded name. *Migrations 0025/0026.*
-- [x] **#48 — Location barcodes (LOC-XXX)** — `LOC-{id}` is decoded by `BarcodeRedirectView` (jumps into the audit console focused there) and the audit scan endpoint; `LocationAdmin` has a "Print location labels" action reusing `generate_and_print_label`.
-- [x] **Inventory audit mode** — Scan a location then the item tags present there; reconcile is per-location-immediate. New `UNKNOWN` status (durable via a `save()` sticky-status guard), `AuditSession`/`AuditEvent` models, reconcile state machine in `inventory/audit.py`, console + finalize UI (`/audit/`). Items recorded elsewhere move on scan; unscanned items at a closed location → UNKNOWN; finalize → DEPLETED. Input-agnostic scan endpoint (USB wedge now, camera later). Merged in PR #113 (squash `0b354ef`), deployed; `seed_locations` run on prod 2026-06-06. Remaining manual setup: link the 8 AMS / 3 dryer slot-groups to their unit InventoryItems in admin, add the 2 new dryers, reconcile the old flat shelves against the new rack hierarchy, print `LOC-`/`INV-` labels.
-- [x] **Inline add-item during audit** — Scanning a bare-numeric UPC during the walk either mints an `InventoryItem` at the active location (catalog hit; new `AuditEvent.ADDED`, immune to the close-location UNKNOWN sweep) or queues an `AuditUnknownScan` for post-walk review at `/audit/unknowns/`, which hands each into the existing add-product flow (via `pending_inventory` + threaded `unknown_scan_id`) and marks it resolved on item creation. Migration `0027`. Separate follow-up PR off master.
-- [x] **Audit field-feedback improvements (June 2026)** — Five fixes from the first real audit walks:
-  1. **Mass-reprint INV tags** — search-results bulk-action bar gained a "Reprint tags" button (`BulkReprintLabelsView` at `/bulk-reprint/`) that reprints `INV-XXX` labels for the checked rows. For replacing missing/unreadable tags.
-  2. **Undo mistaken adds** — a UPC scanned instead of an INV tag mints an item; the console + finalize page now list "Added this session" items with an Undo/Remove button (`audit.undo_added` → `AuditUndoAddView` at `/audit/undo-add/<id>/`, deletes the item created by the scan).
-  3. **Serial-number location scan** — scanning a unit's front-panel serial focuses its location (`audit.resolve_serial`, fallback in `AuditScanView` when `parse_code` rejects). AMS/dryer serials focus the **whole unit** (container expands to all its slots); printer serials focus the single leaf. Requires the slot↔unit `Location.unit` links to be populated.
-  4. **Whole-unit auditing** — the audit focus can now be a container; `audit.focus_leaves()` expands it to its assignable slots. Present/move/close all span slots; move-in lands in the lowest slot. Console shows expected/scanned/pending counts; close flash reports "N accounted for, M flagged unknown".
-  5. **Keep-unknown at finalize** — per-item "keep unknown" checkbox on the finalize screen leaves a missing item `UNKNOWN` (in limbo) instead of depleting it (default stays deplete). `audit.finalize(keep_unknown_ids=…)`. For things found out of place mid-audit.
-  No migrations (reuses existing models/fields).
-- [x] **Guard `Location.unit` against non-unit items (June 2026, PR #128)** — During Audit No. 15, scanning INV-17 (a filament roll) raised "is a tracked unit … it isn't audited this way" because AMS SD-1 slots 2–4 had their `unit` FK hand-linked to that roll (mis-clicked during the Phase 6 manual setup, before PR #117 filtered the admin picker). `audit._is_unit_item` treats anything referenced by a `Location.unit` as a tracked machine. Fixed the prod rows (slots 44–47 → the AMS unit INV-393) and added a model-layer `Location.clean()` guard so any write path (not just the bypassable admin picker queryset) rejects a `unit` that isn't an AMS/Dryer/Printer InventoryItem. No migration (validation only).
-- [ ] **#49 — Location-based views** — Build views to list all items at a location and edit an item's location from that view. *(Audit console partially covers "items at a location"; a standalone read-only location page is still open.)*
-- [ ] **Phone camera barcode scanning** — Integrate `@zxing/browser` JS library; wire a camera-capture modal. The audit scan endpoint is already input-agnostic (a camera JS POST of the decoded code hits the same `/audit/scan/`). Scan LOC-XXX → location page; scan INV-XXX → item page.
+## Phase 14 — Procurement & Receiving  *(full; cost-tracking workflow §1–2)*
+*Re-introduces the cost layer deleted with Order/Shipment in Phase 2, properly normalized.
+Models in [`docs/workflow-and-domain-design.md`](docs/workflow-and-domain-design.md).*
+- [ ] Models: `Supplier`, `PurchaseOrder` (+status, ordered/expected dates, shipping, tax),
+  `PurchaseOrderLine` (qty ordered/received, `unit_cost`, **`track_individually`** flag —
+  False = cost-only consumables like screws), `PurchaseReceipt` (+ **file attachment**),
+  `PurchaseReceiptLine`.
+- [ ] **Receiving console** — scan items against a PO → mint `InventoryItem`s into the
+  receiving rack via `move_to()` + print `INV-` labels + increment received/reconcile.
+  Reuses the input-agnostic scan pattern from `AuditScanView`.
+- [ ] **Per-item `unit_cost`** on `InventoryItem` (+ `source_line` FK) — what you *paid*
+  (varies by sale/bulk), distinct from catalog `Product.price`. Spend reports union
+  `Sum(InventoryItem.unit_cost)` (tracked) + cost-only line totals (consumables).
+- [ ] Reconciliation view (ordered vs received vs outstanding; order totals).
+- [ ] **Infra (flag):** needs `MEDIA_ROOT`/`MEDIA_URL` (not set today) + an nginx alias +
+  a bind-mounted `media/` volume in `docker-compose.yml` (mirror the `ha-stats` mount).
 
 ---
 
-## Phase 7 — Filament Selection Guide (Stage 2: Requirements Picker)
+## Phase 15 — Maintenance & Print Logs  *(machine lifecycle; 15.1 ‖ 15.2)*
 
-Spec: `docs/superpowers/specs/2026-05-21-filament-guide-design.md`
+### 15.1 — Maintenance tracking  *(item #11)*
+- [ ] `MaintenanceEvent` on the machine `InventoryItem` (kind: fault/repair/part-replace/
+  lubricate/clean/calibrate/hotend-swap/firmware/inspect; severity; cost; downtime;
+  `hms_code` for the later MQTT link; `part`→Hardware product; `resolved`). Per-printer
+  `NozzleConfig` (current nozzle diameter/type + last-swap) for "nozzle size changed".
+- [ ] **Reliability / "rebuy-or-refund" dashboard** — faults/unit/month, downtime, maint $,
+  MTBF, grouped by model (the brief's headline ask: *should I replace / refund / rebuy?*).
+- [ ] Per-unit maintenance timeline reachable from the item page; admin inline.
 
-*Depends on Phase 5 data loading being complete.*
-
-- [ ] Add requirements picker above the reference table on `/filament-guide/`: 8 checkboxes with Bootstrap tooltips, no page reload.
-- [ ] Embed all `Material` guide data as a `json_script` block (same XSS-safe pattern as dashboard charts).
-- [ ] JS scoring: count satisfied requirements per material. Perfect matches (score = 1.0) highlighted with star badge at top. Partial matches (≥ 0.5) ranked below with per-requirement met/unmet chips (✓ green / ✗ muted). Poor matches (< 0.5) hidden behind a "Show all" toggle.
-- [ ] Warning badges on result cards: `requires_enclosure` (red), `requires_drying` with temp/time (amber).
-
----
-
-## Phase 8 — Data Visualizations
-
-*Spool weight distribution is self-contained. Filament usage over time requires a new consumption event log — design that data model before starting.*
-
-- [ ] **Spool weight distribution** — chart showing how much filament (by weight) is on hand per color/material. Data is already available via `Filament.weight` × `on_hand` count.
-- [ ] **Filament usage over time** — requires adding a `ConsumptionEvent` log (recorded when an item is marked depleted). Design the model before implementing the chart.
+### 15.2 — Print-jobs & utilization  *(item #10, manual side)*
+- [ ] `PrintJob` (printer, file name, start/end, duration, result, source=MANUAL|MQTT) +
+  `PrintJobFilament` (spool, AMS slot, grams/% used). Manual entry first.
+- [ ] Completion decrements `InventoryItem.percent_remaining` → `deplete()` at ~0.
+  **Subsumes the `ConsumptionEvent` backlog** — this *is* the consumption log.
+- [ ] Utilization view: printer hours, job count, success %, kg consumed by material/color.
 
 ---
 
-## Phase 9 — Field-identified fixes & search improvements (June 2026)
+## Phase 16 — Bambu MQTT (phased)  *(items #7/#8/#10-auto; needs 11.1 + WAL infra)*
+*Phased per James: **telemetry mirror first**, auto-sync later. Full design in
+[`docs/bambu-mqtt-integration.md`](docs/bambu-mqtt-integration.md).*
 
-*Found during the first real inventory walks/testing. The bugs below affect
-day-to-day use and should be picked up ahead of Phases 7–8. File:line refs as of
-2026-06-08.*
+### 16.1 — Telemetry mirror (read-only)
+- [ ] Models: `PrinterDevice` (serial, ip, access_code, optional `item` link),
+  `PrinterState` (latest snapshot, upserted), `AMSChannelState` (per slot: tray_uuid/RFID,
+  type, color, remaining %), `TelemetrySample` (down-sampled time-series).
+- [ ] **MQTT consumer = a 3rd `docker-compose` service** running `manage.py
+  run_telemetry_consumer` (`paho-mqtt`, TLS 8883, user `bblp`, per-printer access code,
+  topic `device/{serial}/report`). New dep — flag.
+- [ ] **Infra (central):** enable **WAL + busy_timeout**; change the compose mount from the
+  single `.sqlite3` file to its **containing directory** so `-wal`/`-shm` are shared.
+  Down-sample `TelemetrySample` (on-change / interval) to protect SQLite. **Decoupled from
+  `InventoryItem` in this phase** (no writes to inventory).
 
-### Bugs
+### 16.2 — Grafana / HA dashboard  *(item #8)*
+- [ ] Extend the **existing** `scripts/ha_stats_export.py` (already reads SQLite read-only →
+  atomic JSON, served by nginx at `/ha-stats/`, cron 5 min) with a `telemetry.json`. HA +
+  Grafana panels. Low friction — reuses a proven, deployed pipeline.
 
-- [x] **`/filament-color-guide/` "spools on hand" counts color/SKU groups, not spools** — ✅ **Done (PR #121).** Header shows ~165 while the Dashboard shows ~478. `FilamentColorGuideView` sets `context["total_filaments"] = len(filaments)` (`views.py:706`), i.e. the number of distinct `Filament` rows with active stock — not the spool count. The true total is already computed lower in the same view as `grand_total_rolls = sum(r["on_hand"] for r in rows)` (`views.py:861`). Fix: drive the header from the sum of active inventory items (≈ `grand_total_rolls`), not the group count. Template renders `{{ total_filaments }} spool…` at `filament_color_guide.html:26,36`.
-- [x] **"Add inventory" hangs when the label printer is unreachable** — ✅ **Done (PR #122):** fast TCP reachability probe (`BROTHER_QL_CONNECT_TIMEOUT_S`, default 2s) raises `PrinterUnreachableError`, caught by existing handlers → item saved + prompt warning. Should time out, add the item anyway, and warn that the label didn't print. The item *is* already created and the print call *is* wrapped in try/except with a "Label printing failed" warning (`AddInventoryView`, `views.py:388`), so data is safe. The hang is in `print_label_image` → `BrotherQLBackendNetwork(BROTHER_QL_HOST)` (`barcode_utils.py:356,391`): the TCP socket has **no timeout**, so an unreachable printer blocks the request for the full OS TCP timeout (~1–2 min) before the exception fires. Fix: fail fast — add a short connection timeout / pre-flight reachability probe (socket to `BROTHER_QL_HOST:9100`, ~2 s) in `barcode_utils`; the existing warning then surfaces immediately. Applies to all print sites (add, reprint, bulk, admin actions).
-- [x] **Low-stock alerts flag items that still have rolls** — ✅ **Done (PR #124).** e.g. "out of stock: PLA Basic Black" while a name search shows several rolls. **Root cause was neither UPC-vs-SKU nor catalog-variant splitting** (verified against the live DB: `_build_low_stock_alerts` already groups by `product__sku`, which correctly consolidates the multiple UPCs per SKU — no product-identity decision needed). The actual bug: `active_map` was pre-filtered to `active_count < LOW_QUANTITY`, so a *well-stocked* SKU was absent from it, and `out_of_stock_skus = depleted_map - active_map` then swept in any well-stocked SKU that had a depletion in the last 30 days. PLA Basic Black (3 active, `LOW_QUANTITY`=3 → `3 < 3` false → excluded from `active_map`) + a recent depletion = false "Out of Stock" / count 0. Fixed by building `active_map` with true per-SKU counts and deriving `low_skus`/`out_of_stock_skus` from it; well-stocked SKUs are no longer alerted.
-
-### Enhancements
-
-- [x] **Hierarchical location search (nav bar + `/search/`, parent → descendants, `LOC-{id}`)** — ✅ **Done (PR #123):** `Location.descendant_ids()` + `_expanded_location_ids()`; navbar and `/search/` both expand a matched container to its subtree, and a typed `LOC-<id>` filters. **Decided (2026-06-08):** a *typed* `LOC-<id>` in the navbar **filters** search results (expands the subtree) — it does NOT jump to the audit console; only a *scanned* `LOC-` barcode does. This was already the behaviour; locked in by a regression test (`test_navbar_typed_loc_id_filters_not_redirects`). Search inventory by location, expanding containers to their whole subtree.
-    - *Current state:* `/search/` already has a flat Location text filter (`location__name__icontains`, `views.py:200`); the nav-bar single search also ORs `location__name__icontains` (`views.py:187`); a scanned/typed `LOC-<id>` is decoded by `BarcodeRedirectView` and jumps into the **audit console**, not search results.
-    - *Wanted:* (1) nav bar searches by location name **and** `LOC-{id}` → list inventory at that location; (2) the `/search/` Location field does the same; (3) **parent → descendant expansion** — searching a container (e.g. "AMS RP-1", a rack, dry storage) returns items in all descendant leaf locations (slots/shelves), not just exact matches.
-    - *Approach:* use the existing `Location` hierarchy (`parent`/`children`, `Location.kind`) to collect the matched location's descendant ids, then filter `location_id__in=<subtree>`. Decide how typed `LOC-{id}` in *search* coexists with the audit-console redirect (e.g. only redirect for hardware scans; treat a typed `LOC-` as a search filter).
-
-### Chores
-
-- [x] **Clear the 16 pre-existing djlint errors in `inventory_search.html`** — ✅ **Done (PR #125):** inline styles moved to a `<style>` block (classes), `T002`/`H029`/`H014`/`T003` fixed; hook passes with no `--no-verify`. Behaviour unchanged (declarations preserved; regression test green).
-- [x] **djlint cleanup — remaining templates** — ✅ **Done (PR #127).** `djlint-django` now passes on `--all-files`, so editing any template no longer forces `--no-verify`. Pragmatic policy in `pyproject.toml [tool.djlint] ignore`: `H021` (inline styles OK for a few one-off elements), `H023` (entities), `H030`/`H031` (meta tags — pointless for a LAN-only app). Auto-fixed the zero-risk findings repo-wide: `T002` (quote style), `T003` (named endblocks), `H014` (blank lines), `H029` (method case), `T001` (whitespace). No rendered-output changes; all templates compile, suite green.
-
----
-
-## Phase 10 — Item change history (June 2026)
-
-*Field-identified during Audit No. 15: a mis-scan moved an item and there was no
-history anywhere to trace or undo it. Approach decided 2026-06-09; full design + plan
-still to be written.*
-
-- [ ] **Full change history for `InventoryItem`, viewable in admin + public pages** —
-  **Approach decided: `django-simple-history`** (≥3.11.0; Django 6.0-compatible). Capture
-  **all fields** in the DB (latent forensic value); **surface location+status** as a
-  timeline on the public item page (derived via `diff_against(included_fields=['location','status'])`);
-  admin uses the library's built-in history/revert. No actor tracking in v1 (middleware
-  is a near-free future add); **start fresh**, no backfill. New dependency — image
-  rebuild (James accepted the dep gate). **Full rationale, the A-vs-B (custom-vs-library)
-  analysis, decisions table, capture-path caveats, and open steps are in
-  [`docs/item-change-history.md`](docs/item-change-history.md).** Next: resume
-  brainstorming → writing-plans → PR.
-  - *Distinct from `AuditEvent`* (the audit-session log): this tracks any change to an
-    item over its whole life, regardless of source. They coexist.
+### 16.3 — Auto-sync  *(item #7 phase-2, #10-auto; gated on telemetry trusted)*
+- [ ] Match AMS `tray_uuid`(RFID) → `InventoryItem.serial_number`; write serial +
+  `percent_remaining`. Auto-create `PrintJob`s from MQTT; utilization from MQ. HMS errors →
+  open `MaintenanceEvent(kind=FAULT, resolved=False)`.
+- [ ] **Trust gate:** dry-run matcher logs *proposed* writes before any are enabled
+  (same damage class as the Audit-15 mis-scan, but automated and unattended).
 
 ---
 
-## Completed Features
+## Phase 17 — Filament Data, Guide & Color Sheets  *(item #1; finishes Phase 5/7; item #9)*
+*Source files now in repo (`filament_TDS/`, `filament_hex/`, `filament-guide-en.pdf`).
+Pipeline in [`docs/filament-data-pipeline.md`](docs/filament-data-pipeline.md). Needs a
+dev-time PDF lib (`pypdf`) — not a production image dep.*
 
-- [x] **Bulk inventory editor** — Checkbox selection on Search Inventory page; sticky action bar for bulk status/location/shipment changes. `POST /bulk-update/` (`BulkUpdateView`). JS `Set` as selection source of truth (survives DataTables pagination). Iterates `item.save()` to preserve all side-effects.
-- [x] **Filament summary view** — `/filament-summary/` (`FilamentSummaryView`). Material cards sorted by roll count; DataTables with material/subtype/color-family filter dropdowns; period toggle (7d/30d/1y) for usage; `material_type` field on `Material` (migrations 0021/0022).
-- [x] **Improved data visualizations** — Dashboard: 3 charts + low-stock alert table with urgency tiers. `/filament-color-guide/` page grouped by color family, printable as PDF.
-- [x] **Status-based location assignment** — Implemented in `InventoryItem.save()` via `Location.default_status`.
+- [ ] **17.1 TDS → specs.** Add `build_plate_compat` + `hot_end_compat` to `Material`
+  (drying temp/time fields already exist). Parse `filament_TDS/*.pdf` → structured rows →
+  load via a management command. Backfill existing `Material` rows.
+- [ ] **17.2 Hex fill.** Parse `filament_hex/` — **text PDFs** (`pypdf`) and **website-
+  screenshot PNGs** (vision/OCR; confirmed readable) → color→hex map → fill missing
+  `Filament.hex_code`/`color_family`; seed a color catalog.
+- [ ] **17.3 Guide build (Phase 7 picker).** Use `filament-guide-en.pdf` +
+  `docs/filament-guide-data.csv` to populate `Material` guide booleans/descriptions, then
+  ship the requirements picker (8 checkboxes, JS scoring, match cards) on `/filament-guide/`.
+- [ ] **17.4 Color sheets + Bambu Store link (item #9).** Generate printable per-material
+  color-reference PDFs (Bambu-style), **especially new ones for the PNG-only types**. Add a
+  "View in Bambu Store" link via SKU. *(Live price scraping stays Trashed — no public API.)*
+
+---
+
+## Phase 18 — Visual & Admin Polish
+
+- [ ] **18.1 Admin 2.0** — adopt **`django-unfold`** (Tailwind, responsive, modern dashboard;
+  drop-in — existing `list_display`/`fieldsets`/actions/polymorphic/inline code carries over,
+  ~2–3 h). Do **last** so it re-skins the *final* admin set (procurement/maintenance/telemetry)
+  once. See [`docs/admin-2.0.md`](docs/admin-2.0.md).
+- [ ] **18.2 Filament-page consolidation + JS extraction** — merge `/filament-summary/`,
+  `/filament-color-guide/`, `/filament-guide/` into one hub with modes; move the ~435 lines of
+  inline JS (summary 220, search 114, dashboard 95) to `static/inventory/js/`.
+- [ ] **18.3 Visual beauty pass** — design tokens (replace hardcoded chart/badge colors),
+  mobile polish (charts/bulk-bar/print buttons), component consistency, optional dark mode.
+
+---
+
+## Dependency map & parallelization
+
+```
+11.1 backup ─┐                         (urgent; gates 16.1 deploy)
+11.2 search ─┼─ parallel
+18.2 js/consolidate ─┘
+11.3 foundation ──► 12.1/12.2/12.3 ──► (quick-move, camera)
+                └─► 13 history
+14 procurement   (independent; cleaner after 11.3)
+15.1 maint ‖ 15.2 jobs   (after 11.3)
+16.1 telemetry ──► 16.3 auto-sync     (16.1 needs 11.1 + WAL; 16.3 needs 15.2 target)
+   16.1 ──► 16.2 grafana
+17 filament data  (needs Phase-5 data; otherwise independent)
+18.1 admin-2.0    (LAST among admin-touching work)
+```
+**Highest-risk:** (1) MQTT SQLite write-concurrency + new process; (2) the `save()` refactor's
+blast radius; (3) MQTT auto-sync writing back to real inventory.
 
 ---
 
 ## Backlog
+*Real value, no current phase slot. Revisit during sprint planning.*
 
-Items with real value but no current phase slot. Revisit during sprint planning.
-
-- [x] **Containers don't auto-start after host reboot** — Root cause: the `nginx` service had no `restart:` policy, so after a host/LXC reboot the daemon brought `web` (`restart: always`) back but left nginx down, making the app unreachable on `:8080`. Set both services to `restart: unless-stopped` in `docker-compose.yml`. Docker daemon confirmed `enabled` on the app LXC, so no systemd change needed. (fix/compose-restart-policy)
-- [ ] **Back up the inventory database to the Synology NAS** — The live SQLite DB (`~/inventory_db.sqlite3` on the app LXC `10.10.20.17`, bind-mounted into the `web` container per `docker-compose.yml`) has no backup: single copy, not version-controlled, holds manually-entered data that can't be re-derived. `deploy.sh` doesn't touch the file, but there's no safety net against loss/corruption. **Target: Synology NAS, Volume 1.** Approach: cron a consistent snapshot with SQLite's online backup (`sqlite3 "$DB" ".backup '/tmp/...'"` or `VACUUM INTO`, both safe against a live writer — never `cp` the live file) to a timestamped file, rotate (e.g. keep N daily / M weekly), and land it on Volume 1. Decide the transport: mount an NFS/SMB share on the app LXC and write directly, `rsync`/`scp` to the NAS, or a NAS-side pull (Synology Hyper Backup / scheduled `rsync` from the app LXC) — NAS-side pull avoids storing NAS creds on the LXC. Confirm the NAS share path / IP and credentials before implementing. Optionally verify restores periodically.
-- [ ] **`sudo` missing on the app LXC** — `jcoller` is in the `sudo` group but the `sudo` binary isn't installed, and polkit denies `systemctl reboot` for non-root SSH sessions — so Claude Code (and any non-root automation) can't perform privileged ops on `10.10.20.17`. Decide on an approach: install `sudo` with a narrow NOPASSWD rule (e.g. just `systemctl reboot`/`docker`), drive privileged ops from the Proxmox host via `pct exec`/`pct reboot`, or leave manual. Think before granting standing privilege.
+- [ ] **`sudo` missing on the app LXC** — `jcoller` is in `sudo` group but the binary isn't
+  installed; polkit denies `systemctl reboot` for non-root SSH. Decide: narrow NOPASSWD rule,
+  drive privileged ops from the Proxmox host via `pct exec`, or leave manual.
 - [ ] **#33 — Excel export** — Fix `InventoryExportView`. Low priority; not regularly used.
-- [ ] **#34 — Import order/invoice history** — Relocate to `management/commands/`; replace pandas with openpyxl. Only worth doing if invoice imports are a regular workflow.
-- [ ] **#65 — View 3MF files in web portal** — `three.js` + `Online3DViewer`. Significant JS bundle for a household app; revisit if 3MF browsing becomes a real workflow need.
-- [ ] **BambuLab MQTT integration** — Connect to printers on local LAN (same protocol as HACS `bambu_lab`). Pull AMS slot assignments, print progress, temperatures. Auto-update spool tracking on print completion. High value but changes app from manual to event-driven — requires dedicated design session before any implementation.
-- [ ] **HA/Grafana dashboard** — Expose DB visualizations in a Home Assistant dashboard via Grafana. Mostly infrastructure/configuration work. Revisit after BambuLab integration.
-- [ ] **Bambu Store quick-link** — Add a "View in Bambu Store" link on filament product pages using the SKU. Trivial to add; the price scraping / HA alert scope from the original idea is backlog.
-- [ ] **Printer utilization chart** — Blocked on BambuLab integration.
-- [ ] **`ALLOWED_HOSTS` / `CSRF_TRUSTED_ORIGINS` from env vars** — Low urgency; only matters if the app gains a new deployment URL.
-- [ ] **HTTPS + `SECURE_*` settings** — Only needed if the app is ever exposed outside the LAN.
+- [ ] **#34 — Import order/invoice history** — Largely **superseded by Phase 14** (procurement);
+  only the *historical* invoice import remains, and only if bulk back-entry is wanted. Replace
+  pandas with openpyxl, relocate to `management/commands/`.
+- [ ] **#65 — View 3MF files in web portal** — `three.js` + `Online3DViewer`. Significant JS
+  bundle for a household app; revisit if 3MF browsing becomes a real need.
+- [ ] **`ALLOWED_HOSTS` / `CSRF_TRUSTED_ORIGINS` from env vars** — Low urgency; only matters
+  with a new deployment URL.
+- [ ] **HTTPS + `SECURE_*` settings** — Only if the app is ever exposed outside the LAN.
 
 ---
 
 ## Trashed
+*Evaluated and set aside. Kept so they don't get re-proposed.*
 
-Ideas that were evaluated and set aside. Kept here for context so they don't get re-proposed.
+- **Reusable app extraction** (`barcode_utils`, `polymorphic_inventory`) — premature abstraction
+  for a single-dev household app.
+- **Polar/radar charts for filament guide** — impressive but adds cognitive overhead; badge
+  chips are more scannable.
+- **Sphinx docs + GitHub Pages** — no audience.
+- **SQLite → PostgreSQL migration** — no concurrent write pressure *yet*. **Revisit if the
+  Phase 16 MQTT writer causes measurable `database is locked` contention** despite WAL.
+- **Per-user inventory scoping** — `user` FK deliberately removed in migration 0013.
+- **Bambu Store price scraping + HA sale alerts** — no public store API; scraping is fragile.
+  The quick-link (17.4) is the right scope.
 
-- **Reusable app extraction** (`barcode_utils` package, `polymorphic_inventory` app) — Premature abstraction for a single-developer household app. No other projects consuming these; the extraction cost outweighs any benefit at current scale.
-- **Polar/radar charts for filament guide** — Visually impressive (Bambu Lab uses them) but adds cognitive overhead without improving decisions. Per-requirement badge chips are more scannable for this use case.
-- **Sphinx docs + GitHub Pages** — No audience; the codebase is self-explanatory for a solo project.
-- **SQLite → PostgreSQL migration** — No concurrent write pressure currently. Revisit only if write contention becomes measurable.
-- **Per-user inventory scoping** — `user` FK deliberately removed in migration 0013. Fine for single-household use; only revisit if multi-user support is explicitly needed.
-- **Bambu Store price scraping + HA sale alerts** — Bambu has no public store API; scraping is fragile by nature. The quick-link (backlog) is the right scope.
+---
+---
+
+# Archive — Completed Phases 1–10
+
+*Preserved for context. Phase-by-phase narrative also lives in `CLAUDE.md`.*
+
+## Phase 1 — Critical Bug Fixes  *(May 2025, PR #79)*
+- [x] Search crashed every request — added `import re`.
+- [x] Barcode print redirect — `pk=` → `item_id=` (`PrintBarcodeView`, `BarcodeRedirectView`).
+- [x] Every new Printer crashed on save — added bed-dim fields to `PrinterForm`.
+- [x] Admin dropdowns crashed on null Material — guarded `Filament.__str__`.
+- [x] Bulk-update material action — `new_matl` → `material`.
+- [x] Hex normalization regex — match the `#`-stripped value.
+- [x] Drying warning never fired — `"NEW"` → `self.Status.NEW`.
+- [x] `DEBUG` cast — added `cast=bool`.
+- [x] Excel export — guarded null `item.location`.
+- [x] Deleted orphaned `import_products.py`.
+- [x] **Security:** debug toolbar wrapped in `if DEBUG`; stored XSS via chart labels
+  (`json_script`) and tooltip HTML (`escape()`); added `LoginRequiredMixin` to 4 views.
+
+## Phase 2 — Dead Code Removal & Cleanup  *(May 2026, PRs #80/#81)*
+- [x] Deleted `tables.py` + django-tables2; `FilamentView` + template; **`Order`/`Shipment`
+  models** (migration 0020 drops tables); 4 dead templates; dead URL patterns;
+  `format_label`/`generate_barcode`; stale printer IP fallback.
+- [x] Replaced `from .x import *` in views/forms; wired `signals.py` in `apps.ready()`
+  (`post_save`→`pre_save`); converted `depleted`/`in_use`/`sold` to `@property` (cols dropped).
+- [x] Hotfix #81: missed transitive import → 502 (the `User` wildcard lesson in CLAUDE.md).
+
+## Phase 3 — Code Quality & Architecture  *(May 2026, PR #82 + #92/#95)*
+- [x] Explicit imports in admin; fixed `field`→`fields` typos (Hardware/Dryer/AMS admin);
+  `'max_temp"degC'` typo; `display_product_details` reverse-accessor bug; `mark_depleted`
+  action iterate+save; `view_log` via `tail -n 200`.
+- [x] Hex validation → `clean()` + form; printer dims → `Printer.clean()`; `from_db()`
+  `_original_location_id` (no extra SELECT); `BaseAddProductView` mixin; PascalCase CBVs;
+  polymorphic UPC lookup; Dashboard N+1 → DB aggregations; consolidated add-product templates;
+  `base.html` JS order; `requirements-dev.txt`.
+- [x] Filament summary (`/filament-summary/`) + `material_type` (migrations 0021/0022) + card
+  sort, hex fixes, filters, period toggle (PRs #92/#95).
+
+## Code Audit  *(2026-05-21 → `docs/code-audit-2026-05-21.md`)*
+- [x] Review complete; quick wins landed 2026-05-22 (`docs/audit-quick-wins-2026-05-22.md`).
+  Decisions: removed `django-htmx` (CDN kept) and `django-filter` (FilterView wiring deferred —
+  **now scheduled in 11.2**). Backend healthy post 1–3; templates are the weakest area
+  (~435 lines inline JS — **scheduled in 18.2**).
+
+## Phase 4 — Quick Wins & Test Foundation  *(May 2026, PR #100)*
+- [x] `tests.py` round-trip per view + `save()` per model (caught 2 latent bugs); confirmed
+  MAC discovery already removed; `has_spool` badge + `get_real_instance()`; barcode render
+  params bumped; `add_product.html` `NoReverseMatch` fix; migration `0023`;
+  `get_color_family()` 3-digit hex expansion.
+
+## Phase 5 — Filament Selection Guide (Stage 1: Data Foundation)  *(May 2026, PR #108)*
+- [x] Added 10 guide fields to `Material` (migration 0024); `MaterialAdmin` Guide fieldset;
+  `FilamentGuideView` at `/filament-guide/` (DataTables reference); nav link; CSV template at
+  `docs/filament-guide-data.csv`.
+- [ ] **Data loading carryover → folded into Phase 17.3** (fill the guide data from
+  `filament-guide-en.pdf` + CSV).
+
+## Phase 6 — Barcode & Location System  *(June 2026, PR #113 + follow-ups)*
+- [x] **Location hierarchy** — `kind`/`parent`/`unit`/`slot_index`, nullable `default_status`;
+  `seed_locations` (72 rows); drying logic keyed off `kind`. Migrations 0025/0026.
+- [x] **#48 Location barcodes** (`LOC-`), **audit mode** (`AuditSession`/`AuditEvent`,
+  `inventory/audit.py` state machine, `/audit/` console, `UNKNOWN` status + sticky guard),
+  **inline add-item** (`AuditUnknownScan`, migration 0027), **field-feedback fixes** (mass
+  reprint, undo adds, serial-scan, whole-unit audit, keep-unknown), **`Location.unit` guard**
+  (PR #128).
+- [ ] **#49 location-based views → Phase 12.1.**
+- [ ] **Phone camera scanning → Phase 12.3.**
+- [ ] *Remaining manual prod setup:* link AMS/dryer slot `unit` FKs, add 2 new dryers,
+  reconcile old flat shelves vs new rack hierarchy, print `LOC-`/`INV-` labels.
+
+## Phase 7 — Filament Guide (Stage 2: Requirements Picker)
+- [ ] **→ Phase 17.3** (depends on the Phase 17.1/17.3 data load).
+
+## Phase 8 — Data Visualizations
+- [ ] Spool weight distribution → fold into 18.3 / filament hub. **Usage-over-time is now
+  delivered by Phase 15.2** (`PrintJobFilament` is the consumption log; `ConsumptionEvent`
+  no longer needed).
+
+## Phase 9 — Field-identified fixes & search improvements  *(June 2026)*
+- [x] `/filament-color-guide/` spool-count fix (PR #121); add-inventory printer-timeout
+  fast-fail (PR #122); low-stock false positives (PR #124); hierarchical location search
+  (PR #123); djlint cleanup (PRs #125/#127).
+
+## Phase 10 — Item change history  *(approach decided 2026-06-09)*
+- [ ] **→ Phase 13** (django-simple-history; design in `docs/item-change-history.md`).
+
+## Completed Features
+- [x] **Bulk inventory editor** — checkbox select + sticky action bar; `POST /bulk-update/`.
+- [x] **Filament summary** — `/filament-summary/` (cards by roll count; DataTables filters;
+  period toggle).
+- [x] **Improved visualizations** — Dashboard 3 charts + low-stock tiers; `/filament-color-guide/`.
+- [x] **Status-based location assignment** — `InventoryItem.save()` via `Location.default_status`.
+- [x] **Containers don't auto-start after reboot** — `restart: unless-stopped` on both services.
