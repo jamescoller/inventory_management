@@ -180,70 +180,194 @@ def _expanded_location_ids(term):
     return ids
 
 
-class InventorySearchView(LoginRequiredMixin, View):
-    def get(self, request):
-        # Get search parameters from the query string
-        sku = request.GET.get("sku", "")
-        upc = request.GET.get("upc", "")
-        name = request.GET.get("name", "")
-        location = request.GET.get("location", "")
-        serial_number = request.GET.get("serial_number", "")
-        item_id = request.GET.get("item_id", "")
+# Polymorphic Product subclasses exposed by the item-type filter, in nav order.
+# Keyed on `product__polymorphic_ctype__model` (lowercase model name), matching
+# the dashboard pattern (`views.py` Dashboard.get).
+_ITEM_TYPE_MODELS = (Filament, Printer, AMS, Dryer, Hardware)
 
-        # Check for INV_xxx pattern
-        inv_pattern = re.match(r"^INV-(\d+)$", name.strip())
-        if inv_pattern:
-            item_id = inv_pattern.group(1)
-            return redirect("inventory_edit", item_id=item_id)
 
-        # Base queryset, excluding depleted items
-        items = InventoryItem.objects.exclude(status=5).select_related(
-            "product", "location"
+def _item_type_choices():
+    """(model_name, Verbose Label) pairs for the item-type filter."""
+    overrides = {"ams": "AMS"}
+    return [
+        (
+            m._meta.model_name,
+            overrides.get(m._meta.model_name, m._meta.verbose_name.title()),
+        )
+        for m in _ITEM_TYPE_MODELS
+    ]
+
+
+def _valid_type_models():
+    return {m._meta.model_name for m in _ITEM_TYPE_MODELS}
+
+
+def _parse_status_params(raw_values):
+    """Coerce raw ``status`` GET values to a set of valid Status ints.
+
+    Garbage (non-integer / out-of-range) values are silently dropped so a
+    fat-fingered URL can never 500 the search page.
+    """
+    valid = {int(v) for v in InventoryItem.Status.values}
+    out = set()
+    for raw in raw_values:
+        try:
+            v = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if v in valid:
+            out.add(v)
+    return out
+
+
+# Statuses hidden by default (terminal/noisy) when no explicit status filter is
+# given. UNKNOWN is deliberately NOT hidden — finding lost items is the point.
+_DEFAULT_HIDDEN_STATUSES = (
+    InventoryItem.Status.DEPLETED,
+    InventoryItem.Status.SOLD,
+)
+
+
+def _filtered_search_items(params):
+    """Build the filtered ``InventoryItem`` queryset for the search/export pages.
+
+    ``params`` is a request ``QueryDict`` (``request.GET`` or ``request.POST``).
+    Returns ``(queryset, parsed)`` where ``parsed`` carries the normalised filter
+    values for re-rendering the form. Shared by ``InventorySearchView`` and
+    ``InventoryExportView`` so the export honours the same filters (and no longer
+    re-introduces the dead ``exclude(status=5)`` bug).
+
+    A bare navbar ``INV-<id>`` is NOT handled here — that redirect belongs to the
+    view; this function only filters.
+    """
+    sku = params.get("sku", "")
+    upc = params.get("upc", "")
+    name = params.get("name", "")
+    location = params.get("location", "")
+    serial_number = params.get("serial_number", "")
+    item_id = params.get("item_id", "")
+    date_from = params.get("date_from", "")
+    date_to = params.get("date_to", "")
+    preset = params.get("preset", "")
+
+    selected_statuses = _parse_status_params(params.getlist("status"))
+    selected_types = {
+        t for t in params.getlist("item_type") if t in _valid_type_models()
+    }
+
+    items = InventoryItem.objects.select_related("product", "location")
+
+    # --- Lost & Found preset ----------------------------------------------
+    # One click → recover audit casualties: anything UNKNOWN, plus anything
+    # orphaned with no location (left at a retired/empty location). Applied as a
+    # Q so it composes with any other explicit filter the user adds.
+    if preset == "lost_found":
+        items = items.filter(
+            Q(status=InventoryItem.Status.UNKNOWN) | Q(location__isnull=True)
         )
 
-        # If there's a simple search from the navbar, search across multiple fields
-        if name and not any([sku, upc, location, serial_number, item_id]):
-            name_q = (
-                Q(product__name__icontains=name)
-                | Q(product__sku__icontains=name)
-                | Q(product__upc__icontains=name)
-                | Q(serial_number__icontains=name)
-                | Q(id__icontains=name)
-            )
-            # Location dimension: expand a matched container to its whole subtree
-            # (and support a typed LOC-<id>). Covers direct name matches too.
-            loc_ids = _expanded_location_ids(name)
-            if loc_ids:
-                name_q |= Q(location_id__in=loc_ids)
-            items = items.filter(name_q)
-        else:
-            # Apply specific filters
-            if sku:
-                items = items.filter(product__sku=sku)
-            if upc:
-                items = items.filter(product__upc=upc)
-            if name:
-                items = items.filter(product__name__icontains=name)
-            if location:
-                items = items.filter(location_id__in=_expanded_location_ids(location))
-            if serial_number:
-                items = items.filter(serial_number=serial_number)
-            if item_id:
-                items = items.filter(id=item_id)
+    # --- text / field filters ---------------------------------------------
+    # Navbar quick-search: a lone `name` fans out across many fields.
+    navbar_mode = bool(name) and not any([sku, upc, location, serial_number, item_id])
+    if navbar_mode:
+        name_q = (
+            Q(product__name__icontains=name)
+            | Q(product__sku__icontains=name)
+            | Q(product__upc__icontains=name)
+            | Q(serial_number__icontains=name)
+            | Q(id__icontains=name)
+        )
+        loc_ids = _expanded_location_ids(name)
+        if loc_ids:
+            name_q |= Q(location_id__in=loc_ids)
+        items = items.filter(name_q)
+    else:
+        if sku:
+            items = items.filter(product__sku=sku)
+        if upc:
+            items = items.filter(product__upc=upc)
+        if name:
+            items = items.filter(product__name__icontains=name)
+        if location:
+            items = items.filter(location_id__in=_expanded_location_ids(location))
+        if serial_number:
+            items = items.filter(serial_number=serial_number)
+        if item_id:
+            items = items.filter(id=item_id)
 
-        # Pass filtered items to the template
+    # --- status -----------------------------------------------------------
+    if selected_statuses:
+        items = items.filter(status__in=selected_statuses)
+    elif preset != "lost_found":
+        # Default view: hide terminal/noisy statuses (keep UNKNOWN).
+        items = items.exclude(status__in=_DEFAULT_HIDDEN_STATUSES)
+
+    # --- item type --------------------------------------------------------
+    if selected_types:
+        items = items.filter(product__polymorphic_ctype__model__in=selected_types)
+
+    # --- date-added range -------------------------------------------------
+    if date_from:
+        items = items.filter(date_added__date__gte=date_from)
+    if date_to:
+        items = items.filter(date_added__date__lte=date_to)
+
+    parsed = {
+        "search_values": {
+            "sku": sku,
+            "upc": upc,
+            "name": name,
+            "location": location,
+            "serial_number": serial_number,
+            "item_id": item_id,
+            "date_from": date_from,
+            "date_to": date_to,
+            "preset": preset,
+        },
+        "selected_statuses": selected_statuses,
+        "selected_types": selected_types,
+    }
+    return items, parsed
+
+
+class InventorySearchView(LoginRequiredMixin, View):
+    """Inventory search with real, composable filters (Phase 11.2).
+
+    Query contract (all optional, all AND-combined):
+
+    - ``name`` — navbar quick-search. When it is the *only* field present it
+      fans out across product name/sku/upc, serial, id, and the location subtree
+      (a typed ``LOC-<id>`` FILTERS here; it never redirects to the audit
+      console — only a *scanned* barcode does, via ``BarcodeRedirectView``). An
+      ``INV-<id>`` value still short-circuits to that item's edit page.
+    - ``sku`` / ``upc`` / ``serial_number`` / ``item_id`` — exact field matches.
+    - ``location`` — name fragment or ``LOC-<id>``; expanded to the whole subtree
+      of any matched container via ``_expanded_location_ids``.
+    - ``status`` — repeatable; integer Status codes (incl. DEPLETED/SOLD/UNKNOWN).
+      Omitted → default view hides DEPLETED/SOLD noise but keeps UNKNOWN findable.
+    - ``item_type`` — repeatable; polymorphic model name (filament/printer/ams/
+      dryer/hardware).
+    - ``date_from`` / ``date_to`` — inclusive ``date_added`` range (``YYYY-MM-DD``).
+    - ``preset=lost_found`` — audit-recovery shortcut: UNKNOWN items ∪ items with
+      no location (left at a retired/empty location).
+    """
+
+    def get(self, request):
+        # A navbar INV-<id> jumps straight to that item's edit page (preserved
+        # from the original view).
+        name = request.GET.get("name", "")
+        inv_pattern = re.match(r"^INV-(\d+)$", name.strip())
+        if inv_pattern:
+            return redirect("inventory_edit", item_id=inv_pattern.group(1))
+
+        items, parsed = _filtered_search_items(request.GET)
+
         context = {
-            "items": items or InventoryItem.objects.none(),
-            "search_values": {
-                "sku": sku,
-                "upc": upc,
-                "name": name,
-                "location": location,
-                "serial_number": serial_number,
-                "item_id": item_id,
-            },
+            "items": items,
             "status_choices": InventoryItem.Status.choices,
+            "type_choices": _item_type_choices(),
             "locations": Location.objects.all().order_by("name"),
+            **parsed,
         }
 
         return render(request, "inventory/inventory_search.html", context)
@@ -452,22 +576,35 @@ MAX_BULK = 200
 
 
 def _bulk_redirect_back(request):
-    """Round-trip back to the search results, preserving the active filters."""
-    filter_keys = (
+    """Round-trip back to the search results, preserving the active filters.
+
+    ``status`` and ``item_type`` are multi-valued, so use ``getlist`` +
+    ``urlencode(..., doseq=True)`` to faithfully reproduce every selected value.
+    """
+    single_keys = (
         "sku",
         "upc",
         "name",
-        "status",
         "location",
         "serial_number",
         "item_id",
+        "date_from",
+        "date_to",
+        "preset",
     )
-    params = {
-        k: request.POST.get(k, "") for k in filter_keys if request.POST.get(k, "")
-    }
+    multi_keys = ("status", "item_type")
+    params = []
+    for k in single_keys:
+        v = request.POST.get(k, "")
+        if v:
+            params.append((k, v))
+    for k in multi_keys:
+        for v in request.POST.getlist(k):
+            if v != "":
+                params.append((k, v))
     url = reverse("inventory_search")
     if params:
-        url += "?" + urlencode(params)
+        url += "?" + urlencode(params, doseq=True)
     return redirect(url)
 
 
@@ -1075,24 +1212,10 @@ class AddAMSView(BaseAddProductView):
 
 class InventoryExportView(LoginRequiredMixin, View):
     def get(self, request):
-        # Get filters from query parameters
-        sku = request.GET.get("sku", "")
-        upc = request.GET.get("upc", "")
-        name = request.GET.get("name", "")
-        location = request.GET.get("location", "")
-
-        # Rebuild the filtered queryset
-        items = InventoryItem.objects.exclude(status=5).select_related(
-            "product", "location"
-        )
-        if sku:
-            items = items.filter(product__sku=sku)
-        if upc:
-            items = items.filter(product__upc=upc)
-        if name:
-            items = items.filter(product__name__icontains=name)
-        if location:
-            items = items.filter(location__name__icontains=location)
+        # Rebuild the same filtered queryset the search page rendered, so the
+        # export matches what the user is looking at (honours status/type/date/
+        # preset, not just the legacy sku/upc/name/location subset).
+        items, _ = _filtered_search_items(request.GET)
 
         # Create Excel workbook
         wb = openpyxl.Workbook()

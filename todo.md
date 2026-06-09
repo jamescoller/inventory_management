@@ -50,18 +50,23 @@ consolidation + inline-JS extraction (18.2), and the **visual/UX beauty** pass (
   prerequisite safety net before Phase 16 adds a sustained writer.
 
 ### 11.2 — Search page redo  *(item #2)*
-- [ ] **Bug — the `status` filter is dead.** The template renders a `status` text input
-  (`inventory_search.html:67`) that `InventorySearchView` never reads; the view hardcodes
-  `exclude(status=5)` so **DEPLETED/SOLD/UNKNOWN are unfindable**. This is the "I can't find
-  lost items" pain.
-- [ ] Real filters: **status** (multi-select, incl. UNKNOWN/SOLD/DEPLETED), **item type**
-  (Filament/Printer/AMS/Dryer/Hardware via `product__polymorphic_ctype`), **location
-  subtree** (reuse `Location.descendant_ids()`), date-added range.
-- [ ] **"Lost & Found" preset** — one click → `status=UNKNOWN` ∪ items at retired/empty
-  locations. Directly serves the audit-recovery workflow.
-- [ ] Implementation: wire `django-filter`'s `FilterView` (the code-audit's recommendation;
-  package was removed in the audit-quick-wins pass — re-add) **or** clean Q-objects in a
-  refactored view. Extract the 114 lines of inline JS to `static/inventory/js/`.
+- [x] **Bug — the `status` filter is dead.** The template rendered a `status` text input
+  (`inventory_search.html:67`) that `InventorySearchView` never read; the view hardcoded
+  `exclude(status=5)` so **DEPLETED/SOLD/UNKNOWN were unfindable**. Fixed: hardcode removed;
+  `status` is now a real multi-select. Default view still hides DEPLETED/SOLD noise but keeps
+  UNKNOWN — and all three are selectable.
+- [x] Real filters: **status** (multi-select, incl. UNKNOWN/SOLD/DEPLETED), **item type**
+  (Filament/Printer/AMS/Dryer/Hardware via `product__polymorphic_ctype__model`), **location
+  subtree** (reuses the `_expanded_location_ids` / `Location.descendant_ids()` helper),
+  date-added range (`date_from`/`date_to`).
+- [x] **"Lost & Found" preset** — `?preset=lost_found` → `status=UNKNOWN` ∪ items with no
+  location (left at a retired/empty location). One-click button on the search page; serves
+  the audit-recovery workflow.
+- [x] Implementation: clean Q-objects in a refactored `InventorySearchView` (NO django-filter
+  re-added). Status/type choices built from the model. Filtering extracted to a shared
+  `_filtered_search_items()` so the Excel export honours the same filters (it had the same
+  dead `exclude(status=5)` bug). Inline JS extracted to
+  `inventory/static/inventory/js/inventory_search.js`.
 
 ### 11.3 — Foundation refactor  *(gates Phase 12; non-behavioral, high blast radius)*
 - [ ] Extract `inventory/items.py`: `move_to(item, location, *, status=None, …)`,
