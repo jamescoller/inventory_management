@@ -384,21 +384,33 @@ Spec/plan in `docs/superpowers/`. Built subagent-driven (TDD, 6 tasks).
   non-nullable `CharField` (latent 500 on the add-product-from-inventory flow) →
   `shipment=pending.get("shipment") or ""`.
 
-### Roadmap (as of June 2026)
+### Roadmap (rewritten 2026-06-09 — Phases 11–18)
 
-Phases 5–8 documented in `todo.md`. Summary:
-- **Phase 5**: ✅ PR #108 merged. Next: fill `docs/filament-guide-data.csv` and run the Haiku data-loading task.
-- **Phase 6**: ✅ Location hierarchy + audit mode merged+deployed (PR #113). Inline
-  add-item follow-up done (separate PR). Remaining: #49 standalone read-only location
-  page; phone camera scanning (`@zxing/browser` → POST decoded code to the already
-  input-agnostic `/audit/scan/`); the manual prod setup listed above.
-- **Phase 7**: Filament Selection Guide Stage 2 — requirements picker (depends on Phase 5 data loading).
-- **Phase 8**: Data visualizations (spool weight; usage over time needs `ConsumptionEvent` design first).
-- **Django upgrade**: ✅ Done (issue #109 closed May 2026). Now on Django 6.0.5 in
-  production — landed via constraint bump `4d07401` (2026-05-15), not a discrete
-  upgrade PR; prod rebuilds from `requirements.txt` on every master merge.
-  django-crispy-forms 2.6 (PR #103) merged to finish it off. Note: 6.0 is **not**
-  an LTS (5.2 was the prior LTS) — track the next 6.x LTS for a long-haul pin.
+A 10,000-ft review (2026-06-09) replaced the old Phase 5–10 framing with a forward,
+dependency-ordered roadmap. **`todo.md` is rewritten** (Phases 11–18 up top; completed
+Phases 1–10 archived at the bottom). Brainstorm + ASCII wireframes in `ideas.md`; design
+docs under `docs/`: `architecture-review-2026-06-09`, `workflow-and-domain-design`,
+`bambu-mqtt-integration`, `admin-2.0`, `filament-data-pipeline`, `db-backup-status`. Landed
+via **PR #129** (roadmap/docs) + **PR #130** (backup script); `docs/overnight-build-kickoff.md`
+is the agent execution guide. Decisions captured: daily-driver UX + DB backup first; Bambu
+MQTT phased (read-only telemetry mirror first, auto-sync later); **FULL procurement**; the top
+rework = extract an `inventory/items.py` `move_to()`/`deplete()`/`set_status()` service (the
+`_skip_status_from_location` flag dance is copy-pasted across audit/bulk/admin — `models.py:529`).
+
+- **Phase 11.1 DB backup:** script done + validated (PR #130) but deployment BLOCKED — NFS
+  won't mount in the unprivileged app LXC (`mount.nfs: Operation not permitted`). Proven fix =
+  CIFS-on-host + bind-mount (the Plex CT 106 pattern; `uid=101000,gid=101000`). See
+  `docs/db-backup-status.md`. **Don't re-attempt the in-LXC NFS mount.**
+- **Phase 6 manual prod setup is NOT done** (verified against prod 2026-06-09): AMS slot `unit`
+  FKs 12/34 linked, **dryer slots 0/16**, **215 items still on 18 legacy flat shelves** (the
+  "lost at old locations" inventory James wants to find), plus a stray "Dryer XX" with 0 slots.
+  Anything touching location/audit, and the Phase-16 MQTT auto-sync (joins via `Location.unit`),
+  is affected until these are linked/reconciled.
+- **Phase 17 filament data:** source files are in the repo (`filament_TDS/`, `filament_hex/`,
+  `filament-guide-en.pdf`). Parsing needs a **dev-only** `pypdf` (approved; never a prod/image
+  dep); the hex screenshot PNGs read via vision. See `docs/filament-data-pipeline.md`.
+- **Django upgrade**: ✅ Done — prod on Django 6.0.5 (constraint bump `4d07401`, 2026-05-15).
+  6.0 is **not** an LTS (5.2 was the prior LTS) — track the next 6.x LTS for a long-haul pin.
 
 ## Environment notes
 
