@@ -745,6 +745,22 @@ class Location(models.Model):
     def __str__(self):
         return self.name
 
+    def clean(self):
+        super().clean()
+        # ``unit`` identifies the physical machine a slot belongs to, so it may
+        # only point at an AMS/dryer/printer InventoryItem. Linking it to slot
+        # contents (a filament roll, hardware) makes ``_is_unit_item`` treat that
+        # item as a tracked container, so it can no longer be audited or moved.
+        if self.unit_id and not isinstance(self.unit.product, (AMS, Dryer, Printer)):
+            raise ValidationError(
+                {
+                    "unit": (
+                        "A slot's unit must be a physical AMS, dryer, or printer "
+                        "unit — not slot contents."
+                    )
+                }
+            )
+
     @property
     def is_container(self):
         return self.kind in self.CONTAINER_KINDS

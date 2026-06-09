@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
@@ -1282,6 +1283,43 @@ class LocationAdminUnitFieldTests(TestCase):
     def test_unit_label_shows_serial_number(self):
         label = self._unit_formfield().label_from_instance(self.ams_item)
         self.assertIn("SD-1", label)
+
+
+class LocationUnitValidationTests(TestCase):
+    """``Location.unit`` may only point at a physical AMS/dryer/printer unit.
+
+    Regression: a slot's ``unit`` FK was hand-linked to a filament roll's
+    InventoryItem instead of the AMS unit. That made ``_is_unit_item`` treat the
+    roll as a tracked container, so it could not be audited as slot contents.
+    The admin picker queryset (PR #117) only filters rendered choices; this is
+    the model-layer guard that also covers shell/bulk/migration writes.
+    """
+
+    def setUp(self):
+        self.ams_item = InventoryItem.objects.create(
+            product=AMS.objects.create(name="AMS Phys", upc="2000000000099"),
+            serial_number="SD-9",
+        )
+        self.filament_item = InventoryItem.objects.create(
+            product=Filament.objects.create(name="PLA WU", upc="2000000000001"),
+        )
+
+    def test_unit_pointing_at_filament_is_rejected(self):
+        loc = Location(
+            name="Bad Slot", kind=Location.Kind.AMS_SLOT, unit=self.filament_item
+        )
+        with self.assertRaises(ValidationError):
+            loc.full_clean()
+
+    def test_unit_pointing_at_physical_unit_is_allowed(self):
+        loc = Location(
+            name="Good Slot", kind=Location.Kind.AMS_SLOT, unit=self.ams_item
+        )
+        loc.full_clean()  # must not raise
+
+    def test_unit_may_be_null(self):
+        loc = Location(name="Empty Slot", kind=Location.Kind.AMS_SLOT)
+        loc.full_clean()  # must not raise
 
 
 class SearchBulkActionWiringTests(TestCase):
