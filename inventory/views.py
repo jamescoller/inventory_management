@@ -884,6 +884,19 @@ def _build_low_stock_alerts():
     return alerts
 
 
+class FilamentHubView(LoginRequiredMixin, TemplateView):
+    """Landing page that ties the three filament views together with mode tabs.
+
+    Intentionally a thin shell: it does *not* duplicate or reimplement the
+    Summary / Color Guide / Guide views — it links out to their existing
+    URLs, which all remain live so the change is fully reversible. ``active``
+    lets the same template highlight the current tab when those pages render
+    inside the hub navbar (see ``filament_nav.html``).
+    """
+
+    template_name = "inventory/filament_hub.html"
+
+
 class FilamentColorGuideView(LoginRequiredMixin, TemplateView):
     template_name = "inventory/filament_color_guide.html"
 
@@ -1184,6 +1197,14 @@ class Dashboard(LoginRequiredMixin, View):
             .order_by("-count")
         ]
 
+        # Chart-ready labels/data for the product-type pie. Derived from
+        # item_counts_by_type so the template can ship it via json_script
+        # (XSS-safe) instead of interpolating into inline JS.
+        type_chart_data = {
+            "labels": [e["class_name"] for e in item_counts_by_type],
+            "data": [e["count"] for e in item_counts_by_type],
+        }
+
         total_value = InventoryItem.objects.aggregate(total=Sum("product__price"))[
             "total"
         ] or Decimal("0.00")
@@ -1245,6 +1266,7 @@ class Dashboard(LoginRequiredMixin, View):
                 "locations": Location.objects.all(),
                 "grand_total": grand_total,
                 "value": total_value,
+                "type_chart_data": type_chart_data,
                 "filament_chart_data": filament_chart_data,
                 "color_chart_data": color_chart_data,
                 "inventory_by_sku": inventory_by_sku,

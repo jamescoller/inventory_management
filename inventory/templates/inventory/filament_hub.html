@@ -1,0 +1,58 @@
+{% extends "inventory/base.html" %}
+
+{% block content %}
+    <div class="container py-4">
+        <h1 class="mb-1">Filament</h1>
+        <p class="text-muted">Everything about your filament inventory, colors, and material selection in one place.</p>
+
+        {% include "inventory/filament_nav.html" with active="hub" %}
+
+        <div class="row g-3">
+            <div class="col-md-4">
+                <a href="{% url 'filament_summary' %}" class="text-decoration-none">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="bi bi-bar-chart-fill" aria-hidden="true"></i> Inventory
+                            </h5>
+                            <p class="card-text text-body-secondary">
+                                Rolls on hand by material, subtype, and color family, with usage
+                                over the last 7 days, 30 days, and year.
+                            </p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="{% url 'filament_color_guide' %}" class="text-decoration-none">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="bi bi-palette2" aria-hidden="true"></i> Colors
+                            </h5>
+                            <p class="card-text text-body-secondary">
+                                Every color you own grouped by color family, with swatches and
+                                spool counts.
+                            </p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="{% url 'filament_guide' %}" class="text-decoration-none">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="bi bi-stars" aria-hidden="true"></i> Selection Guide
+                            </h5>
+                            <p class="card-text text-body-secondary">
+                                Reference table of material properties (strength, heat, drying,
+                                enclosure) to help pick the right filament for a job.
+                            </p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </div>
+{% endblock content %}

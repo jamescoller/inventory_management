@@ -1,6 +1,7 @@
 {% extends "inventory/base.html" %}
 
 {% load humanize %}
+{% load static %}
 
 {% block content %}
     <div class="container py-4">
@@ -48,60 +49,13 @@
             </div>
         </div>
 
+        {{ type_chart_data.labels|json_script:"type-labels" }}
+        {{ type_chart_data.data|json_script:"type-data" }}
         {{ filament_chart_data.labels|json_script:"filament-labels" }}
         {{ filament_chart_data.data|json_script:"filament-data" }}
         {{ color_chart_data.labels|json_script:"color-labels" }}
         {{ color_chart_data.data|json_script:"color-data" }}
         {{ color_chart_data.colors|json_script:"color-colors" }}
-
-        <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            if (typeof Chart === 'undefined') return;
-
-            // Helper: read json_script data
-            function jd(id) { return JSON.parse(document.getElementById(id).textContent); }
-
-            // Chart 1 — Inventory by Product Type
-            new Chart(document.getElementById('categoryChart'), {
-                type: 'pie',
-                data: {
-                    labels: [{% for e in item_counts_by_type %}"{{ e.class_name }}"{% if not forloop.last %},{% endif %}{% endfor %}],
-                    datasets: [{
-                        data: [{% for e in item_counts_by_type %}{{ e.count }}{% if not forloop.last %},{% endif %}{% endfor %}],
-                        backgroundColor: ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc948','#b07aa1','#ff9da7'],
-                        borderWidth: 1
-                    }]
-                },
-                options: { responsive: true, plugins: { legend: { position: 'bottom' }, title: { display: true, text: 'By Product Type' } } }
-            });
-
-            // Chart 2 — Filament by Material
-            new Chart(document.getElementById('filamentPieChart'), {
-                type: 'pie',
-                data: {
-                    labels: jd('filament-labels'),
-                    datasets: [{ data: jd('filament-data'), backgroundColor: ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc948','#b07aa1','#ff9da7'], hoverOffset: 4 }]
-                },
-                options: { responsive: true, plugins: { legend: { position: 'bottom' }, title: { display: true, text: 'Filament by Material' } } }
-            });
-
-            // Chart 3 — Filament by Color Family (real hex colors)
-            new Chart(document.getElementById('colorFamilyChart'), {
-                type: 'doughnut',
-                data: {
-                    labels: jd('color-labels'),
-                    datasets: [{
-                        data: jd('color-data'),
-                        backgroundColor: jd('color-colors'),
-                        borderColor: 'rgba(0,0,0,0.15)',
-                        borderWidth: 1,
-                        hoverOffset: 6
-                    }]
-                },
-                options: { responsive: true, plugins: { legend: { position: 'bottom' }, title: { display: true, text: 'Filament by Color Family' } } }
-            });
-        });
-        </script>
 
         <!-- Low Stock Alerts -->
         {% if low_stock_alerts %}
@@ -253,52 +207,8 @@
         </div>
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            if (typeof $ === 'undefined') {
-                console.error('❌ jQuery not loaded – DataTables will not work.');
-                return;
-            }
-
-            const table = $('#inventoryTable').DataTable({
-                ordering: true,
-                pageLength: 25,
-                order: [[3, 'desc']]  // Sort by Inventory Count, descending
-            });
-
-            function updateVisibleTotal() {
-                let total = 0;
-                table.column(3, {search: 'applied'}).nodes().each(function (cell) {
-                    const val = parseInt($(cell).text());
-                    if (!isNaN(val)) total += val;
-                });
-                $('#totalVisibleCount').text(total);
-                $('#visibleCount').text(table.rows({ search: 'applied' }).count());
-            }
-            $('#typeFilter').on('change', function () {
-                table.column(1).search(this.value).draw();
-            });
-            $('#locationFilter').on('change', function () {
-                table.column(3).search(this.value).draw();
-            });
-            $('#resetFilters').on('click', function () {
-                $('#typeFilter').val('');
-                $('#locationFilter').val('');
-                table.columns().search('').draw();
-            });
-
-            table.on('draw', function () {
-                updateVisibleTotal();
-                updatePrintSummary(table.rows({ search: 'applied' }).count());
-            });
-
-            updateVisibleTotal(); // initial
-            function updatePrintSummary(total) {
-                const now = new Date();
-                document.getElementById('printDate').textContent = now.toLocaleDateString();
-                document.getElementById('printVisibleCount').textContent = total;
-            }
-        });
-    </script>
-
 {% endblock content %}
+
+{% block extra_scripts %}
+    <script src="{% static 'inventory/js/dashboard.js' %}"></script>
+{% endblock extra_scripts %}

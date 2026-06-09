@@ -272,6 +272,118 @@ class FilamentSummaryViewTests(TestCase):
         self.assertEqual(black_row["hex_code"], "#000000")
 
 
+@override_settings(ENABLE_BARCODE_PRINTING=False)
+class FilamentHubTests(TestCase):
+    """Phase 18.2: a hub ties the three filament pages together, the three
+    standalone URLs keep working, and the inline JS now lives in static files
+    loaded via {% static %} with server data passed through json_script."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="hubuser", password="pass")
+        cls.mat = Material.objects.create(name="PLA", material_type="")
+        cls.loc = Location.objects.create(
+            name="Shelf", default_status=InventoryItem.Status.NEW
+        )
+        cls.fil = Filament.objects.create(
+            name="PLA Black",
+            upc="5000000000001",
+            material=cls.mat,
+            color="Black",
+            color_family="BLACK",
+        )
+        InventoryItem.objects.create(product=cls.fil, location=cls.loc)
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username="hubuser", password="pass")
+
+    def test_hub_renders_and_links_to_each_mode(self):
+        resp = self.client.get(reverse("filament_hub"))
+        self.assertEqual(resp.status_code, 200)
+        for name in ("filament_summary", "filament_color_guide", "filament_guide"):
+            self.assertContains(resp, reverse(name))
+
+    def test_hub_requires_login(self):
+        self.client.logout()
+        resp = self.client.get(reverse("filament_hub"))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login/", resp["Location"])
+
+    def test_standalone_filament_urls_still_work(self):
+        for name in (
+            "filament_summary",
+            "filament_color_guide",
+            "filament_guide",
+        ):
+            resp = self.client.get(reverse(name))
+            self.assertEqual(resp.status_code, 200, f"{name} -> {resp.status_code}")
+
+    def test_each_page_carries_the_hub_tab_bar(self):
+        """Every filament page links back to the hub via the shared tab bar."""
+        hub_url = reverse("filament_hub")
+        for name in (
+            "filament_summary",
+            "filament_color_guide",
+            "filament_guide",
+        ):
+            resp = self.client.get(reverse(name))
+            self.assertContains(resp, hub_url, msg_prefix=name)
+
+    def test_summary_loads_external_js_not_inline(self):
+        resp = self.client.get(reverse("filament_summary"))
+        self.assertContains(resp, "inventory/js/filament_summary.js")
+        # The old inline implementation defined applyFilters() in the page.
+        self.assertNotContains(resp, "function applyFilters()")
+
+    def test_summary_context_intact(self):
+        resp = self.client.get(reverse("filament_summary"))
+        for key in ("cards", "rows", "grand_total_rolls", "total_materials"):
+            self.assertIn(key, resp.context)
+
+
+@override_settings(ENABLE_BARCODE_PRINTING=False)
+class DashboardJsExtractionTests(TestCase):
+    """Dashboard inline JS moved to a static file; chart data flows through
+    json_script blocks rather than being interpolated into a <script>."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="dashuser", password="pass")
+        cls.mat = Material.objects.create(name="PLA", material_type="")
+        cls.loc = Location.objects.create(
+            name="Shelf", default_status=InventoryItem.Status.NEW
+        )
+        cls.fil = Filament.objects.create(
+            name="PLA Black",
+            upc="5100000000001",
+            material=cls.mat,
+            color="Black",
+            color_family="BLACK",
+        )
+        InventoryItem.objects.create(product=cls.fil, location=cls.loc)
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username="dashuser", password="pass")
+
+    def test_dashboard_loads_external_js(self):
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, "inventory/js/dashboard.js")
+
+    def test_dashboard_exposes_chart_data_via_json_script(self):
+        resp = self.client.get(reverse("dashboard"))
+        for el_id in ("type-labels", "type-data", "color-colors"):
+            self.assertContains(resp, f'id="{el_id}"')
+
+    def test_dashboard_context_has_type_chart_data(self):
+        resp = self.client.get(reverse("dashboard"))
+        self.assertIn("type_chart_data", resp.context)
+        data = resp.context["type_chart_data"]
+        self.assertIn("labels", data)
+        self.assertIn("data", data)
+
+
 class ModelSaveTests(TestCase):
     """One save()/round-trip per model. Catches schema regressions early."""
 
@@ -457,6 +569,12 @@ class ViewRoundTripTests(TestCase):
 
     def test_filament_summary(self):
         self._assert_ok("filament_summary")
+
+    def test_filament_guide(self):
+        self._assert_ok("filament_guide")
+
+    def test_filament_hub(self):
+        self._assert_ok("filament_hub")
 
     def test_print_barcode_unique(self):
         url = reverse(
