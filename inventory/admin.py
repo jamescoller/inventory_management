@@ -21,7 +21,9 @@ from .models import (
     Hardware,
     InventoryItem,
     Location,
+    MaintenanceEvent,
     Material,
+    NozzleConfig,
     Printer,
     Product,
 )
@@ -37,6 +39,26 @@ class InventoryItemInline(admin.TabularInline):  # or admin.StackedInline
     extra = 0
     fields = ("shipment", "location", "status", "date_depleted")
     readonly_fields = ("date_depleted",)
+
+
+class MaintenanceEventInline(admin.TabularInline):
+    """Maintenance timeline shown on a machine's InventoryItem admin page."""
+
+    model = MaintenanceEvent
+    fk_name = "unit"
+    extra = 0
+    fields = (
+        "occurred_at",
+        "kind",
+        "severity",
+        "title",
+        "part",
+        "cost",
+        "downtime_hours",
+        "resolved",
+    )
+    autocomplete_fields = ("part",)
+    ordering = ("-occurred_at",)
 
 
 # Limit what product types are shown in the product type filter
@@ -170,6 +192,7 @@ class PrinterAdmin(ProductChildAdmin):
 class HardwareAdmin(ProductChildAdmin):
     base_model = Hardware
     show_in_index = True
+    search_fields = ["name", "sku", "upc"]
     fields = [
         "qty",
         "kind",
@@ -217,6 +240,7 @@ class ProductParentAdmin(PolymorphicParentModelAdmin):
 @admin.register(InventoryItem)
 class InventoryItemAdmin(SimpleHistoryAdmin):
     form = InventoryItemForm
+    inlines = [MaintenanceEventInline]
 
     change_list_template = "admin/inventory/inventoryitem/change_list.html"
 
@@ -522,3 +546,33 @@ class AuditUnknownScanAdmin(admin.ModelAdmin):
     list_filter = ("resolved", "dismissed")
     search_fields = ("upc",)
     list_select_related = ("location",)
+
+
+@admin.register(MaintenanceEvent)
+class MaintenanceEventAdmin(admin.ModelAdmin):
+    list_display = (
+        "occurred_at",
+        "unit",
+        "kind",
+        "severity",
+        "title",
+        "cost",
+        "downtime_hours",
+        "resolved",
+    )
+    list_filter = ("kind", "severity", "resolved")
+    search_fields = ("title", "detail", "hms_code", "unit__product__name")
+    autocomplete_fields = ("part",)
+    list_select_related = ("unit__product", "part")
+    date_hierarchy = "occurred_at"
+
+
+@admin.register(NozzleConfig)
+class NozzleConfigAdmin(admin.ModelAdmin):
+    list_display = (
+        "printer",
+        "nozzle_diameter_mm",
+        "nozzle_type",
+        "hotend_changed_at",
+    )
+    list_select_related = ("printer__product",)

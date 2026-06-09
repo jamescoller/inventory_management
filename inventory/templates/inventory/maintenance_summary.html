@@ -1,0 +1,118 @@
+{% extends "inventory/base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-3">
+        <div class="col">
+            <h2>Machine Reliability</h2>
+            <p class="text-muted">
+                Faults, downtime, and maintenance spend per machine <strong>model</strong> — the
+                "should I replace, refund, or rebuy?" view. MTBF is the fleet's summed
+                in-service age divided by its fault count.
+            </p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col">
+            <div class="table-responsive">
+                <table id="reliability-table" class="table table-sm table-hover table-bordered w-100">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Model</th>
+                            <th title="Number of physical units owned">Units</th>
+                            <th title="Total faults logged across the fleet">Faults</th>
+                            <th title="Faults divided by unit count">Faults / Unit</th>
+                            <th title="Currently unresolved faults">Open</th>
+                            <th title="Total maintenance spend">Maint. $</th>
+                            <th title="Total recorded downtime">Downtime (h)</th>
+                            <th title="Mean time between failures, in days">MTBF (days)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in rows %}
+                        <tr {% if r.faults_per_unit >= 1 %}class="table-warning"{% endif %}>
+                            <td><strong>{{ r.model }}</strong></td>
+                            <td class="text-end">{{ r.units }}</td>
+                            <td class="text-end">{{ r.faults }}</td>
+                            <td class="text-end" data-sort="{{ r.faults_per_unit|floatformat:3 }}">
+                                {{ r.faults_per_unit|floatformat:2 }}
+                            </td>
+                            <td class="text-end">
+                                {% if r.open_faults %}<span class="text-danger fw-bold">{{ r.open_faults }}</span>{% else %}0{% endif %}
+                            </td>
+                            <td class="text-end">${{ r.total_cost|floatformat:2 }}</td>
+                            <td class="text-end">{{ r.total_downtime_hours|floatformat:2 }}</td>
+                            <td class="text-end" data-sort="{% if r.mtbf_days %}{{ r.mtbf_days|floatformat:2 }}{% else %}999999{% endif %}">
+                                {% if r.mtbf_days %}{{ r.mtbf_days|floatformat:1 }}{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="8" class="text-center text-muted">No machine units in inventory yet.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col">
+            <h4>Recent maintenance</h4>
+            <table class="table table-sm table-hover">
+                <thead>
+                    <tr>
+                        <th>When</th>
+                        <th>Unit</th>
+                        <th>Kind</th>
+                        <th>Title</th>
+                        <th>Cost</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in recent_events %}
+                    <tr>
+                        <td>{{ e.occurred_at|date:"Y-m-d H:i" }}</td>
+                        <td>
+                            <a href="{% url 'unit_maintenance' e.unit_id %}">{{ e.unit.product }}</a>
+                        </td>
+                        <td>{{ e.get_kind_display }}</td>
+                        <td>{{ e.title }}</td>
+                        <td>{% if e.cost %}${{ e.cost|floatformat:2 }}{% else %}—{% endif %}</td>
+                        <td>
+                            {% if e.kind == 1 and not e.resolved %}
+                                <span class="badge bg-danger">Open fault</span>
+                            {% else %}
+                                <span class="badge bg-success">Done</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="6" class="text-center text-muted">No maintenance logged yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock content %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        new DataTable('#reliability-table', {
+            ordering: true,
+            paging: false,
+            info: false,
+            searching: true,
+            order: [[3, 'desc']],
+        });
+        document.querySelectorAll('#reliability-table th[title]').forEach(function (el) {
+            new bootstrap.Tooltip(el, { placement: 'top' });
+        });
+    });
+</script>
+{% endblock extra_scripts %}

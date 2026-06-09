@@ -20,7 +20,7 @@ from django.utils.timezone import localtime
 from django.utils.timezone import now as timezone_now
 from django.views.generic import CreateView, TemplateView, UpdateView, View
 
-from . import audit, items
+from . import audit, items, maintenance
 from .barcode_utils import generate_and_print_barcode
 from .forms import (
     AMSForm,
@@ -29,6 +29,7 @@ from .forms import (
     HardwareForm,
     InventoryEditForm,
     InventoryItemForm,
+    MaintenanceEventForm,
     PrinterForm,
     UserRegisterForm,
 )
@@ -42,9 +43,12 @@ from .models import (
     Hardware,
     InventoryItem,
     Location,
+    MaintenanceEvent,
     Material,
+    NozzleConfig,
     Printer,
     Product,
+    is_machine_item,
 )
 
 logger = logging.getLogger("inventory")
@@ -389,6 +393,7 @@ class InventoryEditView(LoginRequiredMixin, UpdateView):
                 "product": product,
                 "is_filament": isinstance(product, Filament),
                 "location_status_timeline": item.location_status_timeline(),
+                "is_machine": is_machine_item(item),
             },
         )
 
@@ -415,6 +420,7 @@ class InventoryEditView(LoginRequiredMixin, UpdateView):
             "product": product,
             "is_filament": isinstance(product, Filament),
             "location_status_timeline": item.location_status_timeline(),
+            "is_machine": is_machine_item(item),
         }
 
         if form.is_valid():
@@ -1069,6 +1075,89 @@ class FilamentGuideView(LoginRequiredMixin, TemplateView):
             .order_by("name", "material_type")
         )
         return context
+
+
+class MaintenanceSummaryView(LoginRequiredMixin, TemplateView):
+    """Reliability / "rebuy-or-refund" dashboard.
+
+    Per machine *model*: fault count, faults-per-unit, open faults, total
+    downtime, maintenance spend, and MTBF. Computed via DB aggregations in
+    :func:`maintenance.model_reliability`.
+    """
+
+    template_name = "inventory/maintenance_summary.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["rows"] = maintenance.model_reliability()
+        context["recent_events"] = MaintenanceEvent.objects.select_related(
+            "unit__product__polymorphic_ctype", "part"
+        ).order_by("-occurred_at", "-created_at")[:25]
+        return context
+
+
+class UnitMaintenanceView(LoginRequiredMixin, TemplateView):
+    """Per-machine maintenance timeline, reached from the item page."""
+
+    template_name = "inventory/unit_maintenance.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        item = get_object_or_404(
+            InventoryItem.objects.select_related("product"), id=kwargs["item_id"]
+        )
+        context["item"] = item
+        context["product"] = item.product.get_real_instance()
+        context["is_machine"] = is_machine_item(item)
+        context["events"] = maintenance.unit_events(item)
+        context["summary"] = maintenance.unit_summary(item)
+        context["nozzle_config"] = getattr(item, "nozzle_config", None)
+        return context
+
+
+class MaintenanceLogCreateView(LoginRequiredMixin, CreateView):
+    """Log a maintenance event against a specific machine ``InventoryItem``.
+
+    ``unit`` is bound from the URL (not the form), and a hotend-swap event also
+    updates the printer's live :class:`NozzleConfig` via the service module.
+    """
+
+    model = MaintenanceEvent
+    form_class = MaintenanceEventForm
+    template_name = "inventory/maintenance_log_form.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        self.unit = get_object_or_404(
+            InventoryItem.objects.select_related("product"), id=kwargs["item_id"]
+        )
+        if not is_machine_item(self.unit):
+            messages.error(
+                request,
+                "Maintenance can only be logged on a machine (printer, AMS, or dryer).",
+            )
+            return redirect("inventory_edit", item_id=self.unit.id)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["item"] = self.unit
+        context["product"] = self.unit.product.get_real_instance()
+        return context
+
+    def form_valid(self, form):
+        event = form.save(commit=False)
+        event.unit = self.unit
+        event.full_clean()  # enforce the machine-only model guard server-side
+        event.save()
+        # A hotend swap also advances the printer's live nozzle state.
+        if event.kind == MaintenanceEvent.Kind.HOTEND_SWAP and isinstance(
+            self.unit.product.get_real_instance(), Printer
+        ):
+            config, _ = NozzleConfig.objects.get_or_create(printer=self.unit)
+            config.hotend_changed_at = event.occurred_at
+            config.save(update_fields=["hotend_changed_at"])
+        messages.success(self.request, f"Logged maintenance: {event.title}")
+        return redirect("unit_maintenance", item_id=self.unit.id)
 
 
 class Dashboard(LoginRequiredMixin, View):

@@ -4,7 +4,16 @@ from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 
-from .models import AMS, Dryer, Filament, Hardware, InventoryItem, Location, Printer
+from .models import (
+    AMS,
+    Dryer,
+    Filament,
+    Hardware,
+    InventoryItem,
+    Location,
+    MaintenanceEvent,
+    Printer,
+)
 
 # Statuses a user may set by hand. UNKNOWN is audit-internal; DEPLETED/SOLD have
 # dedicated actions that also clear the location.
@@ -53,6 +62,42 @@ class MoveItemForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["location"].queryset = Location.assignable()
         self.fields["status"].choices = _USER_SETTABLE_STATUSES
+
+
+class MaintenanceEventForm(forms.ModelForm):
+    """Log a maintenance event for a machine. ``unit`` is bound from the URL by
+    the view (the form is always reached from a specific machine's item page), so
+    it is not a user-editable field. ``part`` is limited to Hardware products."""
+
+    class Meta:
+        model = MaintenanceEvent
+        fields = [
+            "kind",
+            "severity",
+            "occurred_at",
+            "title",
+            "detail",
+            "part",
+            "cost",
+            "downtime_hours",
+            "resolved",
+        ]
+        widgets = {
+            "occurred_at": forms.DateTimeInput(
+                attrs={"type": "datetime-local"}, format="%Y-%m-%dT%H:%M"
+            ),
+            "detail": forms.Textarea(attrs={"rows": 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["occurred_at"].input_formats = [
+            "%Y-%m-%dT%H:%M",
+            "%Y-%m-%d %H:%M:%S",
+        ]
+        # Only Hardware products are valid parts (screws, hotends, belts, …).
+        self.fields["part"].queryset = Hardware.objects.all().order_by("name")
+        self.fields["part"].required = False
 
 
 class FilamentForm(forms.ModelForm):
