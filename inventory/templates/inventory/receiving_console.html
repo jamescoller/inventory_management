@@ -1,0 +1,82 @@
+{% extends "inventory/base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-3 align-items-center">
+        <div class="col">
+            <h2>Receive — {{ order.order_ref|default:order }}</h2>
+            <p class="text-muted mb-0">{{ order.supplier.name }} · {{ order.get_status_display }}</p>
+        </div>
+        <div class="col-auto">
+            <a class="btn btn-outline-secondary" href="{% url 'po_detail' order.pk %}">Back to PO</a>
+        </div>
+    </div>
+
+    <form method="post" action="{% url 'receiving_scan' order.pk %}" class="card card-body mb-4">
+        {% csrf_token %}
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label for="receive-location" class="form-label">Receiving location</label>
+                <select id="receive-location" name="location" class="form-select" required>
+                    {% for loc in rack_locations %}
+                        <option value="{{ loc.pk }}">{{ loc.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label for="receive-code" class="form-label">Scan UPC</label>
+                <div class="input-group input-group-lg">
+                    <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
+                    <input type="text" id="receive-code" name="code" class="form-control"
+                           autocomplete="off" autofocus
+                           placeholder="Scan or type a product UPC">
+                </div>
+            </div>
+            <div class="col-md-2 d-grid">
+                <button class="btn btn-success btn-lg" type="submit">Receive</button>
+            </div>
+        </div>
+        <div class="form-text mt-2">
+            A USB wedge scanner types the UPC and submits. Tracked goods are minted as
+            inventory items at the chosen location and get an INV- label; cost-only
+            consumables increment the received count without minting an item.
+        </div>
+    </form>
+
+    <h5>Progress</h5>
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle">
+            <thead class="table-dark">
+                <tr>
+                    <th>Product</th>
+                    <th>UPC</th>
+                    <th>Type</th>
+                    <th class="text-end">Ordered</th>
+                    <th class="text-end">Received</th>
+                    <th class="text-end">Outstanding</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in recon.lines %}
+                <tr>
+                    <td>{{ row.line.product }}</td>
+                    <td>{{ row.line.product.upc }}</td>
+                    <td>
+                        {% if row.line.track_individually %}
+                            <span class="badge text-bg-info">Tracked</span>
+                        {% else %}
+                            <span class="badge text-bg-secondary">Cost-only</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">{{ row.ordered }}</td>
+                    <td class="text-end">{{ row.received }}</td>
+                    <td class="text-end {% if row.outstanding %}text-warning fw-bold{% endif %}">{{ row.outstanding }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted">No lines on this order.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock content %}

@@ -28,6 +28,11 @@ from .models import (
     PrintJob,
     PrintJobFilament,
     Product,
+    PurchaseOrder,
+    PurchaseOrderLine,
+    PurchaseReceipt,
+    PurchaseReceiptLine,
+    Supplier,
 )
 
 LOG_PATH = os.path.join(os.path.dirname(__file__), "../inventory.log")
@@ -603,3 +608,64 @@ class PrintJobAdmin(admin.ModelAdmin):
     autocomplete_fields = ["printer"]
     inlines = [PrintJobFilamentInline]
     readonly_fields = ("created_at",)
+
+
+# ----- Procurement (Phase 14) -----
+
+
+@admin.register(Supplier)
+class SupplierAdmin(admin.ModelAdmin):
+    list_display = ("name", "website", "account_ref")
+    search_fields = ("name", "account_ref")
+
+
+class PurchaseOrderLineInline(admin.TabularInline):
+    model = PurchaseOrderLine
+    extra = 1
+    # ``product`` uses a raw-id widget rather than autocomplete: the polymorphic
+    # ProductParentAdmin doesn't declare search_fields (autocomplete requires it),
+    # and adding them there would change the existing product admin.
+    raw_id_fields = ("product",)
+    fields = (
+        "product",
+        "description",
+        "qty_ordered",
+        "qty_received",
+        "unit_cost",
+        "track_individually",
+    )
+
+
+@admin.register(PurchaseOrder)
+class PurchaseOrderAdmin(admin.ModelAdmin):
+    list_display = (
+        "__str__",
+        "supplier",
+        "status",
+        "ordered_at",
+        "expected_at",
+        "grand_total",
+    )
+    list_filter = ("status", "supplier")
+    search_fields = ("order_ref", "supplier__name")
+    list_select_related = ("supplier",)
+    date_hierarchy = "created_at"
+    inlines = [PurchaseOrderLineInline]
+    readonly_fields = ("created_at", "last_modified")
+
+
+class PurchaseReceiptLineInline(admin.TabularInline):
+    model = PurchaseReceiptLine
+    extra = 0
+    raw_id_fields = ("order_line",)
+
+
+@admin.register(PurchaseReceipt)
+class PurchaseReceiptAdmin(admin.ModelAdmin):
+    list_display = ("__str__", "order", "received_at", "received_by")
+    list_filter = ("order__supplier",)
+    list_select_related = ("order", "order__supplier", "received_by")
+    date_hierarchy = "received_at"
+    inlines = [PurchaseReceiptLineInline]
+    # ``attachment`` is rendered but inert until media storage is configured.
+    fields = ("order", "received_at", "received_by", "attachment", "notes")

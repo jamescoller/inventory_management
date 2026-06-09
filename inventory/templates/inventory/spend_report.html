@@ -1,0 +1,79 @@
+{% extends "inventory/base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-3 align-items-center">
+        <div class="col">
+            <h2>Spend Report</h2>
+            <p class="text-muted mb-0">
+                Tracked goods are summed from each item's actual paid cost; cost-only
+                consumables from received line totals.
+            </p>
+        </div>
+        <div class="col-auto">
+            <a class="btn btn-outline-secondary" href="{% url 'po_list' %}">Purchase Orders</a>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card text-bg-light h-100">
+                <div class="card-body">
+                    <h6 class="card-subtitle text-muted">Tracked goods</h6>
+                    <p class="display-6 mb-0">{{ summary.tracked_spend }}</p>
+                    <small class="text-muted">{{ summary.tracked_count }} item(s)</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-bg-light h-100">
+                <div class="card-body">
+                    <h6 class="card-subtitle text-muted">Cost-only consumables</h6>
+                    <p class="display-6 mb-0">{{ summary.consumable_spend }}</p>
+                    <small class="text-muted">{{ summary.consumable_lines }} line(s)</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-bg-primary h-100">
+                <div class="card-body">
+                    <h6 class="card-subtitle">Total spend</h6>
+                    <p class="display-6 mb-0">{{ summary.total_spend }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h5>By supplier</h5>
+    <div class="table-responsive">
+        <table id="spend-table" class="table table-sm table-hover table-bordered w-100">
+            <thead class="table-dark">
+                <tr>
+                    <th>Supplier</th>
+                    <th class="text-end">Ordered Value</th>
+                    <th class="text-end">Received Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in by_supplier %}
+                <tr>
+                    <td>{{ row.supplier__name }}</td>
+                    <td class="text-end">{{ row.ordered_value|default:0 }}</td>
+                    <td class="text-end">{{ row.received_value|default:0 }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="3" class="text-center text-muted">No purchase orders yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock content %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        new DataTable('#spend-table', { ordering: true, paging: false, info: false, searching: false });
+    });
+</script>
+{% endblock extra_scripts %}

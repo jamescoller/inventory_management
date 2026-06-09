@@ -1,0 +1,83 @@
+{% extends "inventory/base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-3 align-items-center">
+        <div class="col">
+            <h2>{{ order.order_ref|default:order }}</h2>
+            <p class="text-muted mb-0">
+                {{ order.supplier.name }} · {{ order.get_status_display }}
+                {% if order.ordered_at %}· ordered {{ order.ordered_at }}{% endif %}
+                {% if order.expected_at %}· expected {{ order.expected_at }}{% endif %}
+            </p>
+        </div>
+        <div class="col-auto">
+            <a class="btn btn-outline-secondary" href="{% url 'po_list' %}">All POs</a>
+            <a class="btn btn-success" href="{% url 'receiving_console' order.pk %}">
+                <i class="bi bi-box-arrow-in-down" aria-hidden="true"></i> Receive
+            </a>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle">
+            <thead class="table-dark">
+                <tr>
+                    <th>Product</th>
+                    <th>Type</th>
+                    <th class="text-end">Unit Cost</th>
+                    <th class="text-end">Ordered</th>
+                    <th class="text-end">Received</th>
+                    <th class="text-end">Outstanding</th>
+                    <th class="text-end">Line Total</th>
+                    <th class="text-end">Received Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in recon.lines %}
+                <tr>
+                    <td>{{ row.line.product }}{% if row.line.description %}<span class="text-muted"> — {{ row.line.description }}</span>{% endif %}</td>
+                    <td>
+                        {% if row.line.track_individually %}
+                            <span class="badge text-bg-info">Tracked</span>
+                        {% else %}
+                            <span class="badge text-bg-secondary">Cost-only</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">{{ row.line.unit_cost }}</td>
+                    <td class="text-end">{{ row.ordered }}</td>
+                    <td class="text-end">{{ row.received }}</td>
+                    <td class="text-end {% if row.outstanding %}text-warning fw-bold{% endif %}">{{ row.outstanding }}</td>
+                    <td class="text-end">{{ row.line_total }}</td>
+                    <td class="text-end">{{ row.received_total }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="8" class="text-center text-muted">No lines on this order.</td></tr>
+                {% endfor %}
+            </tbody>
+            <tfoot class="table-group-divider">
+                <tr class="fw-bold">
+                    <td colspan="3">Totals</td>
+                    <td class="text-end">{{ recon.qty_ordered }}</td>
+                    <td class="text-end">{{ recon.qty_received }}</td>
+                    <td class="text-end">{{ recon.qty_outstanding }}</td>
+                    <td class="text-end">{{ recon.subtotal }}</td>
+                    <td class="text-end">{{ recon.received_value }}</td>
+                </tr>
+                <tr>
+                    <td colspan="6" class="text-end">Shipping</td>
+                    <td colspan="2" class="text-end">{{ order.shipping_cost }}</td>
+                </tr>
+                <tr>
+                    <td colspan="6" class="text-end">Tax</td>
+                    <td colspan="2" class="text-end">{{ order.tax }}</td>
+                </tr>
+                <tr class="fw-bold">
+                    <td colspan="6" class="text-end">Grand total ({{ order.currency }})</td>
+                    <td colspan="2" class="text-end">{{ order.grand_total }}</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+{% endblock content %}

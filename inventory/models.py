@@ -1,5 +1,6 @@
 import colorsys
 import re
+from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
@@ -498,6 +499,28 @@ class InventoryItem(models.Model):
     )
     percent_remaining = models.DecimalField(
         null=True, blank=True, decimal_places=2, max_digits=5, default=100
+    )
+
+    # Procurement / cost layer (Phase 14). ``unit_cost`` is what was actually PAID
+    # for this physical item — distinct from the catalog ``Product.price`` (list /
+    # replacement value). Stamped at receive time from the originating
+    # ``PurchaseOrderLine`` and denormalized here so spend history survives the PO
+    # being edited or deleted. ``source_line`` keeps a drill-back link but is
+    # SET_NULL so deleting a PO never erases an item's cost.
+    unit_cost = models.DecimalField(
+        null=True,
+        blank=True,
+        decimal_places=2,
+        max_digits=8,
+        help_text="Per-unit price actually paid (distinct from catalog price).",
+    )
+    source_line = models.ForeignKey(
+        "PurchaseOrderLine",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="received_items",
+        help_text="The purchase-order line this item was received against.",
     )
 
     # Statuses of an inventory item
@@ -1365,3 +1388,223 @@ class PrintJobFilament(models.Model):
 
     def __str__(self):
         return f"{self.item_id} on job {self.job_id}"
+
+
+# ---------------------------------------------------------------------------
+# Procurement / cost layer (Phase 14)
+#
+# Re-introduces the cost tracking deleted with Order/Shipment in Phase 2, this
+# time normalized. A PurchaseOrder groups lines (one per catalog Product); a
+# receiving event (PurchaseReceipt) records what physically arrived per line.
+# Tracked goods mint InventoryItems at receive time (stamping unit_cost +
+# source_line); cost-only consumables (track_individually=False, e.g. screws)
+# never mint items and contribute to spend only via their line total.
+# ---------------------------------------------------------------------------
+
+
+class Supplier(models.Model):
+    """A vendor that purchase orders are placed with."""
+
+    name = models.CharField(max_length=200, unique=True)
+    website = models.URLField(blank=True, default="")
+    account_ref = models.CharField(
+        max_length=100, blank=True, default="", help_text="Customer/account number."
+    )
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class PurchaseOrder(models.Model):
+    """A single order placed with a supplier, grouping one or more lines."""
+
+    class Status(models.IntegerChoices):
+        DRAFT = 1, "Draft"
+        ORDERED = 2, "Ordered"
+        PARTIAL = 3, "Partially received"
+        RECEIVED = 4, "Received"
+        CANCELLED = 5, "Cancelled"
+
+    supplier = models.ForeignKey(
+        Supplier, on_delete=models.PROTECT, related_name="orders"
+    )
+    order_ref = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        help_text="Supplier order / confirmation number.",
+    )
+    status = models.PositiveSmallIntegerField(
+        choices=Status.choices, default=Status.DRAFT
+    )
+    ordered_at = models.DateField(null=True, blank=True)
+    expected_at = models.DateField(null=True, blank=True)
+    shipping_cost = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    tax = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    currency = models.CharField(max_length=3, default="USD")
+    notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_modified = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Purchase Order"
+        verbose_name_plural = "Purchase Orders"
+
+    def __str__(self):
+        ref = self.order_ref or f"PO-{self.pk}"
+        return f"{ref} ({self.supplier})"
+
+    @property
+    def lines_subtotal(self):
+        """Sum of every line's ordered total (qty_ordered * unit_cost)."""
+        return sum((line.line_total for line in self.lines.all()), Decimal("0"))
+
+    @property
+    def grand_total(self):
+        """Lines subtotal plus shipping and tax."""
+        return self.lines_subtotal + self.shipping_cost + self.tax
+
+    def recompute_status(self, *, save=True):
+        """Derive status from line receipt progress.
+
+        DRAFT/CANCELLED are left untouched (they are set by hand). Otherwise:
+        no line received -> ORDERED; every line fully received -> RECEIVED;
+        anything in between -> PARTIAL. Returns the (possibly new) status.
+        """
+        if self.status in (self.Status.DRAFT, self.Status.CANCELLED):
+            return self.status
+
+        lines = list(self.lines.all())
+        if not lines:
+            return self.status
+
+        total_received = sum(line.qty_received for line in lines)
+        fully = all(line.qty_received >= line.qty_ordered for line in lines)
+        if fully:
+            new_status = self.Status.RECEIVED
+        elif total_received > 0:
+            new_status = self.Status.PARTIAL
+        else:
+            new_status = self.Status.ORDERED
+
+        if new_status != self.status:
+            self.status = new_status
+            if save:
+                self.save(update_fields=["status", "last_modified"])
+        return self.status
+
+
+class PurchaseOrderLine(models.Model):
+    """One product line on a purchase order.
+
+    ``track_individually`` distinguishes serialized/tracked goods (each received
+    unit becomes an :class:`InventoryItem`) from cost-only consumables such as
+    screws or bagged hardware, which are tracked only as a line cost.
+    """
+
+    order = models.ForeignKey(
+        PurchaseOrder, on_delete=models.CASCADE, related_name="lines"
+    )
+    product = models.ForeignKey(
+        Product, on_delete=models.PROTECT, related_name="po_lines"
+    )
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Snapshot description for odd / off-catalog items.",
+    )
+    qty_ordered = models.PositiveIntegerField(default=1)
+    qty_received = models.PositiveIntegerField(default=0)
+    unit_cost = models.DecimalField(
+        max_digits=8, decimal_places=2, help_text="Per-unit price paid."
+    )
+    track_individually = models.BooleanField(
+        default=True,
+        help_text=(
+            "True = mint a tracked InventoryItem per received unit. "
+            "False = cost-only consumable (e.g. screws); no items are created."
+        ),
+    )
+
+    class Meta:
+        ordering = ["id"]
+        verbose_name = "Purchase Order Line"
+        verbose_name_plural = "Purchase Order Lines"
+
+    def __str__(self):
+        return f"{self.qty_ordered}x {self.product} @ {self.unit_cost}"
+
+    @property
+    def line_total(self):
+        """Ordered cost for this line (qty_ordered * unit_cost)."""
+        return self.unit_cost * self.qty_ordered
+
+    @property
+    def received_total(self):
+        """Cost actually received for this line (qty_received * unit_cost)."""
+        return self.unit_cost * self.qty_received
+
+    @property
+    def qty_outstanding(self):
+        """Units still owed (never negative even if over-received)."""
+        return max(self.qty_ordered - self.qty_received, 0)
+
+
+class PurchaseReceipt(models.Model):
+    """A receiving event against a purchase order (supports partial deliveries)."""
+
+    order = models.ForeignKey(
+        PurchaseOrder, on_delete=models.CASCADE, related_name="receipts"
+    )
+    received_at = models.DateTimeField(default=now)
+    received_by = models.ForeignKey(
+        "auth.User", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    # DEFERRED (Phase 14): the receipt/confirmation attachment. The field is
+    # defined now for forward-compatibility but is inert — uploading needs
+    # MEDIA_ROOT/MEDIA_URL (not set today), an nginx alias, and a bind-mounted
+    # media/ volume. No upload widget or flow is wired until that infra lands.
+    attachment = models.FileField(
+        upload_to="receipts/%Y/%m/",
+        null=True,
+        blank=True,
+        help_text=(
+            "Receipt/confirmation file. Inert until media storage is configured "
+            "(MEDIA_ROOT/MEDIA_URL + nginx alias + media volume)."
+        ),
+    )
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-received_at"]
+        verbose_name = "Purchase Receipt"
+        verbose_name_plural = "Purchase Receipts"
+
+    def __str__(self):
+        return f"Receipt for {self.order} @ {self.received_at:%Y-%m-%d}"
+
+
+class PurchaseReceiptLine(models.Model):
+    """Quantity received against a specific PO line in a receiving event."""
+
+    receipt = models.ForeignKey(
+        PurchaseReceipt, on_delete=models.CASCADE, related_name="lines"
+    )
+    order_line = models.ForeignKey(
+        PurchaseOrderLine, on_delete=models.PROTECT, related_name="receipt_lines"
+    )
+    qty_received = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ["id"]
+        verbose_name = "Purchase Receipt Line"
+        verbose_name_plural = "Purchase Receipt Lines"
+
+    def __str__(self):
+        return f"{self.qty_received}x {self.order_line.product}"
