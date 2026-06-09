@@ -145,9 +145,14 @@ class BarcodeRedirectView(LoginRequiredMixin, View):
             location = Location.objects.filter(pk=loc_id).first()
             if location is None:
                 return HttpResponse("Unknown location", status=404)
-            # A scanned location barcode jumps into the audit console focused there.
-            # Containers (AMS/dryer/rack) audit all their slots together.
-            return redirect(f"{reverse('audit_console')}?loc={location.pk}")
+            # Routing: during an active audit, a scanned LOC barcode jumps into the
+            # console focused there (containers audit all their slots together).
+            # Otherwise it opens the read-only location detail page. This keeps the
+            # audit scan workflow intact while making the location page reachable by
+            # scan the rest of the time.
+            if AuditSession.active() is not None:
+                return redirect(f"{reverse('audit_console')}?loc={location.pk}")
+            return redirect("location_detail", location_id=location.pk)
         return HttpResponse("Invalid barcode", status=400)
 
 
@@ -1434,6 +1439,137 @@ class DryStorageOverviewView(LoginRequiredMixin, TemplateView):
 
         context["grouped_items"] = grouped_by_location
         return context
+
+
+def _slot_map_for_unit(container):
+    """Build an ordered slot-occupancy map for an AMS/dryer container.
+
+    Returns a list of ``{"location": <leaf>, "item": <InventoryItem|None>}`` rows
+    ordered by ``slot_index`` (then name), one per assignable child slot. ``item``
+    is the single active occupant of that slot, or None when empty. Used to render
+    the visual slot grid (ideas.md wireframe C). Returns ``[]`` for a container
+    with no slots (so the template simply omits the grid).
+    """
+    slots = list(
+        container.children.filter(kind__in=Location.ASSIGNABLE_KINDS).order_by(
+            "slot_index", "name"
+        )
+    )
+    if not slots:
+        return []
+    slot_ids = [s.id for s in slots]
+    occupants = {}
+    for item in (
+        InventoryItem.objects.filter(location_id__in=slot_ids)
+        .exclude(status__in=items.TERMINAL_STATUSES)
+        .select_related("product", "location")
+    ):
+        # One active occupant per slot (capacity 1); first wins if data is dirty.
+        occupants.setdefault(item.location_id, item)
+    return [{"location": slot, "item": occupants.get(slot.id)} for slot in slots]
+
+
+class LocationDetailView(LoginRequiredMixin, View):
+    """Read-only "what's here" page for a location, plus inline item-move.
+
+    For a leaf, lists the active items physically at that location. For a
+    container (rack/dry-storage/AMS/dryer), aggregates items across its whole
+    subtree via :meth:`Location.descendant_ids`, grouped by the child leaf they
+    sit in. AMS/dryer units (the location itself, or any container child) render a
+    visual slot map.
+
+    POST moves a single item to another assignable leaf via
+    :func:`items.move_to` with ``enforce_capacity=True`` — this is the first
+    production caller to enforce slot capacity. Rejections (full slot / container)
+    surface ``result.message``; drying warnings flash exactly as the edit view.
+    """
+
+    template_name = "inventory/location_detail.html"
+
+    def _get_location(self, location_id):
+        return get_object_or_404(Location, pk=location_id)
+
+    def _grouped_items(self, location):
+        """Active items in ``location``'s subtree (or the leaf itself), grouped by
+        the leaf location they sit in, ordered for display."""
+        if location.is_container:
+            scope_ids = location.descendant_ids()
+        else:
+            scope_ids = {location.id}
+        qs = (
+            InventoryItem.objects.filter(location_id__in=scope_ids)
+            .exclude(status__in=items.TERMINAL_STATUSES)
+            .select_related("product", "location")
+            .order_by("location__slot_index", "location__name", "id")
+        )
+        grouped = {}
+        total = 0
+        for item in qs:
+            grouped.setdefault(item.location, []).append(item)
+            total += 1
+        return grouped, total
+
+    def _slot_maps(self, location):
+        """Slot maps to render: the location itself if it's an AMS/dryer, plus any
+        AMS/dryer container children (so a rack page still draws its units)."""
+        maps = []
+        if location.kind in (Location.Kind.AMS, Location.Kind.DRYER):
+            rows = _slot_map_for_unit(location)
+            if rows:
+                maps.append({"unit": location, "rows": rows})
+        else:
+            for child in location.children.filter(
+                kind__in=(Location.Kind.AMS, Location.Kind.DRYER)
+            ).order_by("name"):
+                rows = _slot_map_for_unit(child)
+                if rows:
+                    maps.append({"unit": child, "rows": rows})
+        return maps
+
+    def _context(self, request, location):
+        grouped, total = self._grouped_items(location)
+        # An audit-aware deep-link target: if a session is live, scanning a LOC
+        # barcode still belongs in the console; surface that path from here.
+        audit_active = AuditSession.active() is not None
+        return {
+            "location": location,
+            "grouped_items": grouped,
+            "item_count": total,
+            "slot_maps": self._slot_maps(location),
+            "move_targets": Location.assignable(),
+            "audit_active": audit_active,
+        }
+
+    def get(self, request, location_id):
+        location = self._get_location(location_id)
+        return render(request, self.template_name, self._context(request, location))
+
+    def post(self, request, location_id):
+        location = self._get_location(location_id)
+        item = get_object_or_404(InventoryItem, pk=request.POST.get("item_id") or 0)
+        dest_id = (request.POST.get("dest_location") or "").strip()
+        dest = (
+            Location.objects.filter(pk=dest_id).first() if dest_id.isdigit() else None
+        )
+        if dest is None:
+            messages.error(request, "Choose a valid destination location.")
+            return redirect("location_detail", location_id=location.id)
+
+        # First caller to enforce slot capacity (enforce_capacity defaults True).
+        result = items.move_to(item, dest, enforce_capacity=True)
+        if not result.ok:
+            messages.error(request, result.message)
+            return redirect("location_detail", location_id=location.id)
+
+        if result.drying_warning:
+            level, msg, _needs_ack = result.drying_warning
+            if level == "warning":
+                messages.warning(request, msg)
+            else:  # info / error advisory — flash as info like the edit view
+                messages.info(request, msg)
+
+        messages.success(request, f"Moved {item.product.name} to {dest.name}.")
+        return redirect("location_detail", location_id=location.id)
 
 
 # ---------------------------------------------------------------------------

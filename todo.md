@@ -87,9 +87,9 @@ consolidation + inline-JS extraction (18.2), and the **visual/UX beauty** pass (
 *The everyday workflow. Depends on 11.3. See wireframes B/C in [`ideas.md`](ideas.md).*
 
 ### 12.1 — Location detail page  *(item #3 / Phase 6 #49)*
-- [ ] Read-only "what's here" list for a location (+ its subtree for containers), reachable
+- [x] Read-only "what's here" list for a location (+ its subtree for containers), reachable
   from a scanned `LOC-` and from search. Inline "edit this item's location" + "edit location".
-- [ ] AMS/Dryer render as a **slot map** (see 12.x / ideas) showing slot occupancy.
+- [x] AMS/Dryer render as a **slot map** (see 12.x / ideas) showing slot occupancy.
 
 ### 12.2 — Quick scan-to-move  *(workflow §3; no audit session)*
 - [ ] Phone-first flow: scan item (INV/QR) → item card → scan destination (`LOC-`/serial) →
@@ -344,7 +344,7 @@ blast radius; (3) MQTT auto-sync writing back to real inventory.
   **inline add-item** (`AuditUnknownScan`, migration 0027), **field-feedback fixes** (mass
   reprint, undo adds, serial-scan, whole-unit audit, keep-unknown), **`Location.unit` guard**
   (PR #128).
-- [ ] **#49 location-based views → Phase 12.1.**
+- [x] **#49 location-based views → Phase 12.1.**
 - [ ] **Phone camera scanning → Phase 12.3.**
 - [ ] *Remaining manual prod setup:* link AMS/dryer slot `unit` FKs, add 2 new dryers,
   reconcile old flat shelves vs new rack hierarchy, print `LOC-`/`INV-` labels.

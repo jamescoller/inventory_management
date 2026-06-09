@@ -176,7 +176,13 @@
                             <td>{{ item.product.upc }}</td>
                             <td>{{ item.date_added|date:"Y-m-d H:i:s" }}</td>
                             <td>{{ item.get_status_display }}</td>
-                            <td>{{ item.location.name|default:"—" }}</td>
+                            <td>
+                                {% if item.location %}
+                                    <a href="{% url 'location_detail' location_id=item.location.id %}">{{ item.location.name }}</a>
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
                             <td>{{ item.serial_number }}</td>
 							<td>{{ item.id }}</td>
                             <td>

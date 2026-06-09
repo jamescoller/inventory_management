@@ -1,0 +1,132 @@
+{% extends "inventory/base.html" %}
+
+{% block content %}
+<div class="container py-4">
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div>
+            <h1 class="mb-1">{{ location.name }}</h1>
+            <div class="text-muted">
+                <span class="badge bg-secondary">{{ location.get_kind_display }}</span>
+                <span class="ms-2">LOC-{{ location.id }}</span>
+                {% if location.is_container %}
+                    <span class="ms-2">· {{ item_count }} item{{ item_count|pluralize }} in subtree</span>
+                {% else %}
+                    <span class="ms-2">· {{ item_count }} item{{ item_count|pluralize }} here</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            {% if audit_active %}
+                <a class="btn btn-outline-warning" href="{% url 'audit_console' %}?loc={{ location.id }}">
+                    <i class="bi bi-clipboard-check" aria-hidden="true"></i> Audit here
+                </a>
+            {% endif %}
+            <a class="btn btn-outline-secondary"
+               href="{% url 'admin:inventory_location_change' location.id %}">
+                <i class="bi bi-pencil" aria-hidden="true"></i> Edit location
+            </a>
+        </div>
+    </div>
+
+    {# ---- Slot maps for AMS/dryer units (self or container children) ---- #}
+    {% for map in slot_maps %}
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>{{ map.unit.name }}</strong>
+                <span class="text-muted small">
+                    {{ map.unit.get_kind_display }} · {{ map.rows|length }} slot{{ map.rows|length|pluralize }}
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="row row-cols-2 row-cols-md-4 g-3">
+                    {% for row in map.rows %}
+                        <div class="col">
+                            <div class="border rounded p-2 h-100 text-center {% if not row.item %}bg-light border-dashed text-muted{% endif %}">
+                                <div class="small fw-bold mb-1">
+                                    Slot {{ row.location.slot_index|default:forloop.counter }}
+                                </div>
+                                {% if row.item %}
+                                    <a href="{% url 'inventory_edit' item_id=row.item.id %}"
+                                       class="text-decoration-none">
+                                        {{ row.item.product.name }}
+                                    </a>
+                                    <div class="small text-muted">
+                                        INV-{{ row.item.id }} · {{ row.item.get_status_display }}
+                                    </div>
+                                {% else %}
+                                    <div class="py-2">— empty —</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    {% endfor %}
+
+    {# ---- Items grouped by leaf location ---- #}
+    {% if grouped_items %}
+        {% for leaf, leaf_items in grouped_items.items %}
+            <div class="card mb-4 shadow-sm">
+                {% if location.is_container %}
+                    <div class="card-header">
+                        <a href="{% url 'location_detail' location_id=leaf.id %}"
+                           class="text-decoration-none">{{ leaf.name }}</a>
+                        <span class="text-muted small ms-1">({{ leaf_items|length }})</span>
+                    </div>
+                {% endif %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Item</th>
+                                <th>Product</th>
+                                <th>Status</th>
+                                <th>Serial</th>
+                                <th class="text-end">Move</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in leaf_items %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'inventory_edit' item_id=item.id %}">INV-{{ item.id }}</a>
+                                    </td>
+                                    <td>{{ item.product.name }}</td>
+                                    <td>{{ item.get_status_display }}</td>
+                                    <td>{{ item.serial_number|default:"—" }}</td>
+                                    <td>
+                                        <form method="post"
+                                              action="{% url 'location_detail' location_id=location.id %}"
+                                              class="d-flex justify-content-end gap-1">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="item_id" value="{{ item.id }}">
+                                            <select name="dest_location"
+                                                    class="form-select form-select-sm"
+                                                    style="max-width: 14rem;"
+                                                    aria-label="Move INV-{{ item.id }} to">
+                                                <option value="">Move to…</option>
+                                                {% for target in move_targets %}
+                                                    <option value="{{ target.id }}"
+                                                        {% if target.id == item.location_id %}selected{% endif %}>
+                                                        {{ target.name }}
+                                                    </option>
+                                                {% endfor %}
+                                            </select>
+                                            <button type="submit" class="btn btn-sm btn-primary">Move</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <div class="alert alert-info">Nothing is here right now.</div>
+    {% endif %}
+
+</div>
+{% endblock content %}
