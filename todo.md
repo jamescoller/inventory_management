@@ -261,6 +261,27 @@ day-to-day use and should be picked up ahead of Phases 7–8. File:line refs as 
 
 ---
 
+## Phase 10 — Item change history (June 2026)
+
+*Field-identified during Audit No. 15: a mis-scan moved an item and there was no
+history anywhere to trace or undo it. Approach decided 2026-06-09; full design + plan
+still to be written.*
+
+- [ ] **Full change history for `InventoryItem`, viewable in admin + public pages** —
+  **Approach decided: `django-simple-history`** (≥3.11.0; Django 6.0-compatible). Capture
+  **all fields** in the DB (latent forensic value); **surface location+status** as a
+  timeline on the public item page (derived via `diff_against(included_fields=['location','status'])`);
+  admin uses the library's built-in history/revert. No actor tracking in v1 (middleware
+  is a near-free future add); **start fresh**, no backfill. New dependency — image
+  rebuild (James accepted the dep gate). **Full rationale, the A-vs-B (custom-vs-library)
+  analysis, decisions table, capture-path caveats, and open steps are in
+  [`docs/item-change-history.md`](docs/item-change-history.md).** Next: resume
+  brainstorming → writing-plans → PR.
+  - *Distinct from `AuditEvent`* (the audit-session log): this tracks any change to an
+    item over its whole life, regardless of source. They coexist.
+
+---
+
 ## Completed Features
 
 - [x] **Bulk inventory editor** — Checkbox selection on Search Inventory page; sticky action bar for bulk status/location/shipment changes. `POST /bulk-update/` (`BulkUpdateView`). JS `Set` as selection source of truth (survives DataTables pagination). Iterates `item.save()` to preserve all side-effects.
