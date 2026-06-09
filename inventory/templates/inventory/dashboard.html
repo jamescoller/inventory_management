@@ -1,4 +1,4 @@
-{% extends 'inventory/base.html' %}
+{% extends "inventory/base.html" %}
 
 {% load humanize %}
 
@@ -20,7 +20,7 @@
                 <div class="card text-white bg-primary mb-3">
                     <div class="card-body text-center">
                         <h5 class="card-title">Last Updated</h5>
-                        <p class="card-text display-6">{{ latest_timestamp|date:"m-d-Y H:i"}}</p>
+                        <p class="card-text display-6">{{ latest_timestamp|date:"m-d-Y H:i" }}</p>
                     </div>
                 </div>
             </div>
@@ -175,7 +175,6 @@
             </div>
         </div>
 
-
         <!-- Product Breakdown -->
         <h2 class="h4 mb-3">Inventory by Product</h2>
         <div class="table-responsive">
@@ -302,4 +301,4 @@
         });
     </script>
 
-{% endblock %}
+{% endblock content %}

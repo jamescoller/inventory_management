@@ -257,7 +257,7 @@ day-to-day use and should be picked up ahead of Phases 7–8. File:line refs as 
 ### Chores
 
 - [x] **Clear the 16 pre-existing djlint errors in `inventory_search.html`** — ✅ **Done (PR #125):** inline styles moved to a `<style>` block (classes), `T002`/`H029`/`H014`/`T003` fixed; hook passes with no `--no-verify`. Behaviour unchanged (declarations preserved; regression test green).
-- [ ] **djlint cleanup — remaining templates** — ~27 errors still across the other templates (`base.html`, `filament_color_guide.html`, dashboard, etc.): `T002` (single-quoted tags), `T003` (unnamed endblocks), `H021` (inline styles), `H023` (entity refs), `H030`/`H031` (meta tags). Do as a bulk-cleanup pass if/when we want the `djlint-django` hook green repo-wide. Config: `pyproject.toml [tool.djlint]`.
+- [x] **djlint cleanup — remaining templates** — ✅ **Done (PR #127).** `djlint-django` now passes on `--all-files`, so editing any template no longer forces `--no-verify`. Pragmatic policy in `pyproject.toml [tool.djlint] ignore`: `H021` (inline styles OK for a few one-off elements), `H023` (entities), `H030`/`H031` (meta tags — pointless for a LAN-only app). Auto-fixed the zero-risk findings repo-wide: `T002` (quote style), `T003` (named endblocks), `H014` (blank lines), `H029` (method case), `T001` (whitespace). No rendered-output changes; all templates compile, suite green.
 
 ---
 
