@@ -33,6 +33,7 @@ from .views import (
     InventoryEditView,
     InventoryExportView,
     InventorySearchView,
+    LocationDetailView,
     MaintenanceLogCreateView,
     MaintenanceSummaryView,
     PrintBarcodeView,
@@ -68,6 +69,11 @@ urlpatterns = [
     path("bulk-update/", BulkUpdateView.as_view(), name="bulk_update"),
     path("bulk-reprint/", BulkReprintLabelsView.as_view(), name="bulk_reprint_labels"),
     path("edit/<int:item_id>/", InventoryEditView.as_view(), name="inventory_edit"),
+    path(
+        "location/<int:location_id>/",
+        LocationDetailView.as_view(),
+        name="location_detail",
+    ),
     path("search/export/", InventoryExportView.as_view(), name="inventory_export"),
     path(
         "print_barcode/<int:item_id>/<str:mode>/",

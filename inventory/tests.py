@@ -2699,3 +2699,235 @@ class MaintenanceViewTests(TestCase):
             resp = self.client.get(reverse(name, args=args))
             self.assertEqual(resp.status_code, 302)
             self.assertIn("/login", resp.url)
+
+
+class LocationDetailViewTests(TestCase):
+    """Read-only location page + inline capacity-enforced move (Phase 12.1)."""
+
+    def setUp(self):
+        K = Location.Kind
+        self.user = User.objects.create_user(username="loc", password="pass")
+        self.client = Client()
+        self.client.login(username="loc", password="pass")
+
+        # A rack with two shelves; one shelf holds an item.
+        self.rack = Location.objects.create(name="Rack LD", kind=K.RACK)
+        self.shelf1 = Location.objects.create(
+            name="Rack LD / Shelf 1",
+            kind=K.SHELF,
+            parent=self.rack,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.shelf2 = Location.objects.create(
+            name="Rack LD / Shelf 2",
+            kind=K.SHELF,
+            parent=self.rack,
+            default_status=InventoryItem.Status.STORED,
+        )
+        self.product = Filament.objects.create(name="PLA LD", upc="9700000000001")
+        self.item1 = InventoryItem.objects.create(
+            product=self.product, location=self.shelf1
+        )
+        self.item2 = InventoryItem.objects.create(
+            product=self.product, location=self.shelf2
+        )
+
+    def _url(self, loc):
+        return reverse("location_detail", kwargs={"location_id": loc.id})
+
+    # ---- rendering ----
+
+    def test_leaf_lists_only_its_items(self):
+        resp = self.client.get(self._url(self.shelf1))
+        self.assertEqual(resp.status_code, 200)
+        ctx = resp.context
+        self.assertEqual(ctx["item_count"], 1)
+        items_here = [i for lst in ctx["grouped_items"].values() for i in lst]
+        self.assertEqual({i.id for i in items_here}, {self.item1.id})
+
+    def test_container_aggregates_subtree(self):
+        resp = self.client.get(self._url(self.rack))
+        self.assertEqual(resp.status_code, 200)
+        ctx = resp.context
+        self.assertEqual(ctx["item_count"], 2)
+        # Grouped by leaf, not pinned to the container.
+        leaf_names = {leaf.name for leaf in ctx["grouped_items"].keys()}
+        self.assertEqual(leaf_names, {self.shelf1.name, self.shelf2.name})
+
+    def test_depleted_item_excluded(self):
+        items.deplete(self.item1)
+        resp = self.client.get(self._url(self.rack))
+        self.assertEqual(resp.context["item_count"], 1)
+
+    def test_empty_leaf_renders(self):
+        empty = Location.objects.create(
+            name="Empty Shelf",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        resp = self.client.get(self._url(empty))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["item_count"], 0)
+
+    def test_requires_login(self):
+        self.client.logout()
+        resp = self.client.get(self._url(self.shelf1))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login/", resp["Location"])
+
+    # ---- slot map ----
+
+    def test_slot_map_shows_occupancy(self):
+        K = Location.Kind
+        ams = Location.objects.create(name="AMS LD", kind=K.AMS)
+        slot1 = Location.objects.create(
+            name="AMS LD / 1",
+            kind=K.AMS_SLOT,
+            parent=ams,
+            slot_index=1,
+            default_status=InventoryItem.Status.IN_USE,
+        )
+        slot2 = Location.objects.create(
+            name="AMS LD / 2",
+            kind=K.AMS_SLOT,
+            parent=ams,
+            slot_index=2,
+            default_status=InventoryItem.Status.IN_USE,
+        )
+        occupant = InventoryItem.objects.create(product=self.product, location=slot1)
+
+        resp = self.client.get(self._url(ams))
+        self.assertEqual(resp.status_code, 200)
+        maps = resp.context["slot_maps"]
+        self.assertEqual(len(maps), 1)
+        rows = maps[0]["rows"]
+        self.assertEqual([r["location"].id for r in rows], [slot1.id, slot2.id])
+        self.assertEqual(rows[0]["item"].id, occupant.id)
+        self.assertIsNone(rows[1]["item"])
+
+    def test_container_renders_child_unit_slot_map(self):
+        # A rack page draws slot maps for any AMS/dryer children.
+        K = Location.Kind
+        dryer = Location.objects.create(name="Dryer LD", kind=K.DRYER, parent=self.rack)
+        Location.objects.create(
+            name="Dryer LD / 1", kind=K.DRYER_SLOT, parent=dryer, slot_index=1
+        )
+        resp = self.client.get(self._url(self.rack))
+        unit_names = {m["unit"].name for m in resp.context["slot_maps"]}
+        self.assertIn("Dryer LD", unit_names)
+
+    # ---- inline move ----
+
+    def test_inline_move_relocates_item(self):
+        resp = self.client.post(
+            self._url(self.shelf1),
+            {"item_id": self.item1.id, "dest_location": self.shelf2.id},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.item1.refresh_from_db()
+        self.assertEqual(self.item1.location_id, self.shelf2.id)
+        # Status follows the destination's default_status.
+        self.assertEqual(self.item1.status, InventoryItem.Status.STORED)
+
+    def test_inline_move_rejected_when_slot_full(self):
+        K = Location.Kind
+        slot = Location.objects.create(
+            name="Full Slot",
+            kind=K.AMS_SLOT,
+            slot_index=1,
+            default_status=InventoryItem.Status.IN_USE,
+        )  # capacity defaults to 1
+        InventoryItem.objects.create(product=self.product, location=slot)  # occupies it
+
+        resp = self.client.post(
+            self._url(self.shelf1),
+            {"item_id": self.item1.id, "dest_location": slot.id},
+            follow=True,
+        )
+        self.item1.refresh_from_db()
+        self.assertEqual(self.item1.location_id, self.shelf1.id)  # NOT moved
+        msgs = [m.message for m in resp.context["messages"]]
+        self.assertTrue(any("full" in m.lower() for m in msgs))
+
+    def test_inline_move_surfaces_drying_warning(self):
+        mat = Material.objects.create(
+            name="PLA Wet LD", material_type="", drying_required=True
+        )
+        wet = Filament.objects.create(
+            name="PLA Wet LD F", upc="9700000000099", material=mat
+        )
+        item = InventoryItem.objects.create(
+            product=wet, location=self.shelf1, status=InventoryItem.Status.NEW
+        )
+        printer = Location.objects.create(
+            name="Printer LD",
+            kind=Location.Kind.PRINTER,
+            default_status=InventoryItem.Status.IN_USE,
+        )
+        resp = self.client.post(
+            self._url(self.shelf1),
+            {"item_id": item.id, "dest_location": printer.id},
+            follow=True,
+        )
+        item.refresh_from_db()
+        self.assertEqual(item.location_id, printer.id)  # moved (warning is advisory)
+        msgs = [m.message for m in resp.context["messages"]]
+        self.assertTrue(any("requires drying" in m.lower() for m in msgs))
+
+    def test_inline_move_bad_destination_errors(self):
+        resp = self.client.post(
+            self._url(self.shelf1),
+            {"item_id": self.item1.id, "dest_location": ""},
+            follow=True,
+        )
+        self.item1.refresh_from_db()
+        self.assertEqual(self.item1.location_id, self.shelf1.id)
+        msgs = [m.message for m in resp.context["messages"]]
+        self.assertTrue(any("destination" in m.lower() for m in msgs))
+
+
+class LocationBarcodeRoutingTests(TestCase):
+    """LOC- scan routes to the audit console during a session, else to the
+    location page. Must not regress the search-based typed-LOC behavior."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="route", password="pass")
+        self.client = Client()
+        self.client.login(username="route", password="pass")
+        self.shelf = Location.objects.create(
+            name="Route Shelf",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+
+    def _loc_url(self):
+        return reverse("barcode_redirect", kwargs={"value": f"LOC-{self.shelf.id}"})
+
+    def test_loc_scan_no_audit_goes_to_location_detail(self):
+        resp = self.client.get(self._loc_url())
+        self.assertRedirects(
+            resp,
+            reverse("location_detail", kwargs={"location_id": self.shelf.id}),
+        )
+
+    def test_loc_scan_during_audit_goes_to_console(self):
+        AuditSession.objects.create(user=self.user)
+        resp = self.client.get(self._loc_url())
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn(reverse("audit_console"), resp["Location"])
+        self.assertIn(f"loc={self.shelf.id}", resp["Location"])
+
+    def test_search_typed_loc_still_filters_not_redirects(self):
+        # Guard: the search path is independent of the scan-routing change.
+        rack = Location.objects.create(name="Route Rack", kind=Location.Kind.RACK)
+        child = Location.objects.create(
+            name="Route Rack / S1",
+            kind=Location.Kind.SHELF,
+            parent=rack,
+            default_status=InventoryItem.Status.NEW,
+        )
+        prod = Filament.objects.create(name="PLA Route", upc="9800000000001")
+        it = InventoryItem.objects.create(product=prod, location=child)
+        resp = self.client.get(reverse("inventory_search"), {"name": f"LOC-{rack.id}"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual({i.id for i in resp.context["items"]}, {it.id})
