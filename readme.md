@@ -108,7 +108,10 @@ with an Undo/Remove button.
 
 At finalize, each unaccounted-for item can be left **unknown** ("in limbo") instead of
 depleted via a per-row checkbox — useful for something found out of place that you'll
-re-shelve after the walk.
+re-shelve after the walk. To track these down later, the **Search** page has a
+**Lost & Found** button (one click → every `UNKNOWN` item plus anything with no
+location); the search form also filters by status (multi-select, including
+depleted/sold/unknown), item type, location subtree, and date-added range.
 
 Missing or unreadable `INV-` tags can be reprinted in bulk: search for the items, tick
 the rows, and use the **Reprint tags** button in the selection bar.

@@ -1348,16 +1348,31 @@ class SearchBulkActionWiringTests(TestCase):
         html = self.client.get(reverse("inventory_search")).content.decode()
         # The header select-all checkbox must be server-rendered ...
         self.assertIn('id="select-all"', html)
-        # ... and the DataTables config must not overwrite headers (which would
-        # delete that checkbox). columnDefs sets flags without touching headers.
-        self.assertIn("columnDefs", html)
-        self.assertNotIn(
-            "{title:",
-            html,
-            msg="DataTables per-column `title` overwrites the header and deletes "
-            "the #select-all checkbox -> submit handler never attaches. Use "
-            "columnDefs instead.",
+        # ... and the DataTables/bulk JS must be loaded from the extracted static
+        # module (Phase 11.2 extraction), not inlined.
+        self.assertIn("inventory/js/inventory_search.js", html)
+
+    def test_search_js_uses_columndefs_not_title_overwrite(self):
+        """The extracted JS must keep the columnDefs invariant: a per-column
+        `title:` in the `columns` option overwrites each header cell's HTML,
+        deleting the #select-all checkbox so the submit handler never attaches.
+        """
+        import os
+
+        from django.conf import settings
+
+        js_path = os.path.join(
+            settings.BASE_DIR,
+            "inventory",
+            "static",
+            "inventory",
+            "js",
+            "inventory_search.js",
         )
+        with open(js_path, encoding="utf-8") as fh:
+            js = fh.read()
+        self.assertIn("columnDefs", js)
+        self.assertNotIn("{title:", js)
 
 
 class FilamentColorGuideCountTests(TestCase):
@@ -1563,6 +1578,210 @@ class HierarchicalLocationSearchTests(TestCase):
     def test_unknown_location_returns_nothing(self):
         resp = self.client.get(reverse("inventory_search"), {"location": "Nowhere"})
         self.assertEqual(self._ids(resp), set())
+
+
+class InventorySearchFilterTests(TestCase):
+    """Phase 11.2 — the search page exposes real, working filters.
+
+    The old view hardcoded ``exclude(status=5)`` and never read the template's
+    ``status`` field, so DEPLETED/SOLD/UNKNOWN items were unfindable ("I can't
+    find my lost items"). These tests pin the redone filter contract: multi-select
+    status (incl. UNKNOWN/DEPLETED/SOLD), item-type, location subtree, date-added
+    range, and the Lost & Found preset.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="sf", password="pass")
+        self.client.login(username="sf", password="pass")
+
+        K = Location.Kind
+        self.rack = Location.objects.create(name="Rack S-1", kind=K.RACK)
+        self.shelf = Location.objects.create(
+            name="Shelf S-1", kind=K.SHELF, parent=self.rack
+        )
+        self.dry = Location.objects.create(name="Dry Box S", kind=K.DRY_STORAGE)
+
+        fil = Filament.objects.create(name="PLA Find", upc="7100000000001")
+        prn = Printer.objects.create(
+            name="X1C Find",
+            upc="7100000000002",
+            num_extruders=1,
+            bed_length_mm=256,
+            bed_width_mm=256,
+            max_height_mm=256,
+        )
+        ams = AMS.objects.create(name="AMS Find", upc="7100000000003")
+        dry_p = Dryer.objects.create(name="Dryer Find", upc="7100000000004")
+        hw = Hardware.objects.create(name="HW Find", upc="7100000000005")
+
+        S = InventoryItem.Status
+        # One item per status (filament) at the shelf
+        self.i_new = InventoryItem.objects.create(
+            product=fil, location=self.shelf, status=S.NEW
+        )
+        self.i_in_use = InventoryItem.objects.create(
+            product=fil, location=self.shelf, status=S.IN_USE
+        )
+        self.i_depleted = InventoryItem.objects.create(
+            product=fil, location=self.shelf, status=S.DEPLETED
+        )
+        self.i_sold = InventoryItem.objects.create(
+            product=fil, location=self.shelf, status=S.SOLD
+        )
+        self.i_unknown = InventoryItem.objects.create(
+            product=fil, location=self.shelf, status=S.UNKNOWN
+        )
+        # An UNKNOWN item with no location (a "retired/empty location" recovery case)
+        self.i_unknown_nowhere = InventoryItem.objects.create(
+            product=fil, location=None, status=S.UNKNOWN
+        )
+        # One item of each non-filament type at the dry box
+        self.i_printer = InventoryItem.objects.create(product=prn, location=self.dry)
+        self.i_ams = InventoryItem.objects.create(product=ams, location=self.dry)
+        self.i_dryer = InventoryItem.objects.create(product=dry_p, location=self.dry)
+        self.i_hardware = InventoryItem.objects.create(product=hw, location=self.dry)
+
+    def _ids(self, resp):
+        return {i.id for i in resp.context["items"]}
+
+    # --- default view -------------------------------------------------------
+    def test_default_view_hides_depleted_and_sold_but_keeps_unknown(self):
+        """No status filter → hide DEPLETED/SOLD noise, but UNKNOWN stays visible."""
+        resp = self.client.get(reverse("inventory_search"))
+        ids = self._ids(resp)
+        self.assertNotIn(self.i_depleted.id, ids)
+        self.assertNotIn(self.i_sold.id, ids)
+        self.assertIn(self.i_unknown.id, ids)
+        self.assertIn(self.i_new.id, ids)
+
+    # --- status (the bug) ---------------------------------------------------
+    def test_status_filter_finds_depleted(self):
+        resp = self.client.get(
+            reverse("inventory_search"),
+            {"status": str(int(InventoryItem.Status.DEPLETED))},
+        )
+        self.assertEqual(self._ids(resp), {self.i_depleted.id})
+
+    def test_status_filter_finds_unknown(self):
+        resp = self.client.get(
+            reverse("inventory_search"),
+            {"status": str(int(InventoryItem.Status.UNKNOWN))},
+        )
+        self.assertEqual(
+            self._ids(resp), {self.i_unknown.id, self.i_unknown_nowhere.id}
+        )
+
+    def test_status_filter_is_multiselect(self):
+        resp = self.client.get(
+            reverse("inventory_search"),
+            {
+                "status": [
+                    str(int(InventoryItem.Status.DEPLETED)),
+                    str(int(InventoryItem.Status.SOLD)),
+                ]
+            },
+        )
+        self.assertEqual(self._ids(resp), {self.i_depleted.id, self.i_sold.id})
+
+    def test_invalid_status_value_is_ignored(self):
+        """A non-integer/garbage status must not 500; falls back to default view."""
+        resp = self.client.get(reverse("inventory_search"), {"status": "banana"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn(self.i_depleted.id, self._ids(resp))
+
+    # --- item type ----------------------------------------------------------
+    def test_item_type_filter_filament(self):
+        resp = self.client.get(reverse("inventory_search"), {"item_type": "filament"})
+        ids = self._ids(resp)
+        self.assertIn(self.i_new.id, ids)
+        self.assertNotIn(self.i_printer.id, ids)
+
+    def test_item_type_filter_printer(self):
+        resp = self.client.get(reverse("inventory_search"), {"item_type": "printer"})
+        self.assertEqual(self._ids(resp), {self.i_printer.id})
+
+    def test_item_type_filter_multiselect(self):
+        resp = self.client.get(
+            reverse("inventory_search"), {"item_type": ["ams", "dryer"]}
+        )
+        self.assertEqual(self._ids(resp), {self.i_ams.id, self.i_dryer.id})
+
+    # --- location subtree ---------------------------------------------------
+    def test_location_subtree_expands_container(self):
+        """Searching the rack returns items in its child shelf (active ones)."""
+        resp = self.client.get(reverse("inventory_search"), {"location": "Rack S-1"})
+        ids = self._ids(resp)
+        self.assertIn(self.i_new.id, ids)  # on the shelf, a child of the rack
+        self.assertNotIn(self.i_printer.id, ids)  # in the dry box, not under the rack
+
+    # --- date range ---------------------------------------------------------
+    def test_date_added_range(self):
+        from datetime import timedelta
+
+        from django.utils.timezone import now
+
+        old = now() - timedelta(days=30)
+        InventoryItem.objects.filter(pk=self.i_new.pk).update(date_added=old)
+        today = now().date().isoformat()
+        resp = self.client.get(reverse("inventory_search"), {"date_from": today})
+        self.assertNotIn(self.i_new.id, self._ids(resp))
+
+        cutoff = (now() - timedelta(days=15)).date().isoformat()
+        resp = self.client.get(reverse("inventory_search"), {"date_to": cutoff})
+        self.assertIn(self.i_new.id, self._ids(resp))
+        self.assertNotIn(self.i_in_use.id, self._ids(resp))
+
+    # --- Lost & Found preset ------------------------------------------------
+    def test_lost_and_found_preset_returns_unknown_items(self):
+        resp = self.client.get(reverse("inventory_search"), {"preset": "lost_found"})
+        ids = self._ids(resp)
+        self.assertIn(self.i_unknown.id, ids)
+        self.assertIn(self.i_unknown_nowhere.id, ids)
+        self.assertNotIn(self.i_new.id, ids)
+
+    # --- combined / regression ---------------------------------------------
+    def test_status_and_type_combine(self):
+        resp = self.client.get(
+            reverse("inventory_search"),
+            {
+                "status": str(int(InventoryItem.Status.UNKNOWN)),
+                "item_type": "filament",
+            },
+        )
+        self.assertEqual(
+            self._ids(resp), {self.i_unknown.id, self.i_unknown_nowhere.id}
+        )
+
+    def test_status_choices_in_context_include_all(self):
+        resp = self.client.get(reverse("inventory_search"))
+        values = {int(v) for v, _ in resp.context["status_choices"]}
+        self.assertIn(int(InventoryItem.Status.UNKNOWN), values)
+        self.assertIn(int(InventoryItem.Status.DEPLETED), values)
+
+    def test_type_choices_in_context(self):
+        resp = self.client.get(reverse("inventory_search"))
+        models = {m for m, _ in resp.context["type_choices"]}
+        self.assertEqual(models, {"filament", "printer", "ams", "dryer", "hardware"})
+
+    def test_export_honors_status_filter(self):
+        """The Excel export shares the search filters, so a status filter that
+        surfaces DEPLETED rows must export them (the old export hardcoded
+        ``exclude(status=5)`` and could never export depleted items).
+        """
+        import io
+
+        import openpyxl
+
+        resp = self.client.get(
+            reverse("inventory_export"),
+            {"status": str(int(InventoryItem.Status.DEPLETED))},
+        )
+        self.assertEqual(resp.status_code, 200)
+        wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+        ws = wb.active
+        # Header row + exactly the one depleted item.
+        self.assertEqual(ws.max_row, 2)
 
 
 @override_settings(LOW_QUANTITY=3)

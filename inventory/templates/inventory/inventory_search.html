@@ -1,4 +1,5 @@
 {% extends "inventory/base.html" %}
+{% load static %}
 {% block content %}
     <style>
         /* Styles extracted from inline `style=` attributes (djlint H021). */
@@ -43,7 +44,14 @@
         }
     </style>
     <div class="container py-4">
-        <h2 class="mb-4 text-center">Search Inventory</h2>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="mb-0">Search Inventory</h2>
+            <!-- Lost & Found preset: one click → UNKNOWN items ∪ unlocated items.
+                 Serves the audit-recovery "I can't find my lost items" workflow. -->
+            <a href="?preset=lost_found" class="btn btn-outline-warning">
+                <i class="bi bi-search-heart"></i> Lost &amp; Found
+            </a>
+        </div>
 
         <!-- Search Form -->
         <form method="get" class="row g-3 mb-4">
@@ -64,7 +72,24 @@
 
             <div class="col-md-4">
                 <label for="status" class="form-label">Status</label>
-                <input type="text" name="status" id="status" class="form-control" value="{{ search_values.status }}">
+                <select name="status" id="status" class="form-select" multiple size="4"
+                        aria-describedby="statusHelp">
+                    {% for value, label in status_choices %}
+                        <option value="{{ value }}"
+                                {% if value in selected_statuses %}selected{% endif %}>{{ label|capfirst }}</option>
+                    {% endfor %}
+                </select>
+                <small id="statusHelp" class="text-muted">Ctrl/Cmd-click for multiple. Empty = active items.</small>
+            </div>
+
+            <div class="col-md-4">
+                <label for="item_type" class="form-label">Item Type</label>
+                <select name="item_type" id="item_type" class="form-select" multiple size="4">
+                    {% for value, label in type_choices %}
+                        <option value="{{ value }}"
+                                {% if value in selected_types %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
             </div>
 
             <div class="col-md-4">
@@ -85,19 +110,42 @@
 					   value="{{ search_values.item_id }}">
 			</div>
 
+            <div class="col-md-2">
+                <label for="date_from" class="form-label">Added From</label>
+                <input type="date" name="date_from" id="date_from" class="form-control"
+                       value="{{ search_values.date_from }}">
+            </div>
+
+            <div class="col-md-2">
+                <label for="date_to" class="form-label">Added To</label>
+                <input type="date" name="date_to" id="date_to" class="form-control"
+                       value="{{ search_values.date_to }}">
+            </div>
+
 			<div class="col-12 text-end">
+                <a href="{% url 'inventory_search' %}" class="btn btn-outline-secondary mt-2">Reset</a>
                 <button type="submit" class="btn btn-primary mt-2">Search</button>
             </div>
         </form>
 
-        <!-- Export Option -->
+        <!-- Export Option — mirrors the active search filters so the spreadsheet
+             matches the on-screen results. -->
         <form method="get" action="{% url 'inventory_export' %}">
             <input type="hidden" name="sku" value="{{ search_values.sku }}">
             <input type="hidden" name="upc" value="{{ search_values.upc }}">
             <input type="hidden" name="name" value="{{ search_values.name }}">
-            <input type="hidden" name="status" value="{{ search_values.status }}">
+            {% for s in selected_statuses %}
+                <input type="hidden" name="status" value="{{ s }}">
+            {% endfor %}
+            {% for t in selected_types %}
+                <input type="hidden" name="item_type" value="{{ t }}">
+            {% endfor %}
             <input type="hidden" name="location" value="{{ search_values.location }}">
             <input type="hidden" name="serial_number" value="{{ search_values.serial_number }}">
+            <input type="hidden" name="item_id" value="{{ search_values.item_id }}">
+            <input type="hidden" name="date_from" value="{{ search_values.date_from }}">
+            <input type="hidden" name="date_to" value="{{ search_values.date_to }}">
+            <input type="hidden" name="preset" value="{{ search_values.preset }}">
             <button type="submit" class="btn btn-outline-success mb-3">⬇ Export to Excel</button>
         </form>
 
@@ -163,10 +211,18 @@
             <input type="hidden" name="sku" value="{{ search_values.sku }}">
             <input type="hidden" name="upc" value="{{ search_values.upc }}">
             <input type="hidden" name="name" value="{{ search_values.name }}">
-            <input type="hidden" name="status" value="{{ search_values.status }}">
+            {% for s in selected_statuses %}
+                <input type="hidden" name="status" value="{{ s }}">
+            {% endfor %}
+            {% for t in selected_types %}
+                <input type="hidden" name="item_type" value="{{ t }}">
+            {% endfor %}
             <input type="hidden" name="location" value="{{ search_values.location }}">
             <input type="hidden" name="serial_number" value="{{ search_values.serial_number }}">
             <input type="hidden" name="item_id" value="{{ search_values.item_id }}">
+            <input type="hidden" name="date_from" value="{{ search_values.date_from }}">
+            <input type="hidden" name="date_to" value="{{ search_values.date_to }}">
+            <input type="hidden" name="preset" value="{{ search_values.preset }}">
             <!-- Selected item IDs injected by JS on submit -->
             <div id="bulk-id-container"></div>
             <!-- Sticky action bar — shown only when items are selected -->
@@ -213,121 +269,7 @@
         </form>
 
     </div>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            if (typeof $ === 'undefined') {
-                console.error('jQuery not loaded – DataTables will not work.');
-                return;
-            }
-
-            const table = $('#searchResultsTable').DataTable({
-                ordering: true,
-                pageLength: 25,
-                lengthMenu: [[25, 50, 100, -1], [25, 50, 100, "All"]],
-                searching: false,
-                // Set per-column flags via columnDefs, never via a per-column
-                // header label in the `columns` option. That label option makes
-                // DataTables overwrite each header cell's HTML — the empty label
-                // on column 0 wiped out the <input id="select-all"> checkbox, and
-                // the resulting getElementById('select-all') === null threw before
-                // the form submit handler (which injects item_ids) was attached,
-                // silently breaking both "Apply" and "Reprint tags". Headers come
-                // from the existing <th> text instead.
-                columnDefs: [
-                    {targets: 0, orderable: false, searchable: false},
-                    {targets: -1, orderable: false}
-                ]
-            });
-
-            const selectedIds = new Set();
-
-            function getVisibleIds() {
-                const ids = [];
-                table.rows({page: 'current'}).nodes().each(function (row) {
-                    const cb = row.querySelector('.row-select');
-                    if (cb) ids.push(parseInt(cb.dataset.id, 10));
-                });
-                return ids;
-            }
-
-            function syncUI() {
-                const count = selectedIds.size;
-                const bar = document.getElementById('bulk-action-bar');
-                bar.style.display = count > 0 ? 'flex' : 'none';
-                document.getElementById('bulk-count-label').textContent =
-                    count + ' item' + (count !== 1 ? 's' : '') + ' selected';
-                document.getElementById('bulk-apply-btn').textContent =
-                    'Apply to ' + count + ' item' + (count !== 1 ? 's' : '');
-
-                const visibleIds = getVisibleIds();
-                const selectAll = document.getElementById('select-all');
-                if (visibleIds.length === 0) {
-                    selectAll.checked = false;
-                    selectAll.indeterminate = false;
-                } else {
-                    const selectedOnPage = visibleIds.filter(id => selectedIds.has(id)).length;
-                    selectAll.checked = selectedOnPage === visibleIds.length;
-                    selectAll.indeterminate = selectedOnPage > 0 && selectedOnPage < visibleIds.length;
-                }
-            }
-
-            // Re-sync checkboxes on every DataTables redraw (page change, sort, initial load)
-            table.on('draw.dt', function () {
-                table.rows({page: 'current'}).nodes().each(function (row) {
-                    const cb = row.querySelector('.row-select');
-                    if (cb) cb.checked = selectedIds.has(parseInt(cb.dataset.id, 10));
-                });
-                syncUI();
-            });
-
-            // Row checkbox toggle
-            document.getElementById('searchResultsTable').addEventListener('change', function (e) {
-                if (!e.target.classList.contains('row-select')) return;
-                const id = parseInt(e.target.dataset.id, 10);
-                if (e.target.checked) selectedIds.add(id);
-                else selectedIds.delete(id);
-                syncUI();
-            });
-
-            // Select All toggle (current page only)
-            document.getElementById('select-all').addEventListener('change', function () {
-                const visibleIds = getVisibleIds();
-                if (this.checked) visibleIds.forEach(id => selectedIds.add(id));
-                else visibleIds.forEach(id => selectedIds.delete(id));
-                table.rows({page: 'current'}).nodes().each(function (row) {
-                    const cb = row.querySelector('.row-select');
-                    if (cb) cb.checked = selectedIds.has(parseInt(cb.dataset.id, 10));
-                });
-                syncUI();
-            });
-
-            // Clear button
-            document.getElementById('bulk-clear-btn').addEventListener('click', function () {
-                selectedIds.clear();
-                table.rows().nodes().each(function (row) {
-                    const cb = row.querySelector('.row-select');
-                    if (cb) cb.checked = false;
-                });
-                document.getElementById('select-all').checked = false;
-                document.getElementById('select-all').indeterminate = false;
-                syncUI();
-            });
-
-            // Inject hidden ID inputs on submit
-            document.getElementById('bulk-action-form').addEventListener('submit', function () {
-                const container = document.getElementById('bulk-id-container');
-                container.innerHTML = '';
-                selectedIds.forEach(function (id) {
-                    const input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = 'item_ids';
-                    input.value = id;
-                    container.appendChild(input);
-                });
-            });
-        });
-    </script>
-
-
 {% endblock content %}
+{% block extra_scripts %}
+    <script src="{% static 'inventory/js/inventory_search.js' %}"></script>
+{% endblock extra_scripts %}
