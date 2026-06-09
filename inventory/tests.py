@@ -3206,3 +3206,374 @@ class PrintJobViewTests(TestCase):
         resp = self.client.get(reverse("print_job_list"))
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/login", resp.url)
+
+
+# Phase 14 — Procurement & receiving
+# ---------------------------------------------------------------------------
+
+from decimal import Decimal  # noqa: E402
+
+from . import procurement  # noqa: E402
+from .models import (  # noqa: E402
+    PurchaseOrder,
+    PurchaseOrderLine,
+    PurchaseReceipt,
+    PurchaseReceiptLine,
+    Supplier,
+)
+
+
+class ProcurementModelTests(TestCase):
+    """Model creation, relationships, and computed properties."""
+
+    def setUp(self):
+        self.supplier = Supplier.objects.create(name="Acme Filament")
+        self.product = Filament.objects.create(name="PLA Proc", upc="9500000000001")
+        self.po = PurchaseOrder.objects.create(supplier=self.supplier)
+
+    def test_supplier_unique_name(self):
+        from django.db import IntegrityError
+
+        with self.assertRaises(IntegrityError):
+            Supplier.objects.create(name="Acme Filament")
+
+    def test_order_default_status_draft(self):
+        self.assertEqual(self.po.status, PurchaseOrder.Status.DRAFT)
+
+    def test_line_relationships_and_totals(self):
+        line = PurchaseOrderLine.objects.create(
+            order=self.po,
+            product=self.product,
+            qty_ordered=4,
+            unit_cost=Decimal("19.99"),
+        )
+        self.assertEqual(line.order, self.po)
+        self.assertEqual(list(self.po.lines.all()), [line])
+        self.assertEqual(line.line_total, Decimal("79.96"))
+        self.assertEqual(line.qty_outstanding, 4)
+        self.assertEqual(line.received_total, Decimal("0"))
+
+    def test_qty_outstanding_never_negative(self):
+        line = PurchaseOrderLine.objects.create(
+            order=self.po,
+            product=self.product,
+            qty_ordered=2,
+            qty_received=5,
+            unit_cost=Decimal("1.00"),
+        )
+        self.assertEqual(line.qty_outstanding, 0)
+
+    def test_track_individually_defaults_true(self):
+        line = PurchaseOrderLine.objects.create(
+            order=self.po, product=self.product, unit_cost=Decimal("1.00")
+        )
+        self.assertTrue(line.track_individually)
+
+    def test_order_grand_total_includes_shipping_and_tax(self):
+        self.po.shipping_cost = Decimal("5.00")
+        self.po.tax = Decimal("2.50")
+        self.po.save()
+        PurchaseOrderLine.objects.create(
+            order=self.po,
+            product=self.product,
+            qty_ordered=2,
+            unit_cost=Decimal("10.00"),
+        )
+        self.assertEqual(self.po.lines_subtotal, Decimal("20.00"))
+        self.assertEqual(self.po.grand_total, Decimal("27.50"))
+
+    def test_receipt_and_receipt_line_relationships(self):
+        line = PurchaseOrderLine.objects.create(
+            order=self.po, product=self.product, unit_cost=Decimal("1.00")
+        )
+        receipt = PurchaseReceipt.objects.create(order=self.po)
+        rl = PurchaseReceiptLine.objects.create(
+            receipt=receipt, order_line=line, qty_received=1
+        )
+        self.assertEqual(receipt.order, self.po)
+        self.assertEqual(list(self.po.receipts.all()), [receipt])
+        self.assertEqual(rl.order_line, line)
+        self.assertEqual(list(line.receipt_lines.all()), [rl])
+        self.assertEqual(list(receipt.lines.all()), [rl])
+
+    def test_attachment_field_is_inert_and_optional(self):
+        """The FileField exists for forward-compat but must be blank/null-able and
+        require no MEDIA settings to be saved (it is never populated yet)."""
+        receipt = PurchaseReceipt.objects.create(order=self.po)
+        self.assertFalse(receipt.attachment)  # falsy empty FieldFile
+
+    def test_deleting_po_keeps_item_cost_history(self):
+        """source_line is SET_NULL: deleting the PO must not erase an item's
+        unit_cost (the whole point of denormalizing cost onto the item)."""
+        line = PurchaseOrderLine.objects.create(
+            order=self.po, product=self.product, unit_cost=Decimal("12.34")
+        )
+        item = InventoryItem.objects.create(
+            product=self.product, unit_cost=Decimal("12.34"), source_line=line
+        )
+        self.po.delete()
+        item.refresh_from_db()
+        self.assertIsNone(item.source_line_id)
+        self.assertEqual(item.unit_cost, Decimal("12.34"))
+
+
+class NoMediaSettingsTest(TestCase):
+    def test_no_media_root_configured(self):
+        """The deferred upload infra must NOT be wired: settings.py must not set a
+        MEDIA_ROOT, so uploads have nowhere to land and the FileField stays inert.
+        (Django's framework default MEDIA_ROOT is '' / MEDIA_URL is '/', both
+        unusable for serving uploads — that is exactly the inert state we want.)"""
+        from django.conf import settings
+
+        self.assertFalse(getattr(settings, "MEDIA_ROOT", ""))
+
+    def test_settings_module_does_not_define_media(self):
+        """Guard against someone wiring MEDIA_ROOT/MEDIA_URL into settings.py as
+        part of this change (the infra is deferred to James)."""
+        import inspect
+
+        from django.conf import settings as dj_settings
+
+        source = inspect.getsource(
+            __import__(dj_settings.SETTINGS_MODULE, fromlist=[""])
+        )
+        self.assertNotIn("MEDIA_ROOT", source)
+        self.assertNotIn("MEDIA_URL", source)
+
+
+class ProcurementReceiveTests(TestCase):
+    """Receiving mints items at the receiving rack via move_to and reconciles."""
+
+    def setUp(self):
+        self.supplier = Supplier.objects.create(name="Bolt Depot")
+        self.spool = Filament.objects.create(name="PETG Recv", upc="9500000000010")
+        self.screw = Hardware.objects.create(name="M3 Screws", upc="9500000000020")
+        self.rack = Location.objects.create(
+            name="Receiving Rack Leaf",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.po = PurchaseOrder.objects.create(
+            supplier=self.supplier, status=PurchaseOrder.Status.ORDERED
+        )
+        self.spool_line = PurchaseOrderLine.objects.create(
+            order=self.po,
+            product=self.spool,
+            qty_ordered=2,
+            unit_cost=Decimal("24.50"),
+            track_individually=True,
+        )
+        self.screw_line = PurchaseOrderLine.objects.create(
+            order=self.po,
+            product=self.screw,
+            qty_ordered=100,
+            unit_cost=Decimal("0.05"),
+            track_individually=False,
+        )
+        self.receipt = PurchaseReceipt.objects.create(order=self.po)
+
+    def test_receive_tracked_mints_item_with_cost_and_source(self):
+        result = procurement.receive_scan(self.receipt, "9500000000010", self.rack)
+        self.assertTrue(result.tracked)
+        item = result.item
+        item.refresh_from_db()
+        self.assertEqual(item.location_id, self.rack.id)
+        self.assertEqual(item.unit_cost, Decimal("24.50"))
+        self.assertEqual(item.source_line_id, self.spool_line.id)
+        # status derived from the rack default via move_to
+        self.assertEqual(item.status, InventoryItem.Status.NEW)
+        self.spool_line.refresh_from_db()
+        self.assertEqual(self.spool_line.qty_received, 1)
+        # a receipt line was recorded
+        self.assertEqual(
+            PurchaseReceiptLine.objects.filter(order_line=self.spool_line).count(), 1
+        )
+
+    def test_receive_cost_only_mints_no_item(self):
+        before = InventoryItem.objects.count()
+        result = procurement.receive_scan(self.receipt, "9500000000020", self.rack)
+        self.assertFalse(result.tracked)
+        self.assertIsNone(result.item)
+        self.assertEqual(InventoryItem.objects.count(), before)
+        self.screw_line.refresh_from_db()
+        self.assertEqual(self.screw_line.qty_received, 1)
+
+    def test_po_status_partial_then_received(self):
+        procurement.receive_scan(self.receipt, "9500000000010", self.rack)
+        self.po.refresh_from_db()
+        self.assertEqual(self.po.status, PurchaseOrder.Status.PARTIAL)
+        # finish both lines
+        procurement.receive_scan(self.receipt, "9500000000010", self.rack)
+        for _ in range(100):
+            procurement.receive_scan(self.receipt, "9500000000020", self.rack)
+        self.po.refresh_from_db()
+        self.assertEqual(self.po.status, PurchaseOrder.Status.RECEIVED)
+
+    def test_unknown_upc_raises(self):
+        with self.assertRaises(procurement.ProcurementError):
+            procurement.receive_scan(self.receipt, "0000000000000", self.rack)
+
+    def test_fully_received_line_has_no_open_line(self):
+        self.spool_line.qty_received = 2
+        self.spool_line.save()
+        with self.assertRaises(procurement.ProcurementError):
+            procurement.receive_scan(self.receipt, "9500000000010", self.rack)
+
+    def test_ambiguous_open_line_raises(self):
+        # second open line for the same product
+        PurchaseOrderLine.objects.create(
+            order=self.po,
+            product=self.spool,
+            qty_ordered=1,
+            unit_cost=Decimal("20.00"),
+        )
+        with self.assertRaises(procurement.ProcurementError):
+            procurement.receive_scan(self.receipt, "9500000000010", self.rack)
+
+    def test_no_location_raises(self):
+        with self.assertRaises(procurement.ProcurementError):
+            procurement.receive_scan(self.receipt, "9500000000010", None)
+
+    def test_receive_into_container_rejected(self):
+        rack = Location.objects.create(name="Container Rack", kind=Location.Kind.RACK)
+        with self.assertRaises(procurement.ProcurementError):
+            procurement.receive_scan(self.receipt, "9500000000010", rack)
+
+
+class ProcurementReconcileTests(TestCase):
+    def setUp(self):
+        self.supplier = Supplier.objects.create(name="Recon Supplier")
+        self.spool = Filament.objects.create(name="PLA Recon", upc="9500000000030")
+        self.po = PurchaseOrder.objects.create(
+            supplier=self.supplier, status=PurchaseOrder.Status.ORDERED
+        )
+        self.line = PurchaseOrderLine.objects.create(
+            order=self.po,
+            product=self.spool,
+            qty_ordered=5,
+            qty_received=2,
+            unit_cost=Decimal("10.00"),
+        )
+
+    def test_reconcile_totals(self):
+        data = procurement.reconcile(self.po)
+        self.assertEqual(data["qty_ordered"], 5)
+        self.assertEqual(data["qty_received"], 2)
+        self.assertEqual(data["qty_outstanding"], 3)
+        self.assertEqual(data["subtotal"], Decimal("50.00"))
+        self.assertEqual(data["received_value"], Decimal("20.00"))
+        self.assertEqual(len(data["lines"]), 1)
+        self.assertEqual(data["lines"][0]["outstanding"], 3)
+
+
+class ProcurementSpendTests(TestCase):
+    """Spend report unions tracked unit_costs with cost-only line totals."""
+
+    def setUp(self):
+        self.supplier = Supplier.objects.create(name="Spend Supplier")
+        self.spool = Filament.objects.create(name="PLA Spend", upc="9500000000040")
+        self.screw = Hardware.objects.create(name="Screws Spend", upc="9500000000050")
+        self.po = PurchaseOrder.objects.create(
+            supplier=self.supplier, status=PurchaseOrder.Status.ORDERED
+        )
+        # cost-only line: 50 received of 100 ordered @ 0.10 => 5.00 spend
+        self.screw_line = PurchaseOrderLine.objects.create(
+            order=self.po,
+            product=self.screw,
+            qty_ordered=100,
+            qty_received=50,
+            unit_cost=Decimal("0.10"),
+            track_individually=False,
+        )
+        # two tracked items @ 24.50 and 30.00 => 54.50 tracked spend
+        InventoryItem.objects.create(product=self.spool, unit_cost=Decimal("24.50"))
+        InventoryItem.objects.create(product=self.spool, unit_cost=Decimal("30.00"))
+        # an item with no unit_cost must not count
+        InventoryItem.objects.create(product=self.spool)
+
+    def test_spend_unions_tracked_and_consumable(self):
+        summary = procurement.spend_summary()
+        self.assertEqual(summary["tracked_spend"], Decimal("54.50"))
+        self.assertEqual(summary["tracked_count"], 2)
+        # cost-only counts RECEIVED units only: 50 * 0.10 = 5.00 (not 100 ordered)
+        self.assertEqual(summary["consumable_spend"], Decimal("5.00"))
+        self.assertEqual(summary["total_spend"], Decimal("59.50"))
+
+    def test_consumable_spend_ignores_zero_received_lines(self):
+        PurchaseOrderLine.objects.create(
+            order=self.po,
+            product=self.screw,
+            qty_ordered=10,
+            qty_received=0,
+            unit_cost=Decimal("1.00"),
+            track_individually=False,
+        )
+        summary = procurement.spend_summary()
+        self.assertEqual(summary["consumable_spend"], Decimal("5.00"))
+
+
+class ProcurementViewTests(TestCase):
+    """Views render and the receiving scan endpoint works end to end."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="proc", password="pw")
+        self.client = Client()
+        self.client.login(username="proc", password="pw")
+        self.supplier = Supplier.objects.create(name="View Supplier")
+        self.spool = Filament.objects.create(name="PLA View", upc="9500000000060")
+        self.rack = Location.objects.create(
+            name="View Rack",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.NEW,
+        )
+        self.po = PurchaseOrder.objects.create(
+            supplier=self.supplier, status=PurchaseOrder.Status.ORDERED
+        )
+        self.line = PurchaseOrderLine.objects.create(
+            order=self.po,
+            product=self.spool,
+            qty_ordered=2,
+            unit_cost=Decimal("15.00"),
+        )
+        self.receipt = PurchaseReceipt.objects.create(order=self.po)
+
+    def test_po_list_renders(self):
+        resp = self.client.get(reverse("po_list"))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_po_detail_renders(self):
+        resp = self.client.get(reverse("po_detail", args=[self.po.pk]))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_spend_report_renders(self):
+        resp = self.client.get(reverse("spend_report"))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_receiving_console_renders(self):
+        resp = self.client.get(reverse("receiving_console", args=[self.po.pk]))
+        self.assertEqual(resp.status_code, 200)
+
+    @override_settings(ENABLE_BARCODE_PRINTING=False)
+    def test_receiving_scan_creates_item(self):
+        resp = self.client.post(
+            reverse("receiving_scan", args=[self.po.pk]),
+            {"code": "9500000000060", "location": self.rack.pk},
+        )
+        self.assertIn(resp.status_code, (200, 302))
+        self.line.refresh_from_db()
+        self.assertEqual(self.line.qty_received, 1)
+        item = InventoryItem.objects.filter(source_line=self.line).first()
+        self.assertIsNotNone(item)
+        self.assertEqual(item.unit_cost, Decimal("15.00"))
+
+    def test_views_require_login(self):
+        self.client.logout()
+        for name, args in (
+            ("po_list", []),
+            ("po_detail", [self.po.pk]),
+            ("spend_report", []),
+            ("receiving_console", [self.po.pk]),
+        ):
+            resp = self.client.get(reverse(name, args=args))
+            self.assertEqual(resp.status_code, 302)
+            self.assertIn("/login", resp.url)

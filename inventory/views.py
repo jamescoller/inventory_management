@@ -20,7 +20,7 @@ from django.utils.timezone import localtime
 from django.utils.timezone import now as timezone_now
 from django.views.generic import CreateView, TemplateView, UpdateView, View
 
-from . import audit, items, maintenance, printjobs
+from . import audit, items, maintenance, printjobs, procurement
 from .barcode_utils import generate_and_print_barcode
 from .forms import (
     AMSForm,
@@ -51,6 +51,8 @@ from .models import (
     Printer,
     PrintJob,
     Product,
+    PurchaseOrder,
+    PurchaseReceipt,
     is_machine_item,
 )
 
@@ -2054,3 +2056,116 @@ class PrinterUtilizationDetailView(LoginRequiredMixin, TemplateView):
             PrintJob.objects.filter(printer=printer).prefetch_related("filaments").all()
         )
         return ctx
+
+
+# ---------------------------------------------------------------------------
+# Procurement & receiving (Phase 14)
+# ---------------------------------------------------------------------------
+
+
+class PurchaseOrderListView(LoginRequiredMixin, TemplateView):
+    """All purchase orders with received-progress at a glance (DataTables)."""
+
+    template_name = "inventory/po_list.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Aggregate line counts/values in the DB rather than per-row Python.
+        context["orders"] = (
+            PurchaseOrder.objects.select_related("supplier")
+            .annotate(
+                line_count=Count("lines", distinct=True),
+                qty_ordered=Sum("lines__qty_ordered"),
+                qty_received=Sum("lines__qty_received"),
+            )
+            .order_by("-created_at")
+        )
+        context["statuses"] = PurchaseOrder.Status
+        return context
+
+
+class PurchaseOrderDetailView(LoginRequiredMixin, TemplateView):
+    """A single PO: reconciliation table (ordered vs received vs outstanding)."""
+
+    template_name = "inventory/po_detail.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        order = get_object_or_404(
+            PurchaseOrder.objects.select_related("supplier"), pk=kwargs["pk"]
+        )
+        context["order"] = order
+        context["recon"] = procurement.reconcile(order)
+        context["latest_receipt"] = order.receipts.first()
+        return context
+
+
+class ReceivingConsoleView(LoginRequiredMixin, TemplateView):
+    """Scan-against-a-PO console.
+
+    Opens (get_or_create) the PO's working receipt and renders the input-agnostic
+    scan form. Mirrors the audit console: a USB wedge or a camera JS POST both
+    deliver a ``code`` to :class:`ReceivingScanView`.
+    """
+
+    template_name = "inventory/receiving_console.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        order = get_object_or_404(
+            PurchaseOrder.objects.select_related("supplier"), pk=kwargs["pk"]
+        )
+        receipt = self._get_or_open_receipt(order)
+        context["order"] = order
+        context["receipt"] = receipt
+        context["recon"] = procurement.reconcile(order)
+        context["rack_locations"] = Location.assignable()
+        return context
+
+    @staticmethod
+    def _get_or_open_receipt(order):
+        receipt = order.receipts.first()
+        if receipt is None:
+            receipt = PurchaseReceipt.objects.create(order=order)
+        return receipt
+
+
+class ReceivingScanView(LoginRequiredMixin, View):
+    """Input-agnostic receiving scan: a wedge form-submit or a camera JS POST both
+    deliver a ``code`` (UPC) + ``location`` here; mints/receives one unit and
+    prints an ``INV-`` label (soft-fail), mirroring AddInventoryView."""
+
+    def post(self, request, pk):
+        order = get_object_or_404(PurchaseOrder, pk=pk)
+        receipt = order.receipts.first() or PurchaseReceipt.objects.create(order=order)
+
+        code = (request.POST.get("code") or "").strip()
+        location = Location.objects.filter(pk=request.POST.get("location")).first()
+
+        try:
+            result = procurement.receive_scan(receipt, code, location)
+        except procurement.ProcurementError as exc:
+            messages.error(request, str(exc))
+            return redirect("receiving_console", pk=order.pk)
+
+        if result.item is not None:
+            try:
+                generate_and_print_barcode(result.item, mode="unique")
+            except Exception as e:  # label print is non-fatal, like AddInventoryView
+                messages.warning(request, f"Label printing failed: {e}")
+                logger.error(f"Label printing failed: {e}")
+
+        messages.success(request, result.message)
+        return redirect("receiving_console", pk=order.pk)
+
+
+class SpendReportView(LoginRequiredMixin, TemplateView):
+    """Spend report: tracked unit_costs + cost-only line totals, per supplier."""
+
+    template_name = "inventory/spend_report.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["summary"] = procurement.spend_summary()
+        context["by_supplier"] = procurement.spend_by_supplier()
+        return context

@@ -123,19 +123,21 @@ consolidation + inline-JS extraction (18.2), and the **visual/UX beauty** pass (
 ## Phase 14 — Procurement & Receiving  *(full; cost-tracking workflow §1–2)*
 *Re-introduces the cost layer deleted with Order/Shipment in Phase 2, properly normalized.
 Models in [`docs/workflow-and-domain-design.md`](docs/workflow-and-domain-design.md).*
-- [ ] Models: `Supplier`, `PurchaseOrder` (+status, ordered/expected dates, shipping, tax),
+- [x] Models: `Supplier`, `PurchaseOrder` (+status, ordered/expected dates, shipping, tax),
   `PurchaseOrderLine` (qty ordered/received, `unit_cost`, **`track_individually`** flag —
-  False = cost-only consumables like screws), `PurchaseReceipt` (+ **file attachment**),
-  `PurchaseReceiptLine`.
-- [ ] **Receiving console** — scan items against a PO → mint `InventoryItem`s into the
+  False = cost-only consumables like screws), `PurchaseReceipt` (+ **file attachment**,
+  inert — see infra bullet), `PurchaseReceiptLine`. *(migration `0029`)*
+- [x] **Receiving console** — scan items against a PO → mint `InventoryItem`s into the
   receiving rack via `move_to()` + print `INV-` labels + increment received/reconcile.
-  Reuses the input-agnostic scan pattern from `AuditScanView`.
-- [ ] **Per-item `unit_cost`** on `InventoryItem` (+ `source_line` FK) — what you *paid*
+  Reuses the input-agnostic scan pattern from `AuditScanView` (`procurement.py` service).
+- [x] **Per-item `unit_cost`** on `InventoryItem` (+ `source_line` FK) — what you *paid*
   (varies by sale/bulk), distinct from catalog `Product.price`. Spend reports union
   `Sum(InventoryItem.unit_cost)` (tracked) + cost-only line totals (consumables).
-- [ ] Reconciliation view (ordered vs received vs outstanding; order totals).
-- [ ] **Infra (flag):** needs `MEDIA_ROOT`/`MEDIA_URL` (not set today) + an nginx alias +
-  a bind-mounted `media/` volume in `docker-compose.yml` (mirror the `ha-stats` mount).
+- [x] Reconciliation view (ordered vs received vs outstanding; order totals) + spend report.
+- [ ] **Infra (flag, DEFERRED):** `PurchaseReceipt.file` upload needs `MEDIA_ROOT`/`MEDIA_URL`
+  (not set today) + an nginx alias + a bind-mounted `media/` volume in `docker-compose.yml`
+  (mirror the `ha-stats` mount). The `FileField` is defined but inert; no settings/widget/
+  nginx/compose changes were made — James's call.
 
 ---
 

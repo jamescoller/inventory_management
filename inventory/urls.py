@@ -41,7 +41,12 @@ from .views import (
     PrintJobCreateView,
     PrintJobDetailView,
     PrintJobListView,
+    PurchaseOrderDetailView,
+    PurchaseOrderListView,
+    ReceivingConsoleView,
+    ReceivingScanView,
     SignUpView,
+    SpendReportView,
     UnitMaintenanceView,
     UtilizationView,
 )
@@ -144,6 +149,23 @@ urlpatterns = [
         PrinterUtilizationDetailView.as_view(),
         name="printer_utilization_detail",
     ),
+    path("purchase-orders/", PurchaseOrderListView.as_view(), name="po_list"),
+    path(
+        "purchase-orders/<int:pk>/",
+        PurchaseOrderDetailView.as_view(),
+        name="po_detail",
+    ),
+    path(
+        "purchase-orders/<int:pk>/receive/",
+        ReceivingConsoleView.as_view(),
+        name="receiving_console",
+    ),
+    path(
+        "purchase-orders/<int:pk>/receive/scan/",
+        ReceivingScanView.as_view(),
+        name="receiving_scan",
+    ),
+    path("spend-report/", SpendReportView.as_view(), name="spend_report"),
     path("audit/unknowns/", AuditUnknownsView.as_view(), name="audit_unknowns"),
     path(
         "audit/unknowns/<int:pk>/resolve/",

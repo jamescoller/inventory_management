@@ -1,0 +1,67 @@
+{% extends "inventory/base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-3 align-items-center">
+        <div class="col">
+            <h2>Purchase Orders</h2>
+            <p class="text-muted mb-0">Order, receive, and reconcile procurement.</p>
+        </div>
+        <div class="col-auto">
+            <a class="btn btn-outline-secondary" href="{% url 'spend_report' %}">
+                <i class="bi bi-cash-stack" aria-hidden="true"></i> Spend Report
+            </a>
+            <a class="btn btn-outline-primary" href="{% url 'admin:inventory_purchaseorder_add' %}">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i> New PO
+            </a>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table id="po-table" class="table table-sm table-hover table-bordered w-100">
+            <thead class="table-dark">
+                <tr>
+                    <th>Order</th>
+                    <th>Supplier</th>
+                    <th>Status</th>
+                    <th>Ordered</th>
+                    <th>Expected</th>
+                    <th class="text-end">Lines</th>
+                    <th class="text-end">Qty Ord.</th>
+                    <th class="text-end">Qty Rcv.</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for o in orders %}
+                <tr>
+                    <td><a href="{% url 'po_detail' o.pk %}">{{ o.order_ref|default:o }}</a></td>
+                    <td>{{ o.supplier.name }}</td>
+                    <td>{{ o.get_status_display }}</td>
+                    <td data-sort="{{ o.ordered_at|date:'Y-m-d' }}">{{ o.ordered_at|default:"—" }}</td>
+                    <td data-sort="{{ o.expected_at|date:'Y-m-d' }}">{{ o.expected_at|default:"—" }}</td>
+                    <td class="text-end">{{ o.line_count }}</td>
+                    <td class="text-end">{{ o.qty_ordered|default:0 }}</td>
+                    <td class="text-end">{{ o.qty_received|default:0 }}</td>
+                    <td>
+                        <a class="btn btn-sm btn-outline-success" href="{% url 'receiving_console' o.pk %}">
+                            <i class="bi bi-box-arrow-in-down" aria-hidden="true"></i> Receive
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9" class="text-center text-muted">No purchase orders yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock content %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        new DataTable('#po-table', { ordering: true, paging: false, info: false });
+    });
+</script>
+{% endblock extra_scripts %}

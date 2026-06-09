@@ -129,3 +129,32 @@ marked **depleted** automatically (no separate consumption log; `PrintJobFilamen
 **Utilization** (`/utilization/`, also linked per-printer from a printer's item
 page) aggregates printer hours, job count, success rate, and kg consumed by
 material/color — all via DB aggregation.
+## Procurement & receiving
+
+Track what you ordered and what you paid. Create a **Supplier** and a **Purchase
+Order** (with its lines) in the Django admin, then work it from **Orders** in the nav
+(`/purchase-orders/`):
+
+- A PO groups one or more **lines** (one catalog product each, with `qty_ordered`,
+  `unit_cost`, and a `track_individually` flag). Tracked lines mint a real inventory
+  item per received unit; **cost-only** lines (e.g. bagged screws) never mint items and
+  count toward spend only as a line total.
+- Open a PO's **Receive** console (`/purchase-orders/<id>/receive/`), pick a receiving
+  location, and scan each product's **UPC** (USB wedge or typed). Tracked goods are
+  minted into that location via the shared move service, stamped with the
+  `unit_cost`/`source_line` from the PO line, and get an `INV-` label printed
+  immediately (soft-fails if the printer is down). The PO status advances
+  Ordered → Partially received → Received automatically.
+- The PO detail page reconciles **ordered vs received vs outstanding** with per-line and
+  order totals (subtotal + shipping + tax). The **Spend Report** (`/spend-report/`)
+  totals what you actually paid — tracked items' `unit_cost` unioned with cost-only
+  lines' received totals — broken out per supplier.
+
+Per-item `unit_cost` is what you *paid* (denormalized onto the item so it survives the
+PO being edited or deleted), distinct from the catalog `Product.price` (list /
+replacement value).
+
+> **Receipt file upload is not wired yet.** `PurchaseReceipt.attachment` (a `FileField`)
+> exists for forward-compatibility but is inert: serving uploads needs `MEDIA_ROOT`/
+> `MEDIA_URL`, an nginx alias, and a bind-mounted `media/` volume — none configured
+> today.
