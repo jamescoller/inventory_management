@@ -32,7 +32,7 @@
                     <tbody>
                         {% for r in rows %}
                         <tr {% if r.faults_per_unit >= 1 %}class="table-warning"{% endif %}>
-                            <td><strong>{{ r.model }}</strong></td>
+                            <td><strong>{{ r.model_label }}</strong></td>
                             <td class="text-end">{{ r.units }}</td>
                             <td class="text-end">{{ r.faults }}</td>
                             <td class="text-end" data-sort="{{ r.faults_per_unit|floatformat:3 }}">

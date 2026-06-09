@@ -135,40 +135,60 @@ def unit_summary(unit):
     }
 
 
+def _product_model_label(product):
+    """Human label for a machine product at *model* granularity.
+
+    Printers/AMS/Dryers each carry a ``model`` field (Printer also a ``mfr``); the
+    base :class:`Product` only has ``name``. A plain FK access to the polymorphic
+    ``product`` can return the base class, so ``get_real_instance()`` resolves the
+    concrete subclass first (the same gotcha handled in :func:`is_machine_item`).
+    """
+    real = product.get_real_instance()
+    model = getattr(real, "model", None)
+    if model:
+        mfr = getattr(real, "mfr", "")
+        return f"{mfr} {model}".strip()
+    return real.name
+
+
 def model_reliability():
     """Per-model reliability rollup for the "rebuy / refund?" dashboard.
 
     Groups every machine :class:`InventoryItem` (printers/AMS/dryers) by its
-    product *model* and aggregates fault count, total downtime, maintenance spend,
-    and unit fleet size — all via DB aggregations (one query for the fleet, one
-    for the maintenance rollup). Derives faults-per-unit and MTBF in days.
+    specific product *model* (e.g. the *X1 Carbon* vs. the *A1 mini*, not just the
+    polymorphic type) and aggregates fault count, total downtime, maintenance
+    spend, and unit fleet size — all via DB aggregations (one query for the fleet,
+    one for the maintenance rollup). Derives faults-per-unit and MTBF in days.
+
+    Grouping is by ``product_id`` so a rebuy/refund call lands on the actual model
+    you own; the polymorphic type is still carried as ``ctype`` for context.
 
     MTBF here = (summed operating age of the fleet in days) / (number of faults).
     Operating age uses ``InventoryItem.date_added`` as the in-service proxy. With
     zero faults MTBF is ``None`` (infinite / not-yet-failed).
 
     Returns a list of dicts ordered by faults-per-unit descending (worst first),
-    each: ``model``, ``ctype`` (printer/ams/dryer), ``units``, ``faults``,
+    each: ``model_label``, ``ctype`` (printer/ams/dryer), ``units``, ``faults``,
     ``open_faults``, ``total_cost``, ``total_downtime_hours``,
     ``faults_per_unit``, ``mtbf_days``.
     """
     machine_models = ("printer", "ams", "dryer")
 
-    # Fleet: count of owned units + summed in-service age, grouped by model.
+    # Fleet: count of owned units, grouped by the specific product model.
     fleet = (
         InventoryItem.objects.filter(
             product__polymorphic_ctype__model__in=machine_models
         )
-        .values("product__polymorphic_ctype__model")
+        .values("product_id", "product__polymorphic_ctype__model")
         .annotate(units=Count("id"))
     )
 
-    # Maintenance rollup over those same machine items, grouped by model.
+    # Maintenance rollup over those same machine items, grouped by product model.
     maint = (
         MaintenanceEvent.objects.filter(
             unit__product__polymorphic_ctype__model__in=machine_models
         )
-        .values("unit__product__polymorphic_ctype__model")
+        .values("unit__product_id")
         .annotate(
             faults=Count("id", filter=Q(kind=MaintenanceEvent.Kind.FAULT)),
             open_faults=Count(
@@ -179,34 +199,36 @@ def model_reliability():
             total_downtime_hours=Sum("downtime_hours"),
         )
     )
-    maint_by_model = {
-        row["unit__product__polymorphic_ctype__model"]: row for row in maint
-    }
+    maint_by_product = {row["unit__product_id"]: row for row in maint}
 
-    # Summed operating age in days, grouped by model — used for MTBF. Done in
-    # Python over the (small) machine fleet to stay DB-portable (SQLite lacks a
+    # Summed operating age in days, grouped by product model — used for MTBF. Done
+    # in Python over the (small) machine fleet to stay DB-portable (SQLite lacks a
     # tidy date-diff aggregate); still O(machines), not O(events).
     today = now()
-    age_days_by_model = {}
+    age_days_by_product = {}
+    label_by_product = {}
     for item in InventoryItem.objects.filter(
         product__polymorphic_ctype__model__in=machine_models
-    ).select_related("product__polymorphic_ctype"):
-        model = item.product.polymorphic_ctype.model
+    ).select_related("product"):
+        pid = item.product_id
         age = (today - item.date_added).total_seconds() / 86400.0
-        age_days_by_model[model] = age_days_by_model.get(model, 0.0) + max(age, 0.0)
+        age_days_by_product[pid] = age_days_by_product.get(pid, 0.0) + max(age, 0.0)
+        if pid not in label_by_product:
+            label_by_product[pid] = _product_model_label(item.product)
 
     rows = []
     for f in fleet:
-        model = f["product__polymorphic_ctype__model"]
+        pid = f["product_id"]
+        ctype = f["product__polymorphic_ctype__model"]
         units = f["units"] or 0
-        m = maint_by_model.get(model, {})
+        m = maint_by_product.get(pid, {})
         faults = m.get("faults") or 0
-        fleet_age_days = age_days_by_model.get(model, 0.0)
+        fleet_age_days = age_days_by_product.get(pid, 0.0)
         mtbf_days = (fleet_age_days / faults) if faults else None
         rows.append(
             {
-                "model": model.upper(),
-                "ctype": model,
+                "model_label": label_by_product.get(pid, ""),
+                "ctype": ctype,
                 "units": units,
                 "faults": faults,
                 "open_faults": m.get("open_faults") or 0,
@@ -218,5 +240,5 @@ def model_reliability():
             }
         )
 
-    rows.sort(key=lambda r: (-r["faults_per_unit"], -r["faults"], r["model"]))
+    rows.sort(key=lambda r: (-r["faults_per_unit"], -r["faults"], r["model_label"]))
     return rows

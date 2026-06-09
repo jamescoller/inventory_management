@@ -2351,11 +2351,22 @@ class ItemHistoryTests(TestCase):
         url = reverse("admin:inventory_inventoryitem_history", args=[item.pk])
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 200)
+
+
 from . import maintenance  # noqa: E402
 
 
-def _make_printer_item(upc, *, serial="", days_old=None):
-    """Helper: a Printer product + an owned InventoryItem, optionally back-dated."""
+def _make_printer_item(upc, *, serial="", days_old=None, model=None, mfr=None):
+    """Helper: a Printer product + an owned InventoryItem, optionally back-dated.
+
+    ``model``/``mfr`` override the Printer subclass defaults so tests can create
+    distinct product models (the reliability rollup groups by product model).
+    """
+    extra = {}
+    if model is not None:
+        extra["model"] = model
+    if mfr is not None:
+        extra["mfr"] = mfr
     product = Printer.objects.create(
         name=f"Printer {upc}",
         upc=upc,
@@ -2363,6 +2374,7 @@ def _make_printer_item(upc, *, serial="", days_old=None):
         bed_length_mm=256,
         bed_width_mm=256,
         max_height_mm=256,
+        **extra,
     )
     item = InventoryItem.objects.create(product=product, serial_number=serial)
     if days_old is not None:
@@ -2519,9 +2531,15 @@ class MaintenanceServiceTests(TestCase):
 
 class MaintenanceReliabilityTests(TestCase):
     def test_model_reliability_math(self):
-        # Two printers, one 200 days old, one 100 days old (fleet age 300 days).
-        _, p1 = _make_printer_item("3200000000001", days_old=200)
-        _, p2 = _make_printer_item("3200000000002", days_old=100)
+        # Two physical units of the SAME catalog product (one product_id), one
+        # 200 days old, one 100 (fleet age 300) — they roll up into one model row.
+        product, p1 = _make_printer_item(
+            "3200000000001", days_old=200, model="X1 Carbon"
+        )
+        p2 = InventoryItem.objects.create(product=product, serial_number="P2")
+        past = timezone.now() - timedelta(days=100)
+        InventoryItem.objects.filter(pk=p2.pk).update(date_added=past)
+        p2.refresh_from_db()
         # 3 faults on printers total + 1 repair.
         maintenance.open_fault(p1, title="f1")
         maintenance.open_fault(p1, title="f2")
@@ -2535,9 +2553,11 @@ class MaintenanceReliabilityTests(TestCase):
         )
 
         rows = maintenance.model_reliability()
-        by_model = {r["ctype"]: r for r in rows}
-        self.assertIn("printer", by_model)
-        printer = by_model["printer"]
+        # Distinct product rows even within one polymorphic type → key by label.
+        by_label = {r["model_label"]: r for r in rows}
+        self.assertIn("Bambu Lab X1 Carbon", by_label)
+        printer = by_label["Bambu Lab X1 Carbon"]
+        self.assertEqual(printer["ctype"], "printer")
         self.assertEqual(printer["units"], 2)
         self.assertEqual(printer["faults"], 3)
         self.assertEqual(printer["open_faults"], 2)  # f3 was resolved
@@ -2547,6 +2567,35 @@ class MaintenanceReliabilityTests(TestCase):
         # MTBF = fleet age (~300 d) / 3 faults ~= 100 d.
         self.assertIsNotNone(printer["mtbf_days"])
         self.assertAlmostEqual(printer["mtbf_days"], 100.0, delta=1.0)
+
+    def test_two_printer_models_yield_two_rows(self):
+        # Two DIFFERENT printer models — the rebuy/refund decision is per-model,
+        # so they must not collapse into one "printer" bucket.
+        _, x1 = _make_printer_item("3200000001001", days_old=100, model="X1 Carbon")
+        _, a1 = _make_printer_item("3200000001002", days_old=50, model="A1 mini")
+        # X1 Carbon: 2 faults; A1 mini: 1 fault.
+        maintenance.open_fault(x1, title="x-f1")
+        maintenance.open_fault(x1, title="x-f2")
+        maintenance.open_fault(a1, title="a-f1")
+
+        rows = maintenance.model_reliability()
+        by_label = {r["model_label"]: r for r in rows}
+        self.assertIn("Bambu Lab X1 Carbon", by_label)
+        self.assertIn("Bambu Lab A1 mini", by_label)
+        self.assertEqual(len(rows), 2)
+
+        x1_row = by_label["Bambu Lab X1 Carbon"]
+        a1_row = by_label["Bambu Lab A1 mini"]
+        # Both are printers by polymorphic type but distinct product models.
+        self.assertEqual(x1_row["ctype"], "printer")
+        self.assertEqual(a1_row["ctype"], "printer")
+        # Units and faults attributed to the correct model only.
+        self.assertEqual(x1_row["units"], 1)
+        self.assertEqual(a1_row["units"], 1)
+        self.assertEqual(x1_row["faults"], 2)
+        self.assertEqual(a1_row["faults"], 1)
+        # Worst-first ordering: X1 Carbon (2 faults/unit) before A1 mini (1).
+        self.assertEqual(rows[0]["model_label"], "Bambu Lab X1 Carbon")
 
     def test_model_with_zero_faults_has_none_mtbf(self):
         _make_printer_item("3200000000010", days_old=30)
