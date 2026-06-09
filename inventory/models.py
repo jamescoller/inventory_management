@@ -624,6 +624,14 @@ class InventoryItem(models.Model):
         if not isinstance(self.product, Filament):
             return None
 
+        # A filament with no linked Material has no drying spec to reason about.
+        # Without this guard, moving a material-less NEW filament into dry
+        # storage/printer raised AttributeError on ``material.drying_required``
+        # (a latent 500 in the edit view; now hit by every move via items.move_to).
+        material = self.product.filament.material
+        if material is None:
+            return None
+
         # Kept tolerant of legacy rows: prefer the typed `kind`, but fall back to
         # `is_printer` so a NULL/un-backfilled kind never silently drops the drying
         # safety error.
@@ -633,19 +641,19 @@ class InventoryItem(models.Model):
         )
 
         if self.status == self.Status.NEW:
-            if is_dry_storage and self.product.filament.material.drying_required:
+            if is_dry_storage and material.drying_required:
                 return (
                     "error",
                     "This filament must be dried before being moved to dry storage. Skipping drying is not allowed.",
                     False,
                 )
-            elif is_printer and self.product.filament.material.drying_required:
+            elif is_printer and material.drying_required:
                 return (
                     "warning",
                     "This filament requires drying before being used. Skipping drying may lead to poor print quality or print failure.",
                     True,
                 )
-            elif is_printer and not self.product.filament.material.drying_required:
+            elif is_printer and not material.drying_required:
                 return (
                     "info",
                     "This filament does not require drying before being used, but it may perform better if dried first.",
@@ -694,6 +702,10 @@ class Location(models.Model):
     )
     # Organizational parents; items are never assigned to these.
     CONTAINER_KINDS = (Kind.RACK, Kind.AMS, Kind.DRYER)
+    # Single-occupancy leaf kinds: an AMS/dryer slot physically holds one roll.
+    # Used to seed a sensible ``capacity`` default; other assignables are
+    # unlimited (NULL) unless an explicit capacity is set.
+    SINGLE_SLOT_KINDS = (Kind.AMS_SLOT, Kind.DRYER_SLOT)
 
     name = models.CharField(max_length=200, unique=True)
 
@@ -733,6 +745,15 @@ class Location(models.Model):
         help_text="Default status to apply to items moved to this location.",
     )
 
+    capacity = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Maximum number of active items this location can hold. "
+            "Blank = unlimited. AMS/dryer slots default to 1."
+        ),
+    )
+
     is_printer = models.BooleanField(
         default=False
     )  # Is the location one of the printers?
@@ -744,6 +765,19 @@ class Location(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        # Seed a sensible capacity for single-occupancy slot kinds on creation.
+        # An AMS/dryer slot physically holds one roll; other assignables stay
+        # unlimited (NULL). Only applied when capacity wasn't set explicitly and
+        # the row is new, so an admin can later override to NULL/another value.
+        if (
+            self.pk is None
+            and self.capacity is None
+            and self.kind in self.SINGLE_SLOT_KINDS
+        ):
+            self.capacity = 1
+        super().save(*args, **kwargs)
 
     def clean(self):
         super().clean()

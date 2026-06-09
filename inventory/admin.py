@@ -10,6 +10,7 @@ from django.urls import path
 from django.utils.html import format_html
 from polymorphic.admin import PolymorphicChildModelAdmin, PolymorphicParentModelAdmin
 
+from . import items
 from .forms import InventoryItemForm
 from .models import (
     AMS,
@@ -384,8 +385,7 @@ class InventoryItemAdmin(admin.ModelAdmin):
     def mark_depleted(self, request, queryset):
         count = 0
         for item in queryset:
-            item.mark_depleted()
-            item.save()
+            items.deplete(item)
             count += 1
         self.message_user(request, f"{count} items marked as Depleted.")
 

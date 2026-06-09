@@ -20,7 +20,7 @@ from django.utils.timezone import localtime
 from django.utils.timezone import now as timezone_now
 from django.views.generic import CreateView, TemplateView, UpdateView, View
 
-from . import audit
+from . import audit, items
 from .barcode_utils import generate_and_print_barcode
 from .forms import (
     AMSForm,
@@ -274,21 +274,11 @@ class InventoryEditView(LoginRequiredMixin, UpdateView):
         # Handle depleted/sold actions
         if action in ["deplete", "sell"]:
             if action == "deplete":
-                if hasattr(item, "mark_depleted"):
-                    item.mark_depleted()
-                    item.save()
-                    messages.success(
-                        request, f"Item '{item}' has been marked as depleted."
-                    )
-                else:
-                    messages.error(request, "This item cannot be marked as depleted.")
+                items.deplete(item)
+                messages.success(request, f"Item '{item}' has been marked as depleted.")
             elif action == "sell":
-                if hasattr(item, "mark_sold"):
-                    item.mark_sold()
-                    item.save()
-                    messages.success(request, f"Item '{item}' has been marked as sold.")
-                else:
-                    messages.error(request, "This item cannot be marked as sold.")
+                items.set_status(item, InventoryItem.Status.SOLD)
+                messages.success(request, f"Item '{item}' has been marked as sold.")
             return redirect("inventory_edit", item_id=item_id)
 
         # Handle the regular form submission
@@ -562,6 +552,8 @@ class BulkUpdateView(LoginRequiredMixin, View):
             except Location.DoesNotExist:
                 messages.error(request, "Invalid location.")
                 return _bulk_redirect_back(request)
+            # Reject containers up front so the whole batch fails fast with one
+            # clear message (the per-item move guard would also catch it).
             if new_location.is_container:
                 messages.error(
                     request,
@@ -573,23 +565,48 @@ class BulkUpdateView(LoginRequiredMixin, View):
             messages.warning(request, "No fields selected — nothing was changed.")
             return _bulk_redirect_back(request)
 
+        status_clears_location = new_status in (
+            InventoryItem.Status.DEPLETED,
+            InventoryItem.Status.SOLD,
+        )
+
         count = 0
         with transaction.atomic():
             for item in InventoryItem.objects.filter(id__in=item_ids):
-                status_clears_location = False
-                if new_status is not None:
-                    item.status = new_status
-                    item._skip_status_from_location = True
-                    if new_status in (
-                        InventoryItem.Status.DEPLETED,
-                        InventoryItem.Status.SOLD,
-                    ):
-                        status_clears_location = True
-                if new_location is not None and not status_clears_location:
-                    item.location = new_location
                 if new_shipment is not None:
                     item.shipment = new_shipment
-                item.save()
+
+                # Delegate status/location writes to the items service so this
+                # view never touches the model's transient flags. Capacity is not
+                # enforced on the bulk path (it mirrors the prior behavior; a
+                # power-user batch shouldn't fail mid-loop on a full slot).
+                if new_status is not None and not status_clears_location:
+                    # Move (if a location was given) carrying the explicit status,
+                    # else just set the status in place.
+                    if new_location is not None:
+                        items.move_to(
+                            item,
+                            new_location,
+                            status=new_status,
+                            skip_drying_check=True,
+                            enforce_capacity=False,
+                        )
+                    else:
+                        items.set_status(item, new_status)
+                elif new_status is not None:
+                    # DEPLETED/SOLD: set the terminal status (clears location); any
+                    # requested location is intentionally ignored, as before.
+                    items.set_status(item, new_status)
+                elif new_location is not None:
+                    items.move_to(
+                        item,
+                        new_location,
+                        skip_drying_check=True,
+                        enforce_capacity=False,
+                    )
+                else:
+                    # Shipment-only change.
+                    item.save()
                 count += 1
 
         messages.success(request, f"Updated {count} item{'s' if count != 1 else ''}.")

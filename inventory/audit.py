@@ -22,6 +22,7 @@ import logging
 
 from django.db import transaction
 
+from . import items
 from .models import (
     AMS,
     AuditEvent,
@@ -205,14 +206,22 @@ def scan_item(session, location, item):
     # needed.
     target = leaves[0]
     revived = sticky
-    item.location = target
+    # Reviving clears terminal timestamps so the item rejoins normal inventory.
     item.date_depleted = None
     item.date_sold = None
-    new_status = item.update_status()
-    if new_status:
-        item.status = new_status
-    item._skip_status_from_location = True  # status set explicitly above
-    item.save()
+    # Derive the destination's default status explicitly so a sticky item is
+    # revived (the model guard would otherwise keep it sticky). ``update_status``
+    # reads ``item.location``, so point it at the target first. ``items.move_to``
+    # owns the _skip_status_from_location flag. Capacity is not enforced here: an
+    # audit scan reflects physical reality, so it must place the item regardless.
+    item.location = target
+    items.move_to(
+        item,
+        target,
+        status=item.update_status(),
+        skip_drying_check=True,
+        enforce_capacity=False,
+    )
 
     action = AuditEvent.Action.REVIVED if revived else AuditEvent.Action.MOVED_IN
     AuditEvent.objects.create(
@@ -247,11 +256,15 @@ def add_or_queue_upc(session, location, upc):
         return "queued", scan
 
     item = InventoryItem(product=product, location=location)
-    new_status = item.update_status()
-    if new_status:
-        item.status = new_status
-    item._skip_status_from_location = True  # status set explicitly above
-    item.save()
+    # Derive the destination's default status explicitly; ``items.move_to`` owns
+    # the flag dance and the save. Capacity is not enforced on the audit path.
+    items.move_to(
+        item,
+        location,
+        status=item.update_status(),
+        skip_drying_check=True,
+        enforce_capacity=False,
+    )
     AuditEvent.objects.create(
         session=session, item=item, location=location, action=AuditEvent.Action.ADDED
     )
@@ -288,9 +301,8 @@ def close_location(session, location):
             id__in=scanned_ids
         )
         for item in unscanned:
-            item.status = InventoryItem.Status.UNKNOWN
-            item._skip_status_from_location = True
-            item.save()  # sticky guard keeps location; UNKNOWN is not terminal
+            # UNKNOWN is sticky and not terminal: set_status keeps the location.
+            items.set_status(item, InventoryItem.Status.UNKNOWN)
             AuditEvent.objects.create(
                 session=session,
                 item=item,
@@ -387,9 +399,7 @@ def finalize(session, active_location=None, keep_unknown_ids=None):
         for item in session_unknown_items(session):
             if item.id in keep:
                 continue  # left UNKNOWN on purpose
-            item.mark_depleted()  # status DEPLETED, clears location + date
-            item._skip_status_from_location = True
-            item.save()
+            items.deplete(item)  # status DEPLETED, clears location + date
             depleted.append(item)
         session.mark_finished(AuditSession.State.FINALIZED)
     return depleted
