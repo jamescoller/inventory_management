@@ -13,6 +13,8 @@ from .models import (
     Location,
     MaintenanceEvent,
     Printer,
+    PrintJob,
+    PrintJobFilament,
 )
 
 # Statuses a user may set by hand. UNKNOWN is audit-internal; DEPLETED/SOLD have
@@ -181,6 +183,80 @@ class HardwareForm(forms.ModelForm):
     class Meta:
         model = Hardware
         fields = ["name", "upc", "sku", "price", "notes", "qty", "kind"]
+
+
+def _printer_items():
+    """InventoryItems whose product is a Printer (the machines jobs run on)."""
+    return InventoryItem.objects.filter(
+        product__polymorphic_ctype__model="printer"
+    ).select_related("product")
+
+
+def _filament_spool_items():
+    """Active filament-spool InventoryItems eligible to be consumed by a job."""
+    return (
+        InventoryItem.objects.filter(product__polymorphic_ctype__model="filament")
+        .exclude(status__in=(InventoryItem.Status.DEPLETED, InventoryItem.Status.SOLD))
+        .select_related("product")
+    )
+
+
+class PrintJobForm(forms.ModelForm):
+    class Meta:
+        model = PrintJob
+        fields = [
+            "printer",
+            "name",
+            "started_at",
+            "ended_at",
+            "duration_s",
+            "result",
+            "notes",
+        ]
+        widgets = {
+            "started_at": forms.DateTimeInput(
+                attrs={"type": "datetime-local"}, format="%Y-%m-%dT%H:%M"
+            ),
+            "ended_at": forms.DateTimeInput(
+                attrs={"type": "datetime-local"}, format="%Y-%m-%dT%H:%M"
+            ),
+            "notes": forms.Textarea(attrs={"rows": 2}),
+        }
+        help_texts = {
+            "duration_s": "Print duration in seconds (or fill start + end).",
+            "name": "gcode / 3mf file name.",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["printer"].queryset = _printer_items()
+        for f in ("started_at", "ended_at"):
+            self.fields[f].input_formats = ["%Y-%m-%dT%H:%M"]
+
+
+class PrintJobFilamentForm(forms.ModelForm):
+    class Meta:
+        model = PrintJobFilament
+        fields = ["item", "ams_slot", "grams_used", "percent_used"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["item"].queryset = _filament_spool_items()
+        self.fields["ams_slot"].queryset = Location.objects.filter(
+            kind=Location.Kind.AMS_SLOT
+        )
+        self.fields["ams_slot"].required = False
+
+
+# Inline formset: the filament lines edited alongside a PrintJob. extra=3 gives a
+# few blank rows for the common multi-color case; all are optional.
+PrintJobFilamentFormSet = forms.inlineformset_factory(
+    PrintJob,
+    PrintJobFilament,
+    form=PrintJobFilamentForm,
+    extra=3,
+    can_delete=True,
+)
 
 
 class InventoryEditForm(forms.ModelForm):

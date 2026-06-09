@@ -1238,3 +1238,130 @@ class NozzleConfig(models.Model):
             raise ValidationError(
                 {"printer": "A nozzle configuration must belong to a printer."}
             )
+
+
+class PrintJob(models.Model):
+    """A single print run on a printer, with its per-spool filament consumption.
+
+    The ``printer`` FK points at the printer's :class:`InventoryItem` (the only
+    stable identity for "this specific physical machine", mirroring how
+    :mod:`inventory.maintenance` and the audit code resolve units). Filament use
+    is recorded on the child :class:`PrintJobFilament` rows; completing the job
+    (:func:`inventory.printjobs.complete_job`) decrements each referenced spool's
+    ``percent_remaining`` and depletes it at ~0.
+
+    ``source`` distinguishes manual entry (today) from MQTT auto-population
+    (Phase 16.3); ``telemetry_task_id`` is the Bambu subtask id used as the
+    dedup key when the auto-ingest path lands. Both exist now so no schema change
+    is needed when telemetry arrives — only a new writer.
+    """
+
+    class Result(models.IntegerChoices):
+        SUCCESS = 1, "success"
+        FAILED = 2, "failed"
+        CANCELLED = 3, "cancelled"
+        PARTIAL = 4, "partial"
+
+    class Source(models.IntegerChoices):
+        MANUAL = 1, "manual"
+        MQTT = 2, "mqtt"
+
+    printer = models.ForeignKey(
+        "InventoryItem",
+        on_delete=models.PROTECT,
+        related_name="print_jobs",
+        help_text="The printer InventoryItem this job ran on.",
+    )
+    name = models.CharField(
+        max_length=255, blank=True, default="", help_text="gcode / 3mf file name."
+    )
+    started_at = models.DateTimeField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    duration_s = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Print duration in seconds. Derived from start/end if blank.",
+    )
+    result = models.PositiveSmallIntegerField(
+        choices=Result.choices, default=Result.SUCCESS
+    )
+    source = models.PositiveSmallIntegerField(
+        choices=Source.choices, default=Source.MANUAL
+    )
+    telemetry_task_id = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="Bambu subtask id — dedup key for MQTT auto-ingest.",
+    )
+    completed = models.BooleanField(
+        default=False,
+        help_text="True once consumption has been applied to the referenced spools.",
+    )
+    notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-started_at", "-created_at"]
+        verbose_name = "Print Job"
+        verbose_name_plural = "Print Jobs"
+
+    def __str__(self):
+        label = self.name or f"Job #{self.pk}"
+        return f"{label} on {self.printer_id}"
+
+    @property
+    def duration_hours(self):
+        """Duration in hours, derived from ``duration_s`` or start/end if absent."""
+        seconds = self.effective_duration_s
+        return seconds / 3600 if seconds else None
+
+    @property
+    def effective_duration_s(self):
+        """Duration in seconds: explicit ``duration_s`` else end-minus-start."""
+        if self.duration_s is not None:
+            return self.duration_s
+        if self.started_at and self.ended_at:
+            return int((self.ended_at - self.started_at).total_seconds())
+        return None
+
+
+class PrintJobFilament(models.Model):
+    """One spool's contribution to a :class:`PrintJob` (0..N per job for multi-color).
+
+    ``item`` is the spool's :class:`InventoryItem`; ``ams_slot`` optionally records
+    which slot it drew from (resolved to a unit via ``Location.unit``). Usage is
+    given as ``grams_used`` and/or ``percent_used``; completion prefers grams when
+    the spool's catalog ``weight`` is known, else falls back to ``percent_used``.
+
+    This table **is** the consumption log (it subsumes the old ``ConsumptionEvent``
+    backlog) — every row attributes filament use to a specific job and spool.
+    """
+
+    job = models.ForeignKey(
+        PrintJob, on_delete=models.CASCADE, related_name="filaments"
+    )
+    item = models.ForeignKey(
+        "InventoryItem", on_delete=models.PROTECT, related_name="print_uses"
+    )
+    ams_slot = models.ForeignKey(
+        "Location",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="print_uses",
+        help_text="Which slot the spool drew from, if known.",
+    )
+    grams_used = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True
+    )
+    percent_used = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True
+    )
+
+    class Meta:
+        verbose_name = "Print Job Filament"
+        verbose_name_plural = "Print Job Filaments"
+
+    def __str__(self):
+        return f"{self.item_id} on job {self.job_id}"

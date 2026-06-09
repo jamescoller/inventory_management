@@ -1,0 +1,65 @@
+{% extends "inventory/base.html" %}
+{% block content %}
+    <div class="container py-4">
+        <h2 class="mb-4">Log Print Job</h2>
+        <form method="post">
+            {% csrf_token %}
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="card-title mb-0">Job</h5>
+                </div>
+                <div class="card-body">
+                    {% for field in form %}
+                        <div class="mb-3">
+                            <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                            {{ field }}
+                            {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                            {% if field.errors %}<div class="alert alert-danger py-1 mt-1 mb-0">{{ field.errors }}</div>{% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="card-title mb-0">Filament Used</h5>
+                    <small class="text-muted">One row per spool. Give grams used (preferred) or percent used.</small>
+                </div>
+                <div class="card-body">
+                    {{ formset.management_form }}
+                    {% if formset.non_form_errors %}
+                        <div class="alert alert-danger">{{ formset.non_form_errors }}</div>
+                    {% endif %}
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Spool</th>
+                                    <th>AMS Slot</th>
+                                    <th>Grams Used</th>
+                                    <th>Percent Used</th>
+                                    {% if formset.can_delete %}<th>Remove</th>{% endif %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for sub in formset %}
+                                    <tr>
+                                        {{ sub.id }}
+                                        <td>{{ sub.item }}{% if sub.item.errors %}<div class="text-danger small">{{ sub.item.errors }}</div>{% endif %}</td>
+                                        <td>{{ sub.ams_slot }}</td>
+                                        <td>{{ sub.grams_used }}</td>
+                                        <td>{{ sub.percent_used }}</td>
+                                        {% if formset.can_delete %}<td>{{ sub.DELETE }}</td>{% endif %}
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Save &amp; Apply Consumption</button>
+            <a href="{% url 'print_job_list' %}" class="btn btn-secondary">Cancel</a>
+        </form>
+    </div>
+{% endblock content %}

@@ -1,0 +1,50 @@
+{% extends "inventory/base.html" %}
+{% block content %}
+    <div class="container py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>{{ printer_name }} — Utilization</h2>
+            <a href="{% url 'printer_utilization' %}" class="btn btn-secondary">All Printers</a>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col"><div class="card text-center"><div class="card-body">
+                <div class="h3 mb-0">{{ stats.jobs }}</div><div class="text-muted">Jobs</div>
+            </div></div></div>
+            <div class="col"><div class="card text-center"><div class="card-body">
+                <div class="h3 mb-0">{{ stats.hours }}</div><div class="text-muted">Hours</div>
+            </div></div></div>
+            <div class="col"><div class="card text-center"><div class="card-body">
+                <div class="h3 mb-0">{% if stats.success_rate is not None %}{{ stats.success_rate }}%{% else %}—{% endif %}</div><div class="text-muted">Success</div>
+            </div></div></div>
+            <div class="col"><div class="card text-center"><div class="card-body">
+                <div class="h3 mb-0">{{ stats.kg }}</div><div class="text-muted">kg consumed</div>
+            </div></div></div>
+        </div>
+
+        <h5>Jobs</h5>
+        <table class="table table-sm table-bordered">
+            <thead class="table-light">
+                <tr>
+                    <th>Job</th>
+                    <th>Started</th>
+                    <th class="text-end">Duration (h)</th>
+                    <th>Result</th>
+                    <th class="text-end">Spools</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in jobs %}
+                    <tr>
+                        <td><a href="{% url 'print_job_detail' job.pk %}">{{ job.name|default:job }}</a></td>
+                        <td>{{ job.started_at|date:"Y-m-d H:i"|default:"—" }}</td>
+                        <td class="text-end">{% if job.duration_hours %}{{ job.duration_hours|floatformat:1 }}{% else %}—{% endif %}</td>
+                        <td>{{ job.get_result_display|title }}</td>
+                        <td class="text-end">{{ job.filaments.count }}</td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="5" class="text-center text-muted">No jobs for this printer.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock content %}
