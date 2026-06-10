@@ -4,7 +4,10 @@ services:
     command: ["/app/entrypoint.sh"]
     restart: unless-stopped
     volumes:
-      - ${HOME}/inventory_db.sqlite3:/app/inventory_db.sqlite3
+      # DB *directory* (not the single file) so WAL's -wal/-shm siblings are
+      # shareable across containers (Phase 16.1). SQLITE_DB_PATH in ~/.env_inventory
+      # points at /app/db/inventory_db.sqlite3.
+      - ${HOME}/inventory_db_dir:/app/db
       - static_volume:/app/staticfiles
     expose:
       - "8000"
