@@ -4005,3 +4005,25 @@ class RunTelemetryConsumerTests(TestCase):
         # paho stores the username/password as bytes on the client
         self.assertEqual(client._username, b"bblp")
         self.assertEqual(client._password, b"secret")
+
+
+class TelemetryAdminTests(TestCase):
+    def test_models_registered(self):
+        from django.contrib import admin
+
+        from inventory.models import (
+            AMSChannelState,
+            AMSUnitState,
+            PrinterDevice,
+            PrinterState,
+            TelemetrySample,
+        )
+
+        for model in (
+            PrinterDevice,
+            PrinterState,
+            AMSUnitState,
+            AMSChannelState,
+            TelemetrySample,
+        ):
+            self.assertIn(model, admin.site._registry)

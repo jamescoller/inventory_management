@@ -15,6 +15,8 @@ from . import items
 from .forms import InventoryItemForm
 from .models import (
     AMS,
+    AMSChannelState,
+    AMSUnitState,
     AuditUnknownScan,
     Dryer,
     Filament,
@@ -25,6 +27,8 @@ from .models import (
     Material,
     NozzleConfig,
     Printer,
+    PrinterDevice,
+    PrinterState,
     PrintJob,
     PrintJobFilament,
     Product,
@@ -33,6 +37,7 @@ from .models import (
     PurchaseReceipt,
     PurchaseReceiptLine,
     Supplier,
+    TelemetrySample,
 )
 
 LOG_PATH = os.path.join(os.path.dirname(__file__), "../inventory.log")
@@ -669,3 +674,91 @@ class PurchaseReceiptAdmin(admin.ModelAdmin):
     inlines = [PurchaseReceiptLineInline]
     # ``attachment`` is rendered but inert until media storage is configured.
     fields = ("order", "received_at", "received_by", "attachment", "notes")
+
+
+# ----- Bambu MQTT telemetry mirror (Phase 16.1) -----
+# The state tables are read-only mirrors written by the telemetry consumer;
+# only PrinterDevice (registry/config) is editable.
+
+
+@admin.register(PrinterDevice)
+class PrinterDeviceAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "serial",
+        "ip_address",
+        "model_name",
+        "enabled",
+        "last_seen_at",
+    )
+    list_filter = ("enabled", "model_name")
+    search_fields = ("name", "serial")
+    fields = (
+        "name",
+        "serial",
+        "ip_address",
+        "model_name",
+        "access_code",
+        "item",
+        "enabled",
+        "last_seen_at",
+    )
+    readonly_fields = ("last_seen_at",)
+
+
+@admin.register(PrinterState)
+class PrinterStateAdmin(admin.ModelAdmin):
+    list_display = (
+        "device",
+        "gcode_state",
+        "mc_percent",
+        "nozzle_temp",
+        "bed_temp",
+        "updated_at",
+    )
+    list_filter = ("gcode_state",)
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(AMSUnitState)
+class AMSUnitStateAdmin(admin.ModelAdmin):
+    list_display = ("device", "ams_index", "humidity", "temp", "dry_time", "updated_at")
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(AMSChannelState)
+class AMSChannelStateAdmin(admin.ModelAdmin):
+    list_display = (
+        "device",
+        "ams_index",
+        "tray_index",
+        "tray_type",
+        "color_hex",
+        "remain_pct",
+        "updated_at",
+    )
+    list_filter = ("tray_type",)
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(TelemetrySample)
+class TelemetrySampleAdmin(admin.ModelAdmin):
+    list_display = (
+        "device",
+        "ts",
+        "gcode_state",
+        "mc_percent",
+        "nozzle_temp",
+        "bed_temp",
+    )
+    list_filter = ("device", "gcode_state")
+    date_hierarchy = "ts"
+
+    def has_add_permission(self, request):
+        return False
