@@ -4027,3 +4027,71 @@ class TelemetryAdminTests(TestCase):
             TelemetrySample,
         ):
             self.assertIn(model, admin.site._registry)
+
+
+class TelemetryJsonExportTests(TestCase):
+    """`scripts/ha_stats_export.py` is a standalone raw-SQL reader. Exercise its
+    new build_telemetry() against a temp SQLite with the relevant schema."""
+
+    def _load_script(self):
+        import importlib.util
+        from pathlib import Path
+
+        script = (
+            Path(__file__).resolve().parent.parent / "scripts" / "ha_stats_export.py"
+        )
+        spec = importlib.util.spec_from_file_location("ha_export", script)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_build_telemetry_structure(self):
+        import os
+        import sqlite3
+        import tempfile
+
+        ha = self._load_script()
+        with tempfile.TemporaryDirectory() as d:
+            db = os.path.join(d, "t.sqlite3")
+            conn = sqlite3.connect(db)
+            conn.executescript(
+                """
+                CREATE TABLE inventory_printerdevice (id INTEGER PRIMARY KEY, serial TEXT,
+                    name TEXT, model_name TEXT, enabled INTEGER, last_seen_at TEXT);
+                CREATE TABLE inventory_printerstate (device_id INTEGER, gcode_state TEXT,
+                    mc_percent INTEGER, layer_num INTEGER, total_layers INTEGER,
+                    nozzle_temp REAL, nozzle_target REAL, bed_temp REAL, bed_target REAL,
+                    remaining_min INTEGER, subtask_name TEXT);
+                CREATE TABLE inventory_amsunitstate (device_id INTEGER, ams_index INTEGER,
+                    humidity INTEGER, temp REAL, dry_time INTEGER, dry_temperature INTEGER);
+                CREATE TABLE inventory_amschannelstate (device_id INTEGER, ams_index INTEGER,
+                    tray_index INTEGER, tray_type TEXT, color_hex TEXT, remain_pct INTEGER,
+                    tray_uuid TEXT);
+                INSERT INTO inventory_printerdevice VALUES
+                    (1,'SER1','H2Laser','H2D',1,'2026-06-10T03:00:00');
+                INSERT INTO inventory_printerstate VALUES
+                    (1,'RUNNING',42,100,200,220.0,220.0,60.0,60.0,35,'job1');
+                INSERT INTO inventory_amsunitstate VALUES (1,0,5,24.6,0,-1);
+                INSERT INTO inventory_amschannelstate VALUES
+                    (1,0,0,'PETG','FFFFFFFF',69,'UUID1');
+                INSERT INTO inventory_printerdevice VALUES (2,'SER2','Asleep','X1C',1,NULL);
+                INSERT INTO inventory_printerdevice VALUES (3,'SER3','Off','X1C',0,NULL);
+                """
+            )
+            conn.commit()
+
+            result = ha.build_telemetry(conn)
+
+            self.assertEqual(len(result), 2)  # only enabled devices
+            self.assertEqual({p["name"] for p in result}, {"H2Laser", "Asleep"})
+            h2l = next(p for p in result if p["name"] == "H2Laser")
+            self.assertEqual(h2l["gcode_state"], "RUNNING")
+            self.assertEqual(h2l["mc_percent"], 42)
+            self.assertEqual(len(h2l["ams"]), 1)
+            self.assertEqual(h2l["ams"][0]["humidity"], 5)
+            self.assertEqual(h2l["ams"][0]["trays"][0]["tray_type"], "PETG")
+            self.assertEqual(h2l["ams"][0]["trays"][0]["remain_pct"], 69)
+            self.assertNotIn("id", h2l)  # internal device id stripped from output
+            asleep = next(p for p in result if p["name"] == "Asleep")
+            self.assertIsNone(asleep["gcode_state"])
+            self.assertEqual(asleep["ams"], [])
