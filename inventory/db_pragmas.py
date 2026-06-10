@@ -12,7 +12,9 @@ def enable_sqlite_pragmas(sender, connection, **kwargs):
     if connection.vendor != "sqlite":
         return
     cursor = connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL;")
-    cursor.execute("PRAGMA synchronous=NORMAL;")
-    cursor.execute("PRAGMA busy_timeout=5000;")
-    cursor.close()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        cursor.execute("PRAGMA synchronous=NORMAL;")
+        cursor.execute("PRAGMA busy_timeout=5000;")
+    finally:
+        cursor.close()
