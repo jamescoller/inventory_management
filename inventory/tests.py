@@ -3947,3 +3947,38 @@ class TelemetryIngestTests(TestCase):
         self.assertEqual(TelemetrySample.objects.filter(device=self.dev).count(), 1)
         ingest_report(self.dev, {"gcode_state": "FINISH"})  # transition -> sample
         self.assertEqual(TelemetrySample.objects.filter(device=self.dev).count(), 2)
+
+
+class SeedPrinterDevicesTests(TestCase):
+    def test_seed_is_idempotent(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from inventory.models import PrinterDevice
+
+        call_command("seed_printer_devices", stdout=StringIO())
+        self.assertEqual(PrinterDevice.objects.count(), 4)
+        h2l = PrinterDevice.objects.get(serial="0948CD531200537")
+        self.assertEqual(h2l.name, "H2Laser")
+        self.assertEqual(h2l.ip_address, "10.10.30.11")
+        self.assertEqual(h2l.access_code, "")  # codes not committed; filled later
+        call_command("seed_printer_devices", stdout=StringIO())  # re-run
+        self.assertEqual(PrinterDevice.objects.count(), 4)  # still 4
+
+    def test_seed_accepts_codes_arg(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from inventory.models import PrinterDevice
+
+        call_command(
+            "seed_printer_devices",
+            "--codes",
+            "0948CD531200537=abc123",
+            stdout=StringIO(),
+        )
+        self.assertEqual(
+            PrinterDevice.objects.get(serial="0948CD531200537").access_code, "abc123"
+        )
