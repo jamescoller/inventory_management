@@ -1365,16 +1365,26 @@ class InventoryExportView(LoginRequiredMixin, View):
         ws.title = "Inventory Export"
 
         # Write headers
-        headers = ["Product", "SKU", "UPC", "Date Added", "Location"]
+        headers = [
+            "Serial",
+            "Product",
+            "SKU",
+            "UPC",
+            "Status",
+            "Date Added",
+            "Location",
+        ]
         ws.append(headers)
 
         # Write data rows
         for item in items:
             ws.append(
                 [
+                    item.serial_number,
                     item.product.name,
                     item.product.sku,
                     item.product.upc,
+                    item.get_status_display(),
                     localtime(item.date_added).strftime("%Y-%m-%d %H:%M:%S"),
                     item.location.name if item.location else "",
                 ]

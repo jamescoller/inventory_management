@@ -282,7 +282,9 @@ blast radius; (3) MQTT auto-sync writing back to real inventory.
 - [ ] **`sudo` missing on the app LXC** — `jcoller` is in `sudo` group but the binary isn't
   installed; polkit denies `systemctl reboot` for non-root SSH. Decide: narrow NOPASSWD rule,
   drive privileged ops from the Proxmox host via `pct exec`, or leave manual.
-- [ ] **#33 — Excel export** — Fix `InventoryExportView`. Low priority; not regularly used.
+- [x] **#33 — Excel export** — The original filter bug was already fixed in Phase 11.2
+  (`_filtered_search_items` extraction). Verified the export produces a valid xlsx (regression
+  test added) and rounded it out with **Serial** + **Status** columns. (2026-06-10)
 - [ ] **#34 — Import order/invoice history** — Largely **superseded by Phase 14** (procurement);
   only the *historical* invoice import remains, and only if bulk back-entry is wanted. Replace
   pandas with openpyxl, relocate to `management/commands/`.
