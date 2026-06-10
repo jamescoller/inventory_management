@@ -3739,3 +3739,18 @@ class SqlitePragmaUnitTests(TestCase):
                 raise AssertionError("must not touch cursor on non-sqlite")
 
         enable_sqlite_pragmas(sender=None, connection=FakeConn())
+
+
+class SqlitePragmaIntegrationTests(TestCase):
+    def test_synchronous_normal_applied_to_live_connection(self):
+        """Proves the connection_created receiver is wired and fires for real
+        connections: it sets synchronous=NORMAL (1), whereas Django's default
+        leaves it FULL (2). (busy_timeout is a poor probe here — Django already
+        defaults it to 5000. journal_mode can't be asserted either: the test DB
+        is in-memory and always reports 'memory'. WAL is verified in the prod
+        runbook.)"""
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute("PRAGMA synchronous;")
+            self.assertEqual(cursor.fetchone()[0], 1)
