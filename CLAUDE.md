@@ -402,14 +402,18 @@ rework = extract an `inventory/items.py` `move_to()`/`deplete()`/`set_status()` 
   the real Synology share. Restore-verified (641/107/264); nightly cron `0 2 * * *` as `jcoller`.
   Retention: 30 dailies + 12 monthly anchors. See `docs/db-backup-status.md`. **Never re-attempt
   the in-LXC NFS mount.**
-- **Phase 6 manual prod setup:** ✅ mostly DONE (2026-06-09 reconcile, direct prod shell edits,
+- **Phase 6 manual prod setup:** ✅ **DONE** (2026-06-09/10 reconcile, direct prod shell edits,
   each batch backed up first). Dry-storage shelves re-typed `shelf`→`dry_storage` (the mis-typing
   silently bypassed the `kind==DRY_STORAGE` drying guard at `models.py:708`) + renamed/deduped;
-  stray `Dryer XX` + empty legacy flat shelves deleted; slot `unit` FKs propagated container→slots
-  (**AMS 33/34**, **dryers 8/16**). The "215 lost items" was mostly inactive history (147 on a
-  `Receiving` flat shelf + 52 null depleted); only ~68 active, already on correct shelves. **STILL
-  OPEN:** create InventoryItems for **Sunlu S4 Dryer 1 & 2** (await James serials) → link their 8
-  slots → 16/16; `AMS HT-2` intentionally empty (no 2nd unit).
+  stray `Dryer XX` + empty legacy flat shelves deleted. The "215 lost items" was mostly inactive
+  history (147 on a `Receiving` flat shelf + 52 null depleted); only ~68 active, already on correct
+  shelves. **All AMS + dryer slot `unit` FKs now linked by serial — AMS 34/34, dryers 14/14, 0
+  unlinked.** James's serial data exposed 3 pre-existing errors that were fixed: Dryer 3↔4 links
+  swapped, INV-667/668 on the wrong dryer product (DB-04→DB-05 SpacePi X4), and AMS HT-1 mis-linked
+  to INV-501 (whose serial is actually HT-2). Created 3 machine items (Dryer 1 INV-676 Creality
+  2-slot — container was misnamed "Sunlu S4 Dryer 1"; Dryer 2 INV-677 Sunlu S4; AMS HT-1 INV-678).
+  **Lesson: serial is the only reliable machine↔record key** — seed names/slot-counts and hand-set
+  links both had errors. Unblocks Phase 16.3 MQTT auto-sync.
 - **Phase 17 filament data:** source files are in the repo (`filament_TDS/`, `filament_hex/`,
   `filament-guide-en.pdf`). Parsing needs a **dev-only** `pypdf` (approved; never a prod/image
   dep); the hex screenshot PNGs read via vision. See `docs/filament-data-pipeline.md`.
