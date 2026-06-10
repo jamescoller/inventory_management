@@ -4123,3 +4123,41 @@ class InventoryExportTests(TestCase):
         )
         self.assertEqual(ws.max_row, 2)  # header + 1 item
         self.assertEqual(ws.cell(row=2, column=2).value, "PLA Red")  # Product col
+
+
+class FilamentHexParseTests(TestCase):
+    """Phase 17.2 — text-fixture tests for the hex-table PDF parser (no pypdf)."""
+
+    def test_parse_hex_text(self):
+        from inventory.filament_hex import parse_hex_text
+
+        # Mirrors the real Bambu_PLA_Basic text layout.
+        text = (
+            "Bambu Lab\n"
+            "Filament Hex Code Table\n"
+            "PL A  Basic\n"
+            "Jade White\nHex:#FFFFFF\n"
+            "Bambu Green\nHex:#00AE42\n"
+            "Black\nHex:#000000\n"
+        )
+        rows = parse_hex_text(
+            text, source_file="filament_hex/Bambu_PLA_Basic_Hex_Code.pdf"
+        )
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0].color_name, "Jade White")
+        self.assertEqual(rows[0].hex_code, "#FFFFFF")
+        self.assertEqual(rows[0].material, "PLA Basic")
+        self.assertEqual(rows[0].source_file, "Bambu_PLA_Basic_Hex_Code.pdf")
+        self.assertEqual(rows[1].hex_code, "#00AE42")
+        # the material/header line must NOT leak as a color
+        self.assertNotIn("PL A  Basic", [r.color_name for r in rows])
+
+    def test_material_from_filename(self):
+        from inventory.filament_hex import material_from_filename
+
+        self.assertEqual(
+            material_from_filename("filament_hex/PETG-CF_Hex_Code_Table.pdf"), "PETG-CF"
+        )
+        self.assertEqual(
+            material_from_filename("filament_hex/Bambu_TPU_85A_Hex_Code.pdf"), "TPU 85A"
+        )
