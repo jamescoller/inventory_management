@@ -8,6 +8,10 @@ services:
       # shareable across containers (Phase 16.1).
       - ${HOME}/inventory_db_dir:/app/db
       - static_volume:/app/staticfiles
+      # Persist the app log across container rebuilds so the admin "view-log" page
+      # (and any debugging) survives deploys. The host file MUST exist before the
+      # mount (else Docker creates a directory there). Single-file mount = web only.
+      - ${HOME}/inventory.log:/app/inventory.log
     expose:
       - "8000"
     environment:

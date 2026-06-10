@@ -4280,3 +4280,20 @@ class UnfoldAdminSmokeTests(TestCase):
 
     def test_material_changelist(self):
         self._ok(reverse("admin:inventory_material_changelist"))
+
+
+class AdminLogLevelParseTests(TestCase):
+    """The system-log view parses a level out of each (heterogeneous) log line to
+    drive the level filter."""
+
+    def test_level_regex(self):
+        from inventory.admin import InventoryItemAdmin
+
+        rx = InventoryItemAdmin._LOG_LEVEL_RE
+        self.assertEqual(
+            rx.search("django.request WARNING 2026-06-09 18:04:42 Not Found").group(1),
+            "WARNING",
+        )
+        self.assertEqual(rx.search("[INFO] Adding PLA to inventory").group(1), "INFO")
+        self.assertEqual(rx.search("traceback ERROR boom").group(1), "ERROR")
+        self.assertIsNone(rx.search("a line with no level keyword"))
