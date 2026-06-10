@@ -41,6 +41,7 @@ BARCODE_FONT_SIZE = 22  # or 12 / 16 etc.
 
 ALLOWED_HOSTS = [
     "inventory.home",
+    "inventory.home.collerco.com",
     "knowledge.local",
     "inventory-manager",
     "10.10.20.17",

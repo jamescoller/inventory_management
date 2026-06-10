@@ -274,6 +274,7 @@ blast radius; (3) MQTT auto-sync writing back to real inventory.
   `view-log` page now parses a level out of each line and renders a **DataTables** table
   (sortable columns + global search + a level-filter dropdown), tailing up to 1000 lines
   (`?lines=` overridable). (2026-06-10)
+- [ ] Expose a full FTS5 search box to enable improved search functions including wildcards and contains across fields
 
 ## Fixes
 - [x] On the `/edit/` pages with hardware (AMS, Printers, Dryers) that have the `Maintenance`
