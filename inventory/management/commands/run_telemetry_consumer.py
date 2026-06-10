@@ -40,10 +40,17 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        devices = self._wait_for_devices()
-        if not devices:
+        once = options["once"]
+        while True:
+            devices = self._wait_for_devices()
+            if devices:
+                break
+            # Idle-wait rather than exit: with restart:unless-stopped, exiting here
+            # would spin-restart the container until devices are seeded.
             self.stdout.write("No enabled PrinterDevice rows; nothing to do.")
-            return
+            if once:
+                return
+            time.sleep(30)
         clients = []
         for dev in devices:
             client = self.make_client(dev)
