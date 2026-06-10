@@ -115,5 +115,6 @@ class Command(BaseCommand):
         handle_message(device, msg.payload)
 
     @staticmethod
-    def _on_disconnect(client, device, *args):
+    def _on_disconnect(client, device, disconnect_flags, reason_code, properties=None):
+        # paho v2 passes userdata (our PrinterDevice) as the 2nd positional arg.
         logger.info("MQTT disconnected from %s (will auto-reconnect)", device.serial)

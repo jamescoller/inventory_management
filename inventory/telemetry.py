@@ -97,7 +97,8 @@ def ingest_report(device, report):
     state, _ = PrinterState.objects.get_or_create(device=device)
     changed = _apply(state, _PRINTER_FIELDS, report)
     if "hms" in report:
-        state.hms_codes = report["hms"] or []
+        # hms arrives as the full active list; guard against a malformed non-list.
+        state.hms_codes = report["hms"] if isinstance(report["hms"], list) else []
         changed = True
     if changed:
         state.save()
