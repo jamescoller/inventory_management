@@ -3823,3 +3823,127 @@ class TelemetryHelperTests(TestCase):
         self.assertFalse(
             should_sample(prev, "RUNNING", now=now + timedelta(seconds=120))
         )  # running but under interval
+
+
+# Trimmed from the live H2Laser `pushall` probe (2026-06-10).
+REAL_REPORT = {
+    "gcode_state": "RUNNING",
+    "mc_percent": 42,
+    "layer_num": 100,
+    "total_layer_num": 200,
+    "nozzle_temper": 220.0,
+    "nozzle_target_temper": 220.0,
+    "bed_temper": 60.0,
+    "bed_target_temper": 60.0,
+    "mc_remaining_time": 35,
+    "subtask_name": "Paper Roll Holder_v2",
+    "task_id": "997709002",
+    "hms": [{"code": 196618, "attr": 83886592}],
+    "ams": {
+        "ams": [
+            {
+                "id": "0",
+                "humidity": "5",
+                "humidity_raw": "13",
+                "temp": "24.6",
+                "dry_time": 0,
+                "dry_setting": {
+                    "dry_duration": -1,
+                    "dry_temperature": -1,
+                    "dry_filament": "",
+                },
+                "tray": [
+                    {
+                        "id": "0",
+                        "tray_uuid": "31D95EE890CA468D8119FE4946EB21B2",
+                        "tray_info_idx": "GFG02",
+                        "tray_type": "PETG",
+                        "tray_sub_brands": "PETG HF",
+                        "tray_color": "FFFFFFFF",
+                        "remain": 69,
+                    },
+                    {"id": "1", "tray_type": "", "remain": -1},
+                ],
+            }
+        ]
+    },
+}
+
+
+class TelemetryIngestTests(TestCase):
+    def setUp(self):
+        from inventory.models import PrinterDevice
+
+        self.dev = PrinterDevice.objects.create(
+            serial="0948CD531200537", name="H2Laser", ip_address="10.10.30.11"
+        )
+
+    def test_ingest_full_report(self):
+        from decimal import Decimal
+
+        from inventory.models import AMSChannelState, AMSUnitState, PrinterState
+        from inventory.telemetry import ingest_report
+
+        ingest_report(self.dev, REAL_REPORT)
+
+        st = PrinterState.objects.get(device=self.dev)
+        self.assertEqual(st.gcode_state, "RUNNING")
+        self.assertEqual(st.mc_percent, 42)
+        self.assertEqual(st.total_layers, 200)
+        self.assertEqual(st.nozzle_temp, Decimal("220.0"))
+        self.assertEqual(st.remaining_min, 35)
+        self.assertEqual(st.task_id, "997709002")
+        self.assertEqual(st.hms_codes, [{"code": 196618, "attr": 83886592}])
+
+        unit = AMSUnitState.objects.get(device=self.dev, ams_index=0)
+        self.assertEqual(unit.humidity, 5)
+        self.assertEqual(unit.temp, Decimal("24.6"))
+        self.assertEqual(unit.dry_duration, -1)
+
+        ch0 = AMSChannelState.objects.get(device=self.dev, ams_index=0, tray_index=0)
+        self.assertEqual(ch0.tray_uuid, "31D95EE890CA468D8119FE4946EB21B2")
+        self.assertEqual(ch0.tray_type, "PETG")
+        self.assertEqual(ch0.remain_pct, 69)
+        ch1 = AMSChannelState.objects.get(device=self.dev, ams_index=0, tray_index=1)
+        self.assertEqual(ch1.remain_pct, -1)  # unknown preserved
+
+    def test_delta_does_not_clobber(self):
+        from inventory.models import PrinterState
+        from inventory.telemetry import ingest_report
+
+        ingest_report(self.dev, REAL_REPORT)
+        ingest_report(self.dev, {"mc_percent": 88})  # partial delta
+        st = PrinterState.objects.get(device=self.dev)
+        self.assertEqual(st.mc_percent, 88)  # updated
+        self.assertEqual(st.gcode_state, "RUNNING")  # NOT clobbered
+        self.assertEqual(st.subtask_name, "Paper Roll Holder_v2")  # NOT clobbered
+
+    def test_handle_message_parses_and_marks_seen(self):
+        import json
+
+        from inventory.models import PrinterState
+        from inventory.telemetry import handle_message
+
+        raw = json.dumps({"print": REAL_REPORT}).encode()
+        self.assertTrue(handle_message(self.dev, raw))
+        self.dev.refresh_from_db()
+        self.assertIsNotNone(self.dev.last_seen_at)
+        self.assertEqual(PrinterState.objects.get(device=self.dev).mc_percent, 42)
+
+    def test_handle_message_ignores_non_print(self):
+        from inventory.telemetry import handle_message
+
+        self.assertFalse(handle_message(self.dev, b'{"info": {"x": 1}}'))
+        self.assertFalse(handle_message(self.dev, b"not json"))
+
+    def test_downsample_one_sample_for_steady_state(self):
+        from inventory.models import TelemetrySample
+        from inventory.telemetry import ingest_report
+
+        ingest_report(self.dev, REAL_REPORT)  # first -> sample
+        ingest_report(
+            self.dev, {"gcode_state": "RUNNING", "mc_percent": 43}
+        )  # same state, no interval
+        self.assertEqual(TelemetrySample.objects.filter(device=self.dev).count(), 1)
+        ingest_report(self.dev, {"gcode_state": "FINISH"})  # transition -> sample
+        self.assertEqual(TelemetrySample.objects.filter(device=self.dev).count(), 2)
