@@ -3695,3 +3695,47 @@ class ProcurementViewTests(TestCase):
             resp = self.client.get(reverse(name, args=args))
             self.assertEqual(resp.status_code, 302)
             self.assertIn("/login", resp.url)
+
+
+class SqlitePragmaUnitTests(TestCase):
+    """The WAL receiver is exercised against a real *file* DB because WAL is not
+    observable on an in-memory DB (which always reports journal_mode='memory')."""
+
+    def test_pragmas_enable_wal_on_file_db(self):
+        import os
+        import sqlite3
+        import tempfile
+
+        from inventory.db_pragmas import enable_sqlite_pragmas
+
+        with tempfile.TemporaryDirectory() as d:
+            raw = sqlite3.connect(os.path.join(d, "t.sqlite3"))
+
+            class FakeConn:
+                vendor = "sqlite"
+
+                def cursor(self):
+                    return raw.cursor()
+
+            enable_sqlite_pragmas(sender=None, connection=FakeConn())
+
+            cur = raw.cursor()
+            self.assertEqual(
+                cur.execute("PRAGMA journal_mode;").fetchone()[0].lower(), "wal"
+            )
+            self.assertEqual(
+                cur.execute("PRAGMA synchronous;").fetchone()[0], 1
+            )  # NORMAL
+            self.assertEqual(cur.execute("PRAGMA busy_timeout;").fetchone()[0], 5000)
+            raw.close()
+
+    def test_receiver_is_noop_on_non_sqlite(self):
+        from inventory.db_pragmas import enable_sqlite_pragmas
+
+        class FakeConn:
+            vendor = "postgresql"
+
+            def cursor(self):
+                raise AssertionError("must not touch cursor on non-sqlite")
+
+        enable_sqlite_pragmas(sender=None, connection=FakeConn())
