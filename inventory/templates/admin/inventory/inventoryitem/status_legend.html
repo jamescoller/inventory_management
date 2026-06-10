@@ -1,0 +1,15 @@
+{% load i18n %}
+{% comment %}
+Status-badge legend rendered above the InventoryItem changelist via Unfold's
+ModelAdmin.list_before_template hook. Badge classes are styled by
+inventory/css/admin-badges.css (loaded through the admin's Media, which the
+custom change_list.html re-emits in {% block extrahead %}).
+{% endcomment %}
+<div class="mb-4 text-sm" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <strong>{% translate "Status Legend:" %}</strong>
+    <span class="badge badge-new">{% translate "New" %}</span>
+    <span class="badge badge-in-use">{% translate "In Use" %}</span>
+    <span class="badge badge-drying">{% translate "Drying" %}</span>
+    <span class="badge badge-stored">{% translate "Stored" %}</span>
+    <span class="badge badge-depleted">{% translate "Depleted" %}</span>
+</div>

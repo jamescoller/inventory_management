@@ -10,6 +10,8 @@ from django.urls import path
 from django.utils.html import format_html
 from polymorphic.admin import PolymorphicChildModelAdmin, PolymorphicParentModelAdmin
 from simple_history.admin import SimpleHistoryAdmin
+from unfold.admin import ModelAdmin as UnfoldModelAdmin
+from unfold.admin import TabularInline as UnfoldTabularInline
 
 from . import items
 from .forms import InventoryItemForm
@@ -46,14 +48,14 @@ LOG_PATH = os.path.join(os.path.dirname(__file__), "../inventory.log")
 
 
 # This allows for the inventory item page in the admin view to show these fields all in the same line as a table
-class InventoryItemInline(admin.TabularInline):  # or admin.StackedInline
+class InventoryItemInline(UnfoldTabularInline):  # or UnfoldStackedInline
     model = InventoryItem
     extra = 0
     fields = ("shipment", "location", "status", "date_depleted")
     readonly_fields = ("date_depleted",)
 
 
-class MaintenanceEventInline(admin.TabularInline):
+class MaintenanceEventInline(UnfoldTabularInline):
     """Maintenance timeline shown on a machine's InventoryItem admin page."""
 
     model = MaintenanceEvent
@@ -98,7 +100,13 @@ class ProductTypeFilter(admin.SimpleListFilter):
 # ----- Polymorphic Child Admins -----
 
 
-class ProductChildAdmin(PolymorphicChildModelAdmin):
+class ProductChildAdmin(PolymorphicChildModelAdmin, UnfoldModelAdmin):
+    # MRO: polymorphic first (its change_form/history/delete templates +
+    # get_form/render_change_form child-fieldset logic must win), Unfold's
+    # ModelAdmin last (it sets no templates; its form-widget styling comes from
+    # FormFieldModelAdminMixin.formfield_for_dbfield, which polymorphic does not
+    # override, so admin form fields still get Unfold styling). Mirrors the
+    # SimpleHistoryAdmin + ModelAdmin ordering Unfold documents.
     base_model = Product
 
 
@@ -233,7 +241,9 @@ class AMSAdmin(ProductChildAdmin):
 
 
 @admin.register(Product)
-class ProductParentAdmin(PolymorphicParentModelAdmin):
+class ProductParentAdmin(PolymorphicParentModelAdmin, UnfoldModelAdmin):
+    # See ProductChildAdmin: polymorphic first (its change_list_template wins),
+    # Unfold's ModelAdmin last for styling.
     base_model = Product
     child_models = (
         Filament,
@@ -250,11 +260,16 @@ class ProductParentAdmin(PolymorphicParentModelAdmin):
 
 
 @admin.register(InventoryItem)
-class InventoryItemAdmin(SimpleHistoryAdmin):
+class InventoryItemAdmin(SimpleHistoryAdmin, UnfoldModelAdmin):
+    # SimpleHistoryAdmin first, Unfold ModelAdmin last — the exact ordering from
+    # Unfold's django-simple-history integration docs.
     form = InventoryItemForm
     inlines = [MaintenanceEventInline]
 
     change_list_template = "admin/inventory/inventoryitem/change_list.html"
+    # Unfold renders this partial directly above the result list (Unfold dropped
+    # Django's content_title block, so the status-badge legend rides here now).
+    list_before_template = "admin/inventory/inventoryitem/status_legend.html"
 
     # this controls which columns show up in the changelist
     list_display = (
@@ -428,7 +443,7 @@ class InventoryItemAdmin(SimpleHistoryAdmin):
 
 
 @admin.register(Location)
-class LocationAdmin(admin.ModelAdmin):
+class LocationAdmin(UnfoldModelAdmin):
     list_display = ["name", "kind", "parent", "slot_index", "default_status", "unit"]
     list_filter = ["kind", "default_status"]
     list_select_related = ["parent", "unit"]
@@ -485,7 +500,7 @@ class LocationAdmin(admin.ModelAdmin):
 
 
 @admin.register(Material)
-class MaterialAdmin(admin.ModelAdmin):
+class MaterialAdmin(UnfoldModelAdmin):
     list_display = [
         "name",
         "material_type",
@@ -553,7 +568,7 @@ class MaterialAdmin(admin.ModelAdmin):
 
 
 @admin.register(AuditUnknownScan)
-class AuditUnknownScanAdmin(admin.ModelAdmin):
+class AuditUnknownScanAdmin(UnfoldModelAdmin):
     list_display = ("upc", "location", "created_at", "resolved", "dismissed")
     list_filter = ("resolved", "dismissed")
     search_fields = ("upc",)
@@ -561,7 +576,7 @@ class AuditUnknownScanAdmin(admin.ModelAdmin):
 
 
 @admin.register(MaintenanceEvent)
-class MaintenanceEventAdmin(admin.ModelAdmin):
+class MaintenanceEventAdmin(UnfoldModelAdmin):
     list_display = (
         "occurred_at",
         "unit",
@@ -580,7 +595,7 @@ class MaintenanceEventAdmin(admin.ModelAdmin):
 
 
 @admin.register(NozzleConfig)
-class NozzleConfigAdmin(admin.ModelAdmin):
+class NozzleConfigAdmin(UnfoldModelAdmin):
     list_display = (
         "printer",
         "nozzle_diameter_mm",
@@ -590,14 +605,14 @@ class NozzleConfigAdmin(admin.ModelAdmin):
     list_select_related = ("printer__product",)
 
 
-class PrintJobFilamentInline(admin.TabularInline):
+class PrintJobFilamentInline(UnfoldTabularInline):
     model = PrintJobFilament
     extra = 1
     autocomplete_fields = ["item", "ams_slot"]
 
 
 @admin.register(PrintJob)
-class PrintJobAdmin(admin.ModelAdmin):
+class PrintJobAdmin(UnfoldModelAdmin):
     list_display = (
         "__str__",
         "printer",
@@ -619,12 +634,12 @@ class PrintJobAdmin(admin.ModelAdmin):
 
 
 @admin.register(Supplier)
-class SupplierAdmin(admin.ModelAdmin):
+class SupplierAdmin(UnfoldModelAdmin):
     list_display = ("name", "website", "account_ref")
     search_fields = ("name", "account_ref")
 
 
-class PurchaseOrderLineInline(admin.TabularInline):
+class PurchaseOrderLineInline(UnfoldTabularInline):
     model = PurchaseOrderLine
     extra = 1
     # ``product`` uses a raw-id widget rather than autocomplete: the polymorphic
@@ -642,7 +657,7 @@ class PurchaseOrderLineInline(admin.TabularInline):
 
 
 @admin.register(PurchaseOrder)
-class PurchaseOrderAdmin(admin.ModelAdmin):
+class PurchaseOrderAdmin(UnfoldModelAdmin):
     list_display = (
         "__str__",
         "supplier",
@@ -659,14 +674,14 @@ class PurchaseOrderAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "last_modified")
 
 
-class PurchaseReceiptLineInline(admin.TabularInline):
+class PurchaseReceiptLineInline(UnfoldTabularInline):
     model = PurchaseReceiptLine
     extra = 0
     raw_id_fields = ("order_line",)
 
 
 @admin.register(PurchaseReceipt)
-class PurchaseReceiptAdmin(admin.ModelAdmin):
+class PurchaseReceiptAdmin(UnfoldModelAdmin):
     list_display = ("__str__", "order", "received_at", "received_by")
     list_filter = ("order__supplier",)
     list_select_related = ("order", "order__supplier", "received_by")
@@ -682,7 +697,7 @@ class PurchaseReceiptAdmin(admin.ModelAdmin):
 
 
 @admin.register(PrinterDevice)
-class PrinterDeviceAdmin(admin.ModelAdmin):
+class PrinterDeviceAdmin(UnfoldModelAdmin):
     list_display = (
         "name",
         "serial",
@@ -707,7 +722,7 @@ class PrinterDeviceAdmin(admin.ModelAdmin):
 
 
 @admin.register(PrinterState)
-class PrinterStateAdmin(admin.ModelAdmin):
+class PrinterStateAdmin(UnfoldModelAdmin):
     list_display = (
         "device",
         "gcode_state",
@@ -723,7 +738,7 @@ class PrinterStateAdmin(admin.ModelAdmin):
 
 
 @admin.register(AMSUnitState)
-class AMSUnitStateAdmin(admin.ModelAdmin):
+class AMSUnitStateAdmin(UnfoldModelAdmin):
     list_display = ("device", "ams_index", "humidity", "temp", "dry_time", "updated_at")
 
     def has_add_permission(self, request):
@@ -731,7 +746,7 @@ class AMSUnitStateAdmin(admin.ModelAdmin):
 
 
 @admin.register(AMSChannelState)
-class AMSChannelStateAdmin(admin.ModelAdmin):
+class AMSChannelStateAdmin(UnfoldModelAdmin):
     list_display = (
         "device",
         "ams_index",
@@ -748,7 +763,7 @@ class AMSChannelStateAdmin(admin.ModelAdmin):
 
 
 @admin.register(TelemetrySample)
-class TelemetrySampleAdmin(admin.ModelAdmin):
+class TelemetrySampleAdmin(UnfoldModelAdmin):
     list_display = (
         "device",
         "ts",

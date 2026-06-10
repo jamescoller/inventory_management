@@ -1,0 +1,67 @@
+{% extends "admin/base.html" %}
+{% load i18n unfold %}
+
+{% comment %}
+Unfold admin dashboard (landing page). Overrides Unfold's own admin/index.html.
+This MUST live in the project-level templates/ dir (TEMPLATES["DIRS"]) so it wins
+over unfold's app-level admin/index.html — Unfold precedes ``inventory`` in
+INSTALLED_APPS, so an app-level override in ``inventory`` would lose the lookup.
+
+KPI cards come from inventory.admin_dashboard.dashboard_callback (wired via
+UNFOLD["DASHBOARD_CALLBACK"]). Below the cards we keep Unfold's standard app
+list + history sidebar so the admin index still navigates normally, plus the
+legacy "View Log" tool link that used to live in the old index override.
+{% endcomment %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock title %}
+
+{% block branding %}
+    {% include "unfold/helpers/site_branding.html" %}
+{% endblock branding %}
+
+{% block content %}
+    {% if kpi_cards %}
+        <div class="grid grid-cols-1 gap-4 mb-8 sm:grid-cols-2 lg:grid-cols-4">
+            {% for card in kpi_cards %}
+                {% component "unfold/components/card.html" with icon=card.icon %}
+                    <div class="flex flex-col">
+                        <span class="text-font-subtle-light text-sm dark:text-font-subtle-dark">
+                            {{ card.title }}
+                        </span>
+                        <span class="font-semibold mt-2 text-2xl text-font-important-light tracking-tight dark:text-font-important-dark">
+                            {{ card.value }}
+                        </span>
+                        {% if card.description %}
+                            <span class="mt-2 text-font-subtle-light text-xs dark:text-font-subtle-dark">
+                                {{ card.description }}
+                            </span>
+                        {% endif %}
+                    </div>
+                {% endcomponent %}
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div class="flex flex-col lg:flex-row lg:gap-8">
+        <div class="grow">
+            {% include "unfold/helpers/app_list_default.html" %}
+
+            <div class="bg-white border border-base-200 mt-8 rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+                <div class="border-b border-base-200 font-semibold px-6 py-4 text-font-important-light text-sm dark:border-base-800 dark:text-font-important-dark">
+                    {% trans "Tools" %}
+                </div>
+                <div class="px-6 py-4">
+                    <a href="{% url 'admin:inventory-log' %}"
+                       class="text-primary-600 hover:text-primary-700 dark:text-primary-500">
+                        {% trans "View Log" %}
+                    </a>
+                    <p class="mb-0 mt-1 text-font-subtle-light text-sm dark:text-font-subtle-dark">
+                        {% trans "Latest inventory events and system log output" %}
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        {% include "unfold/helpers/history.html" %}
+    </div>
+{% endblock content %}

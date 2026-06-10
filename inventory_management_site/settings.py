@@ -51,6 +51,15 @@ ALLOWED_HOSTS = [
 # Application definition
 
 INSTALLED_APPS = [
+    # django-unfold admin theme. These MUST precede ``django.contrib.admin`` so
+    # Unfold's template overrides win. The contrib apps style third-party admin
+    # add-ons: ``simple_history`` (history views), ``forms`` (admin form widgets),
+    # ``filters`` (changelist filter widgets). ``simple_history`` must sit before
+    # the ``simple_history`` app itself (below) per Unfold's docs.
+    "unfold",
+    "unfold.contrib.filters",
+    "unfold.contrib.forms",
+    "unfold.contrib.simple_history",
     "inventory",
     "crispy_forms",
     "crispy_bootstrap5",
@@ -195,6 +204,39 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
+# NOTE: crispy stays on bootstrap5 — that pack styles the *public* site forms.
+# Unfold ships an ``unfold_crispy`` pack for the admin, but switching the global
+# CRISPY_TEMPLATE_PACK would restyle the front-end. The admin gets Unfold widget
+# styling via ``unfold.contrib.forms`` regardless of the crispy pack.
+
+# ----- django-unfold admin theme -----------------------------------------
+# Drop-in modern admin theme. Auto dark mode (no THEME key = OS-preference
+# switcher enabled). Primary colour mirrors the public site's Bootswatch Zephyr
+# blue (#3459e6) as a Tailwind 50–950 scale; Unfold accepts space-separated
+# "R G B" triplets and normalises them to rgb(). The 600 shade is the exact
+# brand anchor. ``DASHBOARD_CALLBACK`` injects live KPI cards into the landing
+# page (templates/admin/index.html).
+UNFOLD = {
+    "SITE_TITLE": "Inventory",
+    "SITE_HEADER": "Inventory",
+    "SHOW_HISTORY": True,
+    "DASHBOARD_CALLBACK": "inventory.admin_dashboard.dashboard_callback",
+    "COLORS": {
+        "primary": {
+            "50": "243 245 254",
+            "100": "226 232 253",
+            "200": "187 201 251",
+            "300": "139 162 249",
+            "400": "92 124 245",
+            "500": "65 100 234",
+            "600": "52 89 230",  # #3459e6 — Zephyr brand anchor
+            "700": "31 64 189",
+            "800": "31 56 150",
+            "900": "31 50 122",
+            "950": "23 35 79",
+        },
+    },
+}
 
 LOGIN_REDIRECT_URL = "/"
 LOGIN_URL = "login"

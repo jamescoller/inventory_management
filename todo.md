@@ -227,10 +227,15 @@ dev-time PDF lib (`pypdf`) — not a production image dep.*
 
 ## Phase 18 — Visual & Admin Polish
 
-- [ ] **18.1 Admin 2.0** — adopt **`django-unfold`** (Tailwind, responsive, modern dashboard;
-  drop-in — existing `list_display`/`fieldsets`/actions/polymorphic/inline code carries over,
-  ~2–3 h). Do **last** so it re-skins the *final* admin set (procurement/maintenance/telemetry)
-  once. See [`docs/admin-2.0.md`](docs/admin-2.0.md).
+- [x] **18.1 Admin 2.0** — adopted **`django-unfold`** (Tailwind, responsive). Base swap across
+  all ~27 admin classes/inlines (incl. polymorphic parent/child via `(PolymorphicXModelAdmin,
+  UnfoldModelAdmin)` MRO, and `(SimpleHistoryAdmin, UnfoldModelAdmin)`); `unfold` +
+  `contrib.{filters,forms,simple_history}` before `django.contrib.admin`; auto dark mode; primary
+  = Zephyr blue `#3459e6` as a 50–950 RGB-triplet scale (600 = anchor). Live KPI dashboard
+  (`inventory/admin_dashboard.py` → `DASHBOARD_CALLBACK`): spend-on-hand / low-stock / open-faults
+  / printing-now. Custom index at **project-level** `templates/admin/index.html` (must beat
+  unfold's app template). Status-badge legend moved to unfold's `list_before_template` hook (unfold
+  dropped Django's `content_title` block). 12 admin smoke tests added. See [`docs/admin-2.0.md`](docs/admin-2.0.md).
 - [x] **18.2 Filament-page consolidation + JS extraction** — `/filament/` hub (`FilamentHubView`)
   with mode tabs; the three pages (`/filament-summary/`, `/filament-color-guide/`,
   `/filament-guide/`) keep their own URLs and each carries the shared tab bar (additive,
