@@ -270,7 +270,10 @@ blast radius; (3) MQTT auto-sync writing back to real inventory.
 
 ## New Ideas
 - [ ] Expose "status" in the inventory item edit pages `/edit/`
-- [ ] Expose full system log in the admin panel; filterable and sortable
+- [x] Expose full system log in the admin panel; filterable and sortable — the admin
+  `view-log` page now parses a level out of each line and renders a **DataTables** table
+  (sortable columns + global search + a level-filter dropdown), tailing up to 1000 lines
+  (`?lines=` overridable). (2026-06-10)
 
 ## Fixes
 - [x] On the `/edit/` pages with hardware (AMS, Printers, Dryers) that have the `Maintenance`

@@ -1,53 +1,73 @@
 {% extends "admin/base_site.html" %}
 {% load static %}
 
-{% block content %}
-
+{% block extrahead %}{{ block.super }}
+	<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+	<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+	<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 	<style>
-        .log-table {
-            width: 80%;
-            font-family: monospace;
-            border-collapse: collapse;
-        }
-
-        .log-table th, .log-table td {
-            border: 1px solid #ffc107;
-            padding: 6px 10px;
-            color: #2c3e50;
-        }
-
-        .log-table th {
-            background-color: #ffc107;
-        }
-
-        .log-table tr {
-            background-color: #fff;
-        }
-
-        .log-table tr:nth-child(even) {
-            background-color: #ffffcc;
-        }
-
-        .log-line {
-            white-space: pre-wrap;
-            color: #2c3e50;
-        }
+		#log-table td.col-msg {
+			font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+			white-space: pre-wrap;
+			font-size: 0.8rem;
+		}
+		.lvl {
+			display: inline-block;
+			padding: 1px 7px;
+			border-radius: 6px;
+			font-size: 0.72rem;
+			font-weight: 600;
+		}
+		.lvl-ERROR, .lvl-CRITICAL { background: #fde2e1; color: #b42318; }
+		.lvl-WARNING { background: #fef0c7; color: #b54708; }
+		.lvl-INFO { background: #dbe9ff; color: #1f40bd; }
+		.lvl-DEBUG { background: #eceef1; color: #475467; }
+		.log-controls { margin: 0 0 .75rem; display: flex; gap: .75rem; align-items: center; }
 	</style>
+{% endblock extrahead %}
 
-	<table class="log-table">
+{% block content %}
+	<h1>{{ title }}</h1>
+	<div class="log-controls">
+		<label>Level:
+			<select id="level-filter">
+				<option value="">All</option>
+				<option value="ERROR">Error</option>
+				<option value="WARNING">Warning</option>
+				<option value="INFO">Info</option>
+				<option value="DEBUG">Debug</option>
+				<option value="CRITICAL">Critical</option>
+			</select>
+		</label>
+		<span style="color:#888">last {{ shown }} lines — sortable columns, type to search</span>
+	</div>
+
+	<table id="log-table" class="display" style="width:100%">
 		<thead>
-		<tr>
-			<th>#</th>
-			<th>Log Entry</th>
-		</tr>
+			<tr><th>#</th><th>Level</th><th>Entry</th></tr>
 		</thead>
 		<tbody>
-		{% for entry in log_lines %}
-			<tr>
-				<td>{{ entry.lineno }}</td>
-				<td class="log-line">{{ entry.line }}</td>
-			</tr>
-		{% endfor %}
+			{% for entry in log_lines %}
+				<tr>
+					<td>{{ entry.lineno }}</td>
+					<td>{% if entry.level %}<span class="lvl lvl-{{ entry.level }}">{{ entry.level }}</span>{% endif %}</td>
+					<td class="col-msg">{{ entry.line }}</td>
+				</tr>
+			{% endfor %}
 		</tbody>
 	</table>
+
+	<script>
+		document.addEventListener('DOMContentLoaded', function () {
+			var table = new DataTable('#log-table', {
+				pageLength: 50,
+				order: [[0, 'desc']],  // newest tail line first
+				columnDefs: [{ targets: 1, searchable: true }],
+			});
+			document.getElementById('level-filter').addEventListener('change', function () {
+				// exact-ish level match on the Level column
+				table.column(1).search(this.value ? '^' + this.value + '$' : '', true, false).draw();
+			});
+		});
+	</script>
 {% endblock content %}
