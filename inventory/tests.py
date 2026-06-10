@@ -3754,3 +3754,33 @@ class SqlitePragmaIntegrationTests(TestCase):
         with connection.cursor() as cursor:
             cursor.execute("PRAGMA synchronous;")
             self.assertEqual(cursor.fetchone()[0], 1)
+
+
+class TelemetryModelTests(TestCase):
+    def test_models_create_and_constrain(self):
+        from inventory.models import (
+            AMSChannelState,
+            AMSUnitState,
+            PrinterDevice,
+            PrinterState,
+            TelemetrySample,
+        )
+
+        dev = PrinterDevice.objects.create(
+            serial="0948CD531200537", name="H2Laser", ip_address="10.10.30.11"
+        )
+        PrinterState.objects.create(device=dev, gcode_state="RUNNING", mc_percent=42)
+        AMSUnitState.objects.create(device=dev, ams_index=0, humidity=5)
+        AMSChannelState.objects.create(
+            device=dev, ams_index=0, tray_index=0, tray_type="PETG", remain_pct=-1
+        )
+        TelemetrySample.objects.create(
+            device=dev, ts=timezone_now(), gcode_state="RUNNING"
+        )
+        self.assertEqual(dev.state.mc_percent, 42)
+        self.assertEqual(dev.ams_channels.first().remain_pct, -1)  # -1 preserved
+        from django.db import IntegrityError, transaction
+
+        with self.assertRaises(IntegrityError):  # unique_together(device, ams_index)
+            with transaction.atomic():
+                AMSUnitState.objects.create(device=dev, ams_index=0)
