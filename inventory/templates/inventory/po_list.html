@@ -49,8 +49,6 @@
                         </a>
                     </td>
                 </tr>
-                {% empty %}
-                <tr><td colspan="9" class="text-center text-muted">No purchase orders yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -61,7 +59,10 @@
 {% block extra_scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        new DataTable('#po-table', { ordering: true, paging: false, info: false });
+        new DataTable('#po-table', {
+            ordering: true, paging: false, info: false,
+            language: { emptyTable: 'No purchase orders yet.' },
+        });
     });
 </script>
 {% endblock extra_scripts %}

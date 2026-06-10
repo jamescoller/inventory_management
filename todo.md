@@ -38,14 +38,18 @@ consolidation + inline-JS extraction (18.2), and the **visual/UX beauty** pass (
 ## Phase 11 — Safety Net & Search
 *Daily-driver priority. Low risk, mostly parallelizable. 11.3 gates Phase 12.*
 
-### 11.1 — Back up the SQLite DB to the NAS  *(item #6)*
-- [ ] Cron a **consistent** snapshot (`sqlite3 "$DB" ".backup '…'"` or `VACUUM INTO` — never
-  `cp` a live file) → timestamped file, rotate (keep N daily / M weekly), land on **Synology
-  Vol 1**.
-- [ ] Decide transport: NFS/SMB mount on the app LXC + direct write, `rsync`/`scp`, or a
-  NAS-side pull (Hyper Backup) — NAS-side pull avoids storing NAS creds on the LXC.
-  **Ask James:** confirm share path / IP / credentials.
-- [ ] Optionally verify restores periodically.
+### 11.1 — Back up the SQLite DB to the NAS  *(item #6)* — **DONE & LIVE (2026-06-09)**
+- [x] Cron a **consistent** snapshot — `scripts/backup_db.py` (PR #130) uses SQLite's
+  online-backup API (WAL-safe, never a `cp`), integrity-checks, gzips, atomic-renames,
+  GFS-lite rotation. Nightly cron `0 2 * * *` as `jcoller` → `~/inventory_backup.log`.
+  **Retention (script defaults):** newest **30** dailies + first-of-month snapshots kept
+  **12** months (~40 files, <10 MB on the NAS).
+- [x] Transport: **CIFS-on-host + bind-mount** (the Plex CT 106 pattern). Proxmox host mounts
+  `//10.10.20.4/inventory-backup` over CIFS (`uid=101000,gid=101000`); `pct set 105 -mp0`
+  binds it to `/mnt/nas-backup` in CT 105. NFS-into-unprivileged-LXC abandoned. See
+  [`docs/db-backup-status.md`](docs/db-backup-status.md).
+- [x] Restore verified: real backup → decompress → integrity `ok` → 641 items / 107 locations
+  / 264 products. (Periodic restore drill still worth scheduling later.)
 - *Why first:* the live DB holds hand-entered data that can't be re-derived; it's the
   prerequisite safety net before Phase 16 adds a sustained writer.
 
@@ -253,18 +257,21 @@ blast radius; (3) MQTT auto-sync writing back to real inventory.
 
 ## New Ideas
 - [ ] Expose "status" in the inventory item edit pages `/edit/`
-- [ ] Expose full system log in the admin panel; filterable and sortable 
+- [ ] Expose full system log in the admin panel; filterable and sortable
 
-## Fixes 
-- [ ] On the `/edit/` pages with hardware (AMS, Printers, Dryers) that have the `Maintenance` option, the button itself for `Maintenance` does not match the styling of the other buttons. 
-- [ ] Error on utilization table: `DataTables warning: table id=utilization-table - Incorrect column count. For more information about this error, please see http://datatables.net/tn/18`
-- [ ] Error on the print job table: `DataTables warning: table id=print-job-table - Incorrect column count. For more information about this error, please see http://datatables.net/tn/18`
-- [ ] Error in the orders table: `DataTables warning: table id=po-table - Incorrect column count. For more information about this error, please see http://datatables.net/tn/18`
-- [ ] Fix static image needs that log warnings in the app log:
-	- [ ] `django.request WARNING 2026-06-09 18:04:42,262 log 10 137358581200576 Not Found: /favicon.ico`
-	- [ ] `django.request WARNING 2026-06-09 18:04:42,280 log 10 137358616917696 Not Found: /apple-touch-icon.png`
-	- [ ] `django.request WARNING 2026-06-09 18:04:42,358 log 9 137358616917696 Not Found: /apple-touch-icon-precomposed.png`
-	- [ ] 
+## Fixes
+- [x] On the `/edit/` pages with hardware (AMS, Printers, Dryers) that have the `Maintenance`
+  option, the `Maintenance` button styling didn't match. Aligned the whole edit button group to
+  the blue family (`Maintenance` + `Utilization` → `btn-outline-primary`).
+- [x] Error on utilization table: `DataTables warning: table id=utilization-table - Incorrect column count`
+- [x] Error on the print job table: `DataTables warning: table id=print-job-table - Incorrect column count`
+- [x] Error in the orders table: `DataTables warning: table id=po-table - Incorrect column count`
+  - *Root cause:* the `{% empty %}` placeholder row (`<td colspan=N>` = 1 cell) mismatched the
+    N-column header when the table was empty. Removed the colspan rows; custom empty message
+    moved to DataTables `language.emptyTable`. Also fixed `consumption-table` (same page, same bug).
+- [x] Fix static image needs that log warnings in the app log (favicon.ico, apple-touch-icon.png,
+  apple-touch-icon-precomposed.png): added `<link>` tags in `base.html` + nginx exact-match root
+  aliases so root probes resolve to the collected static icons instead of 404ing through to Django.
 
 ## Backlog
 *Real value, no current phase slot. Revisit during sprint planning.*

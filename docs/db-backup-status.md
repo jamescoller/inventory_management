@@ -1,9 +1,31 @@
-# DB Backup (Phase 11.1) — status & blocker (tabled 2026-06-09)
+# DB Backup (Phase 11.1) — DONE & LIVE (2026-06-09)
 
-**Status: script DONE & validated; deployment BLOCKED on getting the NAS share
-reachable from inside the app LXC. Tabled during a planning session. A proven fix is now
-identified — the CIFS-on-host + bind-mount pattern the Plex LXC (CT 106) already uses (see
-"Proven solution" below). Apply it when resuming.**
+**Status: COMPLETE. The CIFS-on-host + bind-mount transport (below) was applied by James;
+`/mnt/nas-backup` in CT 105 is now the real Synology share (`//10.10.20.4/inventory-backup`,
+fstype cifs, `uid=101000` override, jcoller-writable). A real backup was written and
+restore-verified (641 items / 107 locations / 264 products), and the nightly cron
+(`0 2 * * *`, as `jcoller`, logging `~/inventory_backup.log`) is wired. The historical
+blocker writeup is retained below for reference.**
+
+> **Gotcha confirmed during deploy:** the host CIFS mount must exist *before* the container
+> sees it. After `pct set 105 -mp0 …,mp=/mnt/nas-backup`, the bind initially resolved to the
+> bare host dir on `pve-root` (ext4, `nobody:nogroup`, not writable). A **`pct reboot 105`**
+> was required for the bind to pick up the CIFS-backed content (private mount propagation).
+
+## Retention — how many backups are kept
+The nightly cron runs `backup_db.py` with its **default** retention (no `--keep` /
+`--keep-monthly` overrides), which is a **GFS-lite** scheme:
+
+- **`--keep 30`** — the **30 most-recent** snapshots are always retained. With one run per
+  night that's a rolling **~30 days of daily backups**.
+- **`--keep-monthly 12`** — any **first-of-month** snapshot is *additionally* protected for
+  **12 months**, even after it ages out of the newest-30 window. So roughly **12 monthly
+  anchors** survive beyond the 30-day daily window.
+
+Net: ~30 dailies + up to ~12 monthlies ≈ **40-ish files**. At ~140 KB gzipped each that's
+well under **10 MB** on the NAS share — storage is a non-issue. Pruning runs at the end of
+every backup (`rotate()` in `scripts/backup_db.py`). To change the policy, add
+`--keep N` / `--keep-monthly M` to the cron line on CT 105 (`crontab -e` as `jcoller`).
 
 ## What's done
 - **`scripts/backup_db.py`** (this PR, #130). Stdlib-only, no root, no `sqlite3` CLI;

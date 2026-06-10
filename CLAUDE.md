@@ -397,15 +397,23 @@ MQTT phased (read-only telemetry mirror first, auto-sync later); **FULL procurem
 rework = extract an `inventory/items.py` `move_to()`/`deplete()`/`set_status()` service (the
 `_skip_status_from_location` flag dance is copy-pasted across audit/bulk/admin — `models.py:529`).
 
-- **Phase 11.1 DB backup:** script done + validated (PR #130) but deployment BLOCKED — NFS
-  won't mount in the unprivileged app LXC (`mount.nfs: Operation not permitted`). Proven fix =
-  CIFS-on-host + bind-mount (the Plex CT 106 pattern; `uid=101000,gid=101000`). See
-  `docs/db-backup-status.md`. **Don't re-attempt the in-LXC NFS mount.**
-- **Phase 6 manual prod setup is NOT done** (verified against prod 2026-06-09): AMS slot `unit`
-  FKs 12/34 linked, **dryer slots 0/16**, **215 items still on 18 legacy flat shelves** (the
-  "lost at old locations" inventory James wants to find), plus a stray "Dryer XX" with 0 slots.
-  Anything touching location/audit, and the Phase-16 MQTT auto-sync (joins via `Location.unit`),
-  is affected until these are linked/reconciled.
+- **Phase 11.1 DB backup:** ✅ DONE & LIVE (2026-06-09). Transport solved via CIFS-on-host +
+  bind-mount (the Plex CT 106 pattern; `uid=101000,gid=101000`); `/mnt/nas-backup` in CT 105 is
+  the real Synology share. Restore-verified (641/107/264); nightly cron `0 2 * * *` as `jcoller`.
+  Retention: 30 dailies + 12 monthly anchors. See `docs/db-backup-status.md`. **Never re-attempt
+  the in-LXC NFS mount.**
+- **Phase 6 manual prod setup:** ✅ **DONE** (2026-06-09/10 reconcile, direct prod shell edits,
+  each batch backed up first). Dry-storage shelves re-typed `shelf`→`dry_storage` (the mis-typing
+  silently bypassed the `kind==DRY_STORAGE` drying guard at `models.py:708`) + renamed/deduped;
+  stray `Dryer XX` + empty legacy flat shelves deleted. The "215 lost items" was mostly inactive
+  history (147 on a `Receiving` flat shelf + 52 null depleted); only ~68 active, already on correct
+  shelves. **All AMS + dryer slot `unit` FKs now linked by serial — AMS 34/34, dryers 14/14, 0
+  unlinked.** James's serial data exposed 3 pre-existing errors that were fixed: Dryer 3↔4 links
+  swapped, INV-667/668 on the wrong dryer product (DB-04→DB-05 SpacePi X4), and AMS HT-1 mis-linked
+  to INV-501 (whose serial is actually HT-2). Created 3 machine items (Dryer 1 INV-676 Creality
+  2-slot — container was misnamed "Sunlu S4 Dryer 1"; Dryer 2 INV-677 Sunlu S4; AMS HT-1 INV-678).
+  **Lesson: serial is the only reliable machine↔record key** — seed names/slot-counts and hand-set
+  links both had errors. Unblocks Phase 16.3 MQTT auto-sync.
 - **Phase 17 filament data:** source files are in the repo (`filament_TDS/`, `filament_hex/`,
   `filament-guide-en.pdf`). Parsing needs a **dev-only** `pypdf` (approved; never a prod/image
   dep); the hex screenshot PNGs read via vision. See `docs/filament-data-pipeline.md`.
