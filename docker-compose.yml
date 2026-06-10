@@ -24,8 +24,10 @@ services:
     # the consumer instead of entrypoint.sh. Read-only mirror — does NOT run
     # migrations (web's entrypoint owns that; the consumer retries until the
     # schema exists). Shares the DB directory so it sees web's WAL.
+    # NOTE: the Dockerfile sets ENTRYPOINT=entrypoint.sh, so a compose `command:`
+    # is only *args* to it (ignored → it'd run gunicorn). Override `entrypoint:`.
     build: .
-    command: ["python", "manage.py", "run_telemetry_consumer"]
+    entrypoint: ["python", "manage.py", "run_telemetry_consumer"]
     restart: unless-stopped
     volumes:
       - ${HOME}/inventory_db_dir:/app/db
