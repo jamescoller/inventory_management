@@ -19,6 +19,24 @@ services:
     env_file:
       - ${HOME}/.env_inventory
 
+  telemetry:
+    # Bambu MQTT telemetry consumer (Phase 16.1 PR-B). Same image as web; runs
+    # the consumer instead of entrypoint.sh. Read-only mirror — does NOT run
+    # migrations (web's entrypoint owns that; the consumer retries until the
+    # schema exists). Shares the DB directory so it sees web's WAL.
+    build: .
+    command: ["python", "manage.py", "run_telemetry_consumer"]
+    restart: unless-stopped
+    volumes:
+      - ${HOME}/inventory_db_dir:/app/db
+    environment:
+      - DEBUG=0
+      - SQLITE_DB_PATH=/app/db/inventory_db.sqlite3
+    env_file:
+      - ${HOME}/.env_inventory
+    depends_on:
+      - web
+
   nginx:
     image: nginx:latest
     restart: unless-stopped

@@ -3754,3 +3754,276 @@ class SqlitePragmaIntegrationTests(TestCase):
         with connection.cursor() as cursor:
             cursor.execute("PRAGMA synchronous;")
             self.assertEqual(cursor.fetchone()[0], 1)
+
+
+class TelemetryModelTests(TestCase):
+    def test_models_create_and_constrain(self):
+        from inventory.models import (
+            AMSChannelState,
+            AMSUnitState,
+            PrinterDevice,
+            PrinterState,
+            TelemetrySample,
+        )
+
+        dev = PrinterDevice.objects.create(
+            serial="0948CD531200537", name="H2Laser", ip_address="10.10.30.11"
+        )
+        PrinterState.objects.create(device=dev, gcode_state="RUNNING", mc_percent=42)
+        AMSUnitState.objects.create(device=dev, ams_index=0, humidity=5)
+        AMSChannelState.objects.create(
+            device=dev, ams_index=0, tray_index=0, tray_type="PETG", remain_pct=-1
+        )
+        TelemetrySample.objects.create(
+            device=dev, ts=timezone_now(), gcode_state="RUNNING"
+        )
+        self.assertEqual(dev.state.mc_percent, 42)
+        self.assertEqual(dev.ams_channels.first().remain_pct, -1)  # -1 preserved
+        from django.db import IntegrityError, transaction
+
+        with self.assertRaises(IntegrityError):  # unique_together(device, ams_index)
+            with transaction.atomic():
+                AMSUnitState.objects.create(device=dev, ams_index=0)
+
+
+class TelemetryHelperTests(TestCase):
+    def test_coercions(self):
+        from decimal import Decimal
+
+        from inventory.telemetry import _to_decimal, _to_int, _to_str
+
+        self.assertEqual(_to_int("100"), 100)
+        self.assertEqual(_to_int(69), 69)
+        self.assertEqual(_to_int("-1"), -1)
+        self.assertIsNone(_to_int(""))
+        self.assertIsNone(_to_int(None))
+        self.assertEqual(_to_decimal("24.6"), Decimal("24.6"))
+        self.assertEqual(_to_decimal(23.0), Decimal("23.0"))
+        self.assertIsNone(_to_decimal(""))
+        self.assertEqual(_to_str(None), "")
+        self.assertEqual(_to_str("PETG"), "PETG")
+
+    def test_should_sample(self):
+        from datetime import timedelta
+
+        from inventory.models import PrinterDevice, TelemetrySample
+        from inventory.telemetry import should_sample
+
+        now = timezone_now()
+        self.assertTrue(should_sample(None, "IDLE", now=now))  # first ever
+        dev = PrinterDevice.objects.create(serial="s", name="n", ip_address="10.0.0.1")
+        prev = TelemetrySample.objects.create(device=dev, ts=now, gcode_state="RUNNING")
+        self.assertFalse(
+            should_sample(prev, "RUNNING", now=now)
+        )  # same state, no interval
+        self.assertTrue(should_sample(prev, "FINISH", now=now))  # state transition
+        self.assertTrue(
+            should_sample(prev, "RUNNING", now=now + timedelta(seconds=301))
+        )  # interval while running
+        self.assertFalse(
+            should_sample(prev, "RUNNING", now=now + timedelta(seconds=120))
+        )  # running but under interval
+
+
+# Trimmed from the live H2Laser `pushall` probe (2026-06-10).
+REAL_REPORT = {
+    "gcode_state": "RUNNING",
+    "mc_percent": 42,
+    "layer_num": 100,
+    "total_layer_num": 200,
+    "nozzle_temper": 220.0,
+    "nozzle_target_temper": 220.0,
+    "bed_temper": 60.0,
+    "bed_target_temper": 60.0,
+    "mc_remaining_time": 35,
+    "subtask_name": "Paper Roll Holder_v2",
+    "task_id": "997709002",
+    "hms": [{"code": 196618, "attr": 83886592}],
+    "ams": {
+        "ams": [
+            {
+                "id": "0",
+                "humidity": "5",
+                "humidity_raw": "13",
+                "temp": "24.6",
+                "dry_time": 0,
+                "dry_setting": {
+                    "dry_duration": -1,
+                    "dry_temperature": -1,
+                    "dry_filament": "",
+                },
+                "tray": [
+                    {
+                        "id": "0",
+                        "tray_uuid": "31D95EE890CA468D8119FE4946EB21B2",
+                        "tray_info_idx": "GFG02",
+                        "tray_type": "PETG",
+                        "tray_sub_brands": "PETG HF",
+                        "tray_color": "FFFFFFFF",
+                        "remain": 69,
+                    },
+                    {"id": "1", "tray_type": "", "remain": -1},
+                ],
+            }
+        ]
+    },
+}
+
+
+class TelemetryIngestTests(TestCase):
+    def setUp(self):
+        from inventory.models import PrinterDevice
+
+        self.dev = PrinterDevice.objects.create(
+            serial="0948CD531200537", name="H2Laser", ip_address="10.10.30.11"
+        )
+
+    def test_ingest_full_report(self):
+        from decimal import Decimal
+
+        from inventory.models import AMSChannelState, AMSUnitState, PrinterState
+        from inventory.telemetry import ingest_report
+
+        ingest_report(self.dev, REAL_REPORT)
+
+        st = PrinterState.objects.get(device=self.dev)
+        self.assertEqual(st.gcode_state, "RUNNING")
+        self.assertEqual(st.mc_percent, 42)
+        self.assertEqual(st.total_layers, 200)
+        self.assertEqual(st.nozzle_temp, Decimal("220.0"))
+        self.assertEqual(st.remaining_min, 35)
+        self.assertEqual(st.task_id, "997709002")
+        self.assertEqual(st.hms_codes, [{"code": 196618, "attr": 83886592}])
+
+        unit = AMSUnitState.objects.get(device=self.dev, ams_index=0)
+        self.assertEqual(unit.humidity, 5)
+        self.assertEqual(unit.temp, Decimal("24.6"))
+        self.assertEqual(unit.dry_duration, -1)
+
+        ch0 = AMSChannelState.objects.get(device=self.dev, ams_index=0, tray_index=0)
+        self.assertEqual(ch0.tray_uuid, "31D95EE890CA468D8119FE4946EB21B2")
+        self.assertEqual(ch0.tray_type, "PETG")
+        self.assertEqual(ch0.remain_pct, 69)
+        ch1 = AMSChannelState.objects.get(device=self.dev, ams_index=0, tray_index=1)
+        self.assertEqual(ch1.remain_pct, -1)  # unknown preserved
+
+    def test_delta_does_not_clobber(self):
+        from inventory.models import PrinterState
+        from inventory.telemetry import ingest_report
+
+        ingest_report(self.dev, REAL_REPORT)
+        ingest_report(self.dev, {"mc_percent": 88})  # partial delta
+        st = PrinterState.objects.get(device=self.dev)
+        self.assertEqual(st.mc_percent, 88)  # updated
+        self.assertEqual(st.gcode_state, "RUNNING")  # NOT clobbered
+        self.assertEqual(st.subtask_name, "Paper Roll Holder_v2")  # NOT clobbered
+
+    def test_handle_message_parses_and_marks_seen(self):
+        import json
+
+        from inventory.models import PrinterState
+        from inventory.telemetry import handle_message
+
+        raw = json.dumps({"print": REAL_REPORT}).encode()
+        self.assertTrue(handle_message(self.dev, raw))
+        self.dev.refresh_from_db()
+        self.assertIsNotNone(self.dev.last_seen_at)
+        self.assertEqual(PrinterState.objects.get(device=self.dev).mc_percent, 42)
+
+    def test_handle_message_ignores_non_print(self):
+        from inventory.telemetry import handle_message
+
+        self.assertFalse(handle_message(self.dev, b'{"info": {"x": 1}}'))
+        self.assertFalse(handle_message(self.dev, b"not json"))
+
+    def test_downsample_one_sample_for_steady_state(self):
+        from inventory.models import TelemetrySample
+        from inventory.telemetry import ingest_report
+
+        ingest_report(self.dev, REAL_REPORT)  # first -> sample
+        ingest_report(
+            self.dev, {"gcode_state": "RUNNING", "mc_percent": 43}
+        )  # same state, no interval
+        self.assertEqual(TelemetrySample.objects.filter(device=self.dev).count(), 1)
+        ingest_report(self.dev, {"gcode_state": "FINISH"})  # transition -> sample
+        self.assertEqual(TelemetrySample.objects.filter(device=self.dev).count(), 2)
+
+
+class SeedPrinterDevicesTests(TestCase):
+    def test_seed_is_idempotent(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from inventory.models import PrinterDevice
+
+        call_command("seed_printer_devices", stdout=StringIO())
+        self.assertEqual(PrinterDevice.objects.count(), 4)
+        h2l = PrinterDevice.objects.get(serial="0948CD531200537")
+        self.assertEqual(h2l.name, "H2Laser")
+        self.assertEqual(h2l.ip_address, "10.10.30.11")
+        self.assertEqual(h2l.access_code, "")  # codes not committed; filled later
+        call_command("seed_printer_devices", stdout=StringIO())  # re-run
+        self.assertEqual(PrinterDevice.objects.count(), 4)  # still 4
+
+    def test_seed_accepts_codes_arg(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from inventory.models import PrinterDevice
+
+        call_command(
+            "seed_printer_devices",
+            "--codes",
+            "0948CD531200537=abc123",
+            stdout=StringIO(),
+        )
+        self.assertEqual(
+            PrinterDevice.objects.get(serial="0948CD531200537").access_code, "abc123"
+        )
+
+
+class RunTelemetryConsumerTests(TestCase):
+    def test_no_enabled_devices_exits_clean(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("run_telemetry_consumer", "--once", stdout=out)
+        self.assertIn("No enabled PrinterDevice", out.getvalue())
+
+    def test_make_client_sets_credentials(self):
+        from inventory.management.commands.run_telemetry_consumer import Command
+        from inventory.models import PrinterDevice
+
+        dev = PrinterDevice.objects.create(
+            serial="s1", name="n1", ip_address="10.0.0.5", access_code="secret"
+        )
+        client = Command().make_client(dev)
+        # paho stores the username/password as bytes on the client
+        self.assertEqual(client._username, b"bblp")
+        self.assertEqual(client._password, b"secret")
+
+
+class TelemetryAdminTests(TestCase):
+    def test_models_registered(self):
+        from django.contrib import admin
+
+        from inventory.models import (
+            AMSChannelState,
+            AMSUnitState,
+            PrinterDevice,
+            PrinterState,
+            TelemetrySample,
+        )
+
+        for model in (
+            PrinterDevice,
+            PrinterState,
+            AMSUnitState,
+            AMSChannelState,
+            TelemetrySample,
+        ):
+            self.assertIn(model, admin.site._registry)

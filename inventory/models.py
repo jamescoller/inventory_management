@@ -1608,3 +1608,137 @@ class PurchaseReceiptLine(models.Model):
 
     def __str__(self):
         return f"{self.qty_received}x {self.order_line.product}"
+
+
+# ---------------------------------------------------------------------------
+# Bambu MQTT telemetry mirror (Phase 16.1). Read-only: populated by the
+# telemetry consumer; decoupled from InventoryItem (16.3 owns the joins). No
+# HistoricalRecords — these are high-churn upserted snapshots.
+# ---------------------------------------------------------------------------
+
+
+class PrinterDevice(models.Model):
+    """A Bambu printer the telemetry consumer connects to (registry + config)."""
+
+    serial = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100)
+    ip_address = models.GenericIPAddressField()
+    access_code = models.CharField(max_length=32, blank=True, default="")
+    model_name = models.CharField(max_length=50, blank=True, default="")
+    item = models.ForeignKey(
+        "InventoryItem",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="printer_device",
+        help_text="Optional curated link to the machine's InventoryItem (16.3).",
+    )
+    enabled = models.BooleanField(default=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.serial})"
+
+
+class PrinterState(models.Model):
+    """Latest snapshot per printer, upserted from each MQTT message."""
+
+    device = models.OneToOneField(
+        PrinterDevice, on_delete=models.CASCADE, related_name="state"
+    )
+    gcode_state = models.CharField(max_length=20, blank=True, default="")
+    mc_percent = models.PositiveSmallIntegerField(null=True, blank=True)
+    layer_num = models.PositiveIntegerField(null=True, blank=True)
+    total_layers = models.PositiveIntegerField(null=True, blank=True)
+    nozzle_temp = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True
+    )
+    nozzle_target = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True
+    )
+    bed_temp = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True
+    )
+    bed_target = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True
+    )
+    remaining_min = models.PositiveIntegerField(null=True, blank=True)
+    subtask_name = models.CharField(max_length=255, blank=True, default="")
+    task_id = models.CharField(max_length=64, blank=True, default="")
+    hms_codes = models.JSONField(default=list, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.device.name}: {self.gcode_state or '?'}"
+
+
+class AMSUnitState(models.Model):
+    """Latest per-AMS-unit state. AMS 2 Pro / AMS HT double as dryers, so this
+    carries humidity/temp/dry_* (the 'is it drying / has it dried' signals)."""
+
+    device = models.ForeignKey(
+        PrinterDevice, on_delete=models.CASCADE, related_name="ams_units"
+    )
+    ams_index = models.PositiveSmallIntegerField()
+    humidity = models.PositiveSmallIntegerField(null=True, blank=True)
+    humidity_raw = models.PositiveSmallIntegerField(null=True, blank=True)
+    temp = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
+    dry_time = models.PositiveIntegerField(null=True, blank=True)
+    dry_duration = models.IntegerField(null=True, blank=True)
+    dry_temperature = models.IntegerField(null=True, blank=True)
+    dry_filament = models.CharField(max_length=64, blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("device", "ams_index")
+
+    def __str__(self):
+        return f"{self.device.name} AMS{self.ams_index}"
+
+
+class AMSChannelState(models.Model):
+    """Latest per-tray (filament slot) state. Carries tray_uuid — the RFID join
+    key consumed by 16.3 — from day one."""
+
+    device = models.ForeignKey(
+        PrinterDevice, on_delete=models.CASCADE, related_name="ams_channels"
+    )
+    ams_index = models.PositiveSmallIntegerField()
+    tray_index = models.PositiveSmallIntegerField()
+    tray_uuid = models.CharField(max_length=64, blank=True, default="")
+    tray_info_idx = models.CharField(max_length=32, blank=True, default="")
+    tray_type = models.CharField(max_length=32, blank=True, default="")
+    tray_sub_brands = models.CharField(max_length=64, blank=True, default="")
+    color_hex = models.CharField(max_length=8, blank=True, default="")
+    remain_pct = models.SmallIntegerField(null=True, blank=True)  # -1 = unknown
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("device", "ams_index", "tray_index")
+
+    def __str__(self):
+        return f"{self.device.name} AMS{self.ams_index}/tray{self.tray_index}"
+
+
+class TelemetrySample(models.Model):
+    """Append-only, downsampled printer print-state time-series (for trends)."""
+
+    device = models.ForeignKey(
+        PrinterDevice, on_delete=models.CASCADE, related_name="samples"
+    )
+    ts = models.DateTimeField()
+    gcode_state = models.CharField(max_length=20, blank=True, default="")
+    mc_percent = models.PositiveSmallIntegerField(null=True, blank=True)
+    nozzle_temp = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True
+    )
+    bed_temp = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True
+    )
+    remaining_min = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["device", "ts"])]
+
+    def __str__(self):
+        return f"{self.device.name} @ {self.ts:%Y-%m-%d %H:%M}"

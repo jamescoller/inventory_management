@@ -7,6 +7,7 @@ django-simple-history>=3.11.0
 et_xmlfile==2.0.0
 gunicorn==26.0.0
 openpyxl==3.1.5
+paho-mqtt>=2.1.0
 pillow>=12.2.0
 python-dateutil==2.9.0.post0
 python-barcode>=0.16.1
