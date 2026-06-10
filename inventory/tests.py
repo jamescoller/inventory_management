@@ -650,6 +650,7 @@ class InventoryEditFormTests(TestCase):
             url,
             {
                 "serial_number": "",
+                "status": InventoryItem.Status.NEW,
                 "location": self.loc_b.id,
                 "date_depleted": "",
             },
@@ -4280,3 +4281,46 @@ class UnfoldAdminSmokeTests(TestCase):
 
     def test_material_changelist(self):
         self._ok(reverse("admin:inventory_material_changelist"))
+
+
+class StatusOnEditTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="editor2", password="pass")
+        self.client.login(username="editor2", password="pass")
+        self.loc_new = Location.objects.create(
+            name="New Shelf", default_status=InventoryItem.Status.NEW
+        )
+        self.loc_stored = Location.objects.create(
+            name="Stored Shelf", default_status=InventoryItem.Status.STORED
+        )
+        # material-less Filament -> no drying-warning path to complicate the POST
+        product = Filament.objects.create(name="PLA Blue", upc="0000000000009")
+        self.item = InventoryItem.objects.create(
+            product=product, location=self.loc_new, status=InventoryItem.Status.NEW
+        )
+
+    def test_status_dropdown_excludes_unknown(self):
+        resp = self.client.get(reverse("inventory_edit", args=[self.item.id]))
+        self.assertEqual(resp.status_code, 200)
+        values = [v for v, _ in resp.context["form"].fields["status"].choices]
+        self.assertNotIn(InventoryItem.Status.UNKNOWN, values)
+        self.assertIn(InventoryItem.Status.IN_USE, values)
+
+    def test_explicit_status_survives_location_recompute(self):
+        # Move to a STORED-default location but explicitly choose IN_USE. The old
+        # form.save() path would recompute status to STORED from the new location;
+        # items.set_status() must keep the explicit IN_USE.
+        resp = self.client.post(
+            reverse("inventory_edit", args=[self.item.id]),
+            {
+                "serial_number": self.item.serial_number,
+                "status": InventoryItem.Status.IN_USE,
+                "location": self.loc_stored.id,
+                "date_depleted": "",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, InventoryItem.Status.IN_USE)
+        self.assertEqual(self.item.location_id, self.loc_stored.id)
