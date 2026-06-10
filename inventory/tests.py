@@ -3784,3 +3784,42 @@ class TelemetryModelTests(TestCase):
         with self.assertRaises(IntegrityError):  # unique_together(device, ams_index)
             with transaction.atomic():
                 AMSUnitState.objects.create(device=dev, ams_index=0)
+
+
+class TelemetryHelperTests(TestCase):
+    def test_coercions(self):
+        from decimal import Decimal
+
+        from inventory.telemetry import _to_decimal, _to_int, _to_str
+
+        self.assertEqual(_to_int("100"), 100)
+        self.assertEqual(_to_int(69), 69)
+        self.assertEqual(_to_int("-1"), -1)
+        self.assertIsNone(_to_int(""))
+        self.assertIsNone(_to_int(None))
+        self.assertEqual(_to_decimal("24.6"), Decimal("24.6"))
+        self.assertEqual(_to_decimal(23.0), Decimal("23.0"))
+        self.assertIsNone(_to_decimal(""))
+        self.assertEqual(_to_str(None), "")
+        self.assertEqual(_to_str("PETG"), "PETG")
+
+    def test_should_sample(self):
+        from datetime import timedelta
+
+        from inventory.models import PrinterDevice, TelemetrySample
+        from inventory.telemetry import should_sample
+
+        now = timezone_now()
+        self.assertTrue(should_sample(None, "IDLE", now=now))  # first ever
+        dev = PrinterDevice.objects.create(serial="s", name="n", ip_address="10.0.0.1")
+        prev = TelemetrySample.objects.create(device=dev, ts=now, gcode_state="RUNNING")
+        self.assertFalse(
+            should_sample(prev, "RUNNING", now=now)
+        )  # same state, no interval
+        self.assertTrue(should_sample(prev, "FINISH", now=now))  # state transition
+        self.assertTrue(
+            should_sample(prev, "RUNNING", now=now + timedelta(seconds=301))
+        )  # interval while running
+        self.assertFalse(
+            should_sample(prev, "RUNNING", now=now + timedelta(seconds=120))
+        )  # running but under interval
