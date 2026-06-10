@@ -23,6 +23,7 @@ from pathlib import Path
 DB_PATH = Path.home() / "inventory_db_dir" / "inventory_db.sqlite3"
 OUT_DIR = Path.home() / "ha-stats"
 OUT_FILE = OUT_DIR / "inventory_stats.json"
+TELEMETRY_OUT_FILE = OUT_DIR / "telemetry.json"
 
 STATUS_IN_USE = 2
 STATUS_DRYING = 3
@@ -209,6 +210,48 @@ def build_stock_by_material(conn):
     }
 
 
+def build_telemetry(conn):
+    """Per-printer live telemetry mirror (Phase 16.1) for HA/Grafana. Reads the
+    latest PrinterState + AMS unit/tray snapshots. Excludes the access_code."""
+    devices = query(
+        conn,
+        """
+        SELECT d.id, d.serial, d.name, d.model_name, d.last_seen_at,
+               s.gcode_state, s.mc_percent, s.layer_num, s.total_layers,
+               s.nozzle_temp, s.nozzle_target, s.bed_temp, s.bed_target,
+               s.remaining_min, s.subtask_name
+        FROM inventory_printerdevice d
+        LEFT JOIN inventory_printerstate s ON s.device_id = d.id
+        WHERE d.enabled = 1
+        ORDER BY d.name
+        """,
+    )
+    out = []
+    for d in devices:
+        device_id = d.pop("id")
+        units = query(
+            conn,
+            """
+            SELECT ams_index, humidity, temp, dry_time, dry_temperature
+            FROM inventory_amsunitstate WHERE device_id = ? ORDER BY ams_index
+            """,
+            (device_id,),
+        )
+        for unit in units:
+            unit["trays"] = query(
+                conn,
+                """
+                SELECT tray_index, tray_type, color_hex, remain_pct, tray_uuid
+                FROM inventory_amschannelstate
+                WHERE device_id = ? AND ams_index = ? ORDER BY tray_index
+                """,
+                (device_id, unit["ams_index"]),
+            )
+        d["ams"] = units
+        out.append(d)
+    return out
+
+
 def main():
     if not DB_PATH.exists():
         print(f"ERROR: DB not found at {DB_PATH}", file=sys.stderr)
@@ -230,14 +273,22 @@ def main():
             "stock_by_name": build_stock_by_name(conn),
             "stock_by_material": build_stock_by_material(conn),
         }
+        telemetry = {
+            "updated": payload["updated"],
+            "printers": build_telemetry(conn),
+        }
     finally:
         conn.close()
 
-    # Write atomically via temp file to avoid HA reading a partial JSON
-    tmp = OUT_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(payload, indent=2, default=str))
-    tmp.replace(OUT_FILE)
-    print(f"OK: wrote {OUT_FILE} at {payload['updated']}")
+    # Write atomically via temp files to avoid HA reading a partial JSON
+    for path, data in ((OUT_FILE, payload), (TELEMETRY_OUT_FILE, telemetry)):
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, indent=2, default=str))
+        tmp.replace(path)
+    print(
+        f"OK: wrote {OUT_FILE} + {TELEMETRY_OUT_FILE} at {payload['updated']} "
+        f"({len(telemetry['printers'])} printers)"
+    )
 
 
 if __name__ == "__main__":
