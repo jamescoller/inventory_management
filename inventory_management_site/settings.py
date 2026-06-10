@@ -108,7 +108,12 @@ WSGI_APPLICATION = "inventory_management_site.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": "inventory_db.sqlite3",
+        # Dev: defaults to the repo-root DB (unchanged). Prod sets SQLITE_DB_PATH
+        # in ~/.env_inventory to /app/db/inventory_db.sqlite3 (the mounted dir), so
+        # WAL's -wal/-shm siblings are shareable across containers (Phase 16.1).
+        "NAME": config(
+            "SQLITE_DB_PATH", default=str(BASE_DIR / "inventory_db.sqlite3")
+        ),
     }
 }
 
