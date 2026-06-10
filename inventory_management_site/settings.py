@@ -109,8 +109,10 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         # Dev: defaults to the repo-root DB (unchanged). Prod sets SQLITE_DB_PATH
-        # in ~/.env_inventory to /app/db/inventory_db.sqlite3 (the mounted dir), so
-        # WAL's -wal/-shm siblings are shareable across containers (Phase 16.1).
+        # in docker-compose.yml's `environment:` to /app/db/inventory_db.sqlite3 (the
+        # mounted DB directory) so WAL's -wal/-shm siblings are shareable across
+        # containers (Phase 16.1). It lives in compose, not ~/.env_inventory, because
+        # that file is root-owned on the app LXC; a path isn't a secret anyway.
         "NAME": config(
             "SQLITE_DB_PATH", default=str(BASE_DIR / "inventory_db.sqlite3")
         ),

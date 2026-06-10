@@ -17,8 +17,9 @@ Default branch: `master`
 - **App host:** Proxmox LXC at `10.10.20.17` — Docker Compose stack, GitHub Actions
   self-hosted runner, and SQLite database all live here.
 - **App URLs:** `http://inventory.home` (via NGINX + PiHole), `http://10.10.20.17:8080`
-- **Database:** SQLite at `inventory_db.sqlite3` — not version-controlled, lives on
-  the app LXC (note: a future task is to create a backup of this DB)
+- **Database:** SQLite (WAL) at `~/inventory_db_dir/inventory_db.sqlite3` on the app LXC —
+  not version-controlled. Nightly backup to the NAS is live (Phase 11.1); see "Database
+  location" under Environment notes for the WAL/directory details.
 - **Claude Code LXC:** Debian 12 on Proxmox at `10.10.20.16` — this is where Claude
   Code runs and where all code editing happens. This is running on the same physical host as the app.
 - **Network:** server VLAN (`10.10.20.x`)
@@ -450,4 +451,20 @@ If recreating the venv: `uv venv --python 3.12 ~/.venvs/inventory && uv pip inst
 ### Production env
 
 The app's env file is `.env_inventory` at `$HOME` on the app LXC (see
-docker-compose.yml). Any new `config()` call needs a corresponding entry there.
+docker-compose.yml). **It is `root:root` 644 — `jcoller` can read it (the app loads it) but
+CANNOT append (no sudo on the app LXC).** So:
+- A new **non-secret** `config()` var (e.g. a path) goes in the version-controlled
+  `docker-compose.yml` `environment:` block — NOT `.env_inventory`. Example: `SQLITE_DB_PATH`.
+- A new **secret** must be added to `~/.env_inventory` by James (root); flag it for him.
+
+### Database location (since Phase 16.1 PR-A, 2026-06-10)
+
+The prod SQLite DB lives at **`~/inventory_db_dir/inventory_db.sqlite3`** on the app LXC (a
+**directory** bind-mounted at `/app/db`, so WAL's `-wal`/`-shm` siblings are shareable across
+containers). WAL is enabled (`journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout=5000`) via
+the `connection_created` receiver in `inventory/db_pragmas.py`. **Any change to the DB
+path/layout must also update `scripts/deploy.sh`** — it has its own `[ -f <db> ]` guard that
+aborts the deploy (this bit us once: prod-down hotfix `b2e8758`). `backup_db.py` and
+`ha_stats_export.py` read this path; `mode=ro` reads of the WAL DB work (the container writes
+`-wal`/`-shm` as a jcoller-mapped uid). DB stays SQLite (revisit Postgres only on measurable
+lock contention).

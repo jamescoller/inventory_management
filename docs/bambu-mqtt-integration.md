@@ -80,10 +80,15 @@ duplicates the model layer.)
 
 ## 3. SQLite under a sustained writer — the central risk & mitigation
 
-Today: **no WAL** (`settings.py` DATABASES is bare, `journal_mode=delete` default), the DB is a
-**single bind-mounted file** (`docker-compose.yml`: `${HOME}/inventory_db.sqlite3:/app/...`),
-and the MQTT consumer would be the **first sustained concurrent writer** alongside gunicorn's
-workers. Mishandled, this yields intermittent `database is locked` → 500s.
+> **✅ Mitigations 1 & 2 SHIPPED in PR-A (PR #142, 2026-06-10).** WAL +
+> `synchronous=NORMAL` + `busy_timeout` are live via a `connection_created` receiver, and the
+> DB now lives in a bind-mounted **directory** (`~/inventory_db_dir/` → `/app/db`). The text
+> below is the original design rationale; items 3 (single throttled writer) and 4 (queue
+> fallback) are PR-B's concern.
+
+Before PR-A: **no WAL** (`journal_mode=delete` default), the DB was a **single bind-mounted
+file**, and the MQTT consumer would be the **first sustained concurrent writer** alongside
+gunicorn's workers — mishandled, intermittent `database is locked` → 500s.
 
 **Mitigations (do all):**
 1. **Enable WAL + busy_timeout** via a `connection_created` init (`PRAGMA journal_mode=WAL;
