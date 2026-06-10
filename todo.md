@@ -169,21 +169,20 @@ Models in [`docs/workflow-and-domain-design.md`](docs/workflow-and-domain-design
 *Phased per James: **telemetry mirror first**, auto-sync later. Full design in
 [`docs/bambu-mqtt-integration.md`](docs/bambu-mqtt-integration.md).*
 
-### 16.1 — Telemetry mirror (read-only)
-*Split into **PR-A** (WAL + DB-directory infra — ✅ DONE, PR #142, deployed 2026-06-10) and
-**PR-B** (the consumer + models, below). Spec/plan in `docs/superpowers/`.*
-- [ ] Models: `PrinterDevice` (serial, ip, access_code, optional `item` link),
-  `PrinterState` (latest snapshot, upserted), `AMSChannelState` (per slot: tray_uuid/RFID,
-  type, color, remaining %), `TelemetrySample` (down-sampled time-series).
-- [ ] **MQTT consumer = a 3rd `docker-compose` service** running `manage.py
-  run_telemetry_consumer` (`paho-mqtt`, TLS 8883, user `bblp`, per-printer access code,
-  topic `device/{serial}/report`). New dep — flag.
-- [x] **Infra (central) — PR-A DONE:** WAL + `busy_timeout` + `synchronous=NORMAL` enabled via
-  a `connection_created` receiver; compose mount switched from the single `.sqlite3` file to its
-  **containing directory** (`~/inventory_db_dir/`) so `-wal`/`-shm` are shared; backup + ha-stats
-  repointed and proven against WAL. (PR #142, deployed + verified.)
-- [ ] **Infra (PR-B):** down-sample `TelemetrySample` (on-change / interval) to protect SQLite.
-  **Decoupled from `InventoryItem` in this phase** (no writes to inventory).
+### 16.1 — Telemetry mirror (read-only)  — ✅ **DONE** (PR-A #142 + PR-B #143, deployed 2026-06-10)
+*Split into **PR-A** (WAL + DB-directory infra) and **PR-B** (the consumer + models).
+Spec/plan in `docs/superpowers/`. Live: all 4 printers mirroring, 0 DB-locks.*
+- [x] Models (`AMSUnitState` added for AMS-as-dryer humidity/temp/dry_*): `PrinterDevice`,
+  `PrinterState`, `AMSUnitState`, `AMSChannelState` (carries `tray_uuid` RFID join key),
+  `TelemetrySample` (downsampled). Migration `0034`.
+- [x] **MQTT consumer = 3rd `docker-compose` service** `run_telemetry_consumer` (`paho-mqtt`,
+  TLS 8883, `bblp` + per-printer access code in `PrinterDevice` rows). Delta-merge ingest in
+  `inventory/telemetry.py` (tested vs a real H2Laser payload). Note: service overrides
+  `entrypoint:` (Dockerfile ENTRYPOINT means `command:` is ignored).
+- [x] **Infra (central) — PR-A:** WAL + `busy_timeout` + `synchronous=NORMAL`; DB moved to its
+  **containing directory** (`~/inventory_db_dir/`) so `-wal`/`-shm` are shared. (PR #142.)
+- [x] **Infra (PR-B):** `TelemetrySample` downsampled (state-transition / 5-min while RUNNING).
+  **Decoupled from `InventoryItem`** (no writes to inventory — 16.3 owns the joins).
 
 ### 16.2 — Grafana / HA dashboard  *(item #8)*
 - [ ] Extend the **existing** `scripts/ha_stats_export.py` (already reads SQLite read-only →

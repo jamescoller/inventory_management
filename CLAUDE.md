@@ -468,3 +468,14 @@ aborts the deploy (this bit us once: prod-down hotfix `b2e8758`). `backup_db.py`
 `ha_stats_export.py` read this path; `mode=ro` reads of the WAL DB work (the container writes
 `-wal`/`-shm` as a jcoller-mapped uid). DB stays SQLite (revisit Postgres only on measurable
 lock contention).
+
+### Docker compose services (entrypoint gotcha)
+
+The `Dockerfile` sets **`ENTRYPOINT ["/app/entrypoint.sh"]`**, so a compose **`command:` is
+passed as *args* to entrypoint.sh and ignored** (it execs gunicorn regardless). `web` works by
+coincidence; the `telemetry` service (Phase 16.1 PR-B, runs `manage.py run_telemetry_consumer`)
+had to override **`entrypoint:`**, not `command:` (cost a hotfix `c8ffd98` — it ran a 2nd
+gunicorn first). **Any new non-web compose service must override `entrypoint:`.** Note
+`docker compose config -q` validates syntax but NOT this — only a real deploy + `docker logs`
+check catches it. There are now 3 services: `web` (gunicorn + migrations), `telemetry`
+(read-only MQTT consumer, shares the WAL DB dir), `nginx`.
