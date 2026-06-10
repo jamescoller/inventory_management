@@ -38,7 +38,7 @@ import tempfile
 import time
 
 HOME = os.path.expanduser("~")
-DEFAULT_SRC = os.path.join(HOME, "inventory_db.sqlite3")
+DEFAULT_SRC = os.path.join(HOME, "inventory_db_dir", "inventory_db.sqlite3")
 DEFAULT_DEST = "/mnt/nas-backup"
 PREFIX = "inventory_db-"
 SUFFIX = ".sqlite3.gz"
