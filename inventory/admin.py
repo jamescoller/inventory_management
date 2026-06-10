@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 
 from django.contrib import admin
@@ -411,22 +412,41 @@ class InventoryItemAdmin(SimpleHistoryAdmin, UnfoldModelAdmin):
         ]
         return custom_urls + urls
 
+    # Match the level keyword anywhere on a line (Django's and the app's log
+    # formats differ, so keep it tolerant). Used to drive the level filter.
+    _LOG_LEVEL_RE = re.compile(r"\b(DEBUG|INFO|WARNING|ERROR|CRITICAL)\b")
+
     def view_log(self, request):
         try:
+            lines = int(request.GET.get("lines", 1000))
+        except (TypeError, ValueError):
+            lines = 1000
+        lines = max(50, min(lines, 5000))  # bound the tail
+        try:
             output = subprocess.check_output(
-                ["tail", "-n", "200", LOG_PATH], text=True, stderr=subprocess.DEVNULL
+                ["tail", "-n", str(lines), LOG_PATH],
+                text=True,
+                stderr=subprocess.DEVNULL,
             )
             raw_lines = output.splitlines()
         except (subprocess.CalledProcessError, FileNotFoundError):
             raw_lines = ["Log file not found."]
 
-        formatted_lines = [
-            {"lineno": i + 1, "line": line} for i, line in enumerate(raw_lines)
-        ]
+        formatted_lines = []
+        for i, line in enumerate(raw_lines):
+            match = self._LOG_LEVEL_RE.search(line)
+            formatted_lines.append(
+                {
+                    "lineno": i + 1,
+                    "level": match.group(1) if match else "",
+                    "line": line,
+                }
+            )
 
         context = {
             "title": "Inventory Log",
             "log_lines": formatted_lines,
+            "shown": len(formatted_lines),
         }
 
         return TemplateResponse(

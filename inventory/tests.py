@@ -4324,3 +4324,20 @@ class StatusOnEditTests(TestCase):
         self.item.refresh_from_db()
         self.assertEqual(self.item.status, InventoryItem.Status.IN_USE)
         self.assertEqual(self.item.location_id, self.loc_stored.id)
+
+
+class AdminLogLevelParseTests(TestCase):
+    """The system-log view parses a level out of each (heterogeneous) log line to
+    drive the level filter."""
+
+    def test_level_regex(self):
+        from inventory.admin import InventoryItemAdmin
+
+        rx = InventoryItemAdmin._LOG_LEVEL_RE
+        self.assertEqual(
+            rx.search("django.request WARNING 2026-06-09 18:04:42 Not Found").group(1),
+            "WARNING",
+        )
+        self.assertEqual(rx.search("[INFO] Adding PLA to inventory").group(1), "INFO")
+        self.assertEqual(rx.search("traceback ERROR boom").group(1), "ERROR")
+        self.assertIsNone(rx.search("a line with no level keyword"))
