@@ -19,8 +19,8 @@ if [ ! -f "${HOME}/.env_inventory" ]; then
   exit 1
 fi
 
-if [ ! -f "${HOME}/inventory_db.sqlite3" ]; then
-  echo "ERROR: ${HOME}/inventory_db.sqlite3 not found. Copy the database to the runner host."
+if [ ! -f "${HOME}/inventory_db_dir/inventory_db.sqlite3" ]; then
+  echo "ERROR: ${HOME}/inventory_db_dir/inventory_db.sqlite3 not found. Copy the database to the runner host."
   exit 1
 fi
 
