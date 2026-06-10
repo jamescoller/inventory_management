@@ -4,12 +4,18 @@ services:
     command: ["/app/entrypoint.sh"]
     restart: unless-stopped
     volumes:
-      - ${HOME}/inventory_db.sqlite3:/app/inventory_db.sqlite3
+      # DB *directory* (not the single file) so WAL's -wal/-shm siblings are
+      # shareable across containers (Phase 16.1).
+      - ${HOME}/inventory_db_dir:/app/db
       - static_volume:/app/staticfiles
     expose:
       - "8000"
     environment:
       - DEBUG=0
+      # DB lives in the bind-mounted directory above (Phase 16.1). Set here rather
+      # than ~/.env_inventory because that file is root-owned (jcoller can't append)
+      # and this is a non-secret path, so it belongs in version control anyway.
+      - SQLITE_DB_PATH=/app/db/inventory_db.sqlite3
     env_file:
       - ${HOME}/.env_inventory
 

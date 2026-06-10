@@ -3695,3 +3695,62 @@ class ProcurementViewTests(TestCase):
             resp = self.client.get(reverse(name, args=args))
             self.assertEqual(resp.status_code, 302)
             self.assertIn("/login", resp.url)
+
+
+class SqlitePragmaUnitTests(TestCase):
+    """The WAL receiver is exercised against a real *file* DB because WAL is not
+    observable on an in-memory DB (which always reports journal_mode='memory')."""
+
+    def test_pragmas_enable_wal_on_file_db(self):
+        import os
+        import sqlite3
+        import tempfile
+
+        from inventory.db_pragmas import enable_sqlite_pragmas
+
+        with tempfile.TemporaryDirectory() as d:
+            raw = sqlite3.connect(os.path.join(d, "t.sqlite3"))
+
+            class FakeConn:
+                vendor = "sqlite"
+
+                def cursor(self):
+                    return raw.cursor()
+
+            enable_sqlite_pragmas(sender=None, connection=FakeConn())
+
+            cur = raw.cursor()
+            self.assertEqual(
+                cur.execute("PRAGMA journal_mode;").fetchone()[0].lower(), "wal"
+            )
+            self.assertEqual(
+                cur.execute("PRAGMA synchronous;").fetchone()[0], 1
+            )  # NORMAL
+            self.assertEqual(cur.execute("PRAGMA busy_timeout;").fetchone()[0], 5000)
+            raw.close()
+
+    def test_receiver_is_noop_on_non_sqlite(self):
+        from inventory.db_pragmas import enable_sqlite_pragmas
+
+        class FakeConn:
+            vendor = "postgresql"
+
+            def cursor(self):
+                raise AssertionError("must not touch cursor on non-sqlite")
+
+        enable_sqlite_pragmas(sender=None, connection=FakeConn())
+
+
+class SqlitePragmaIntegrationTests(TestCase):
+    def test_synchronous_normal_applied_to_live_connection(self):
+        """Proves the connection_created receiver is wired and fires for real
+        connections: it sets synchronous=NORMAL (1), whereas Django's default
+        leaves it FULL (2). (busy_timeout is a poor probe here — Django already
+        defaults it to 5000. journal_mode can't be asserted either: the test DB
+        is in-memory and always reports 'memory'. WAL is verified in the prod
+        runbook.)"""
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute("PRAGMA synchronous;")
+            self.assertEqual(cursor.fetchone()[0], 1)

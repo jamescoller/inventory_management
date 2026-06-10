@@ -17,10 +17,10 @@ import json
 import os
 import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-DB_PATH = Path.home() / "inventory_db.sqlite3"
+DB_PATH = Path.home() / "inventory_db_dir" / "inventory_db.sqlite3"
 OUT_DIR = Path.home() / "ha-stats"
 OUT_FILE = OUT_DIR / "inventory_stats.json"
 
@@ -37,11 +37,13 @@ def query(conn, sql, params=()):
     cur = conn.cursor()
     cur.execute(sql, params)
     cols = [d[0] for d in cur.description]
-    return [dict(zip(cols, row)) for row in cur.fetchall()]
+    return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
 
 
 def build_summary(conn):
-    rows = query(conn, """
+    rows = query(
+        conn,
+        """
         SELECT
             COUNT(*) FILTER (WHERE status IN (1,2,3,4)) AS total_active,
             COUNT(*) FILTER (WHERE status = 2)          AS in_use,
@@ -49,12 +51,15 @@ def build_summary(conn):
             COUNT(*) FILTER (WHERE status = 4)          AS stored,
             COUNT(*) FILTER (WHERE status = 1)          AS new_items
         FROM inventory_inventoryitem
-    """)
+    """,
+    )
     return rows[0]
 
 
 def build_in_use(conn):
-    return query(conn, """
+    return query(
+        conn,
+        """
         SELECT
             ii.id,
             p.name        AS product_name,
@@ -72,11 +77,15 @@ def build_in_use(conn):
         LEFT JOIN inventory_location  l ON ii.location_id   = l.id
         WHERE ii.status = ?
         ORDER BY p.name
-    """, (STATUS_IN_USE,))
+    """,
+        (STATUS_IN_USE,),
+    )
 
 
 def build_drying(conn):
-    return query(conn, """
+    return query(
+        conn,
+        """
         SELECT
             ii.id,
             p.name        AS product_name,
@@ -92,11 +101,15 @@ def build_drying(conn):
         LEFT JOIN inventory_location  l ON ii.location_id   = l.id
         WHERE ii.status = ?
         ORDER BY p.name
-    """, (STATUS_DRYING,))
+    """,
+        (STATUS_DRYING,),
+    )
 
 
 def build_low_stock(conn):
-    rows = query(conn, """
+    rows = query(
+        conn,
+        """
         SELECT
             p.name  AS product_name,
             p.sku,
@@ -117,7 +130,9 @@ def build_low_stock(conn):
         GROUP BY p.id
         HAVING active_count < ?
         ORDER BY active_count, p.name
-    """, (LOW_QUANTITY,))
+    """,
+        (LOW_QUANTITY,),
+    )
 
     for row in rows:
         if row["active_count"] == 0 and row["recently_depleted"] > 0:
@@ -138,7 +153,9 @@ def build_stock_by_name(conn):
     The Bambu integration exposes tray contents by the filament product name
     (e.g. 'Bambu ABS'), which should match Product.name in the inventory DB.
     """
-    rows = query(conn, """
+    rows = query(
+        conn,
+        """
         SELECT
             p.name AS product_name,
             COUNT(*) AS total_active,
@@ -149,17 +166,23 @@ def build_stock_by_name(conn):
         JOIN inventory_product p ON ii.product_id = p.id
         WHERE ii.status IN (1,2,3,4)
         GROUP BY p.id
-    """)
-    return {row["product_name"]: {
-        "active": row["total_active"],
-        "in_use": row["in_use"],
-        "drying": row["drying"],
-        "stored": row["stored"],
-    } for row in rows}
+    """,
+    )
+    return {
+        row["product_name"]: {
+            "active": row["total_active"],
+            "in_use": row["in_use"],
+            "drying": row["drying"],
+            "stored": row["stored"],
+        }
+        for row in rows
+    }
 
 
 def build_stock_by_material(conn):
-    rows = query(conn, """
+    rows = query(
+        conn,
+        """
         SELECT
             m.name AS material,
             COUNT(*) AS total_active,
@@ -173,13 +196,17 @@ def build_stock_by_material(conn):
         WHERE ii.status IN (1,2,3,4)
         GROUP BY m.name
         ORDER BY total_active DESC
-    """)
-    return {row["material"]: {
-        "active": row["total_active"],
-        "in_use": row["in_use"],
-        "drying": row["drying"],
-        "stored": row["stored"],
-    } for row in rows}
+    """,
+    )
+    return {
+        row["material"]: {
+            "active": row["total_active"],
+            "in_use": row["in_use"],
+            "drying": row["drying"],
+            "stored": row["stored"],
+        }
+        for row in rows
+    }
 
 
 def main():
@@ -195,7 +222,7 @@ def main():
 
     try:
         payload = {
-            "updated": datetime.now(timezone.utc).isoformat(),
+            "updated": datetime.now(UTC).isoformat(),
             "summary": build_summary(conn),
             "in_use": build_in_use(conn),
             "drying": build_drying(conn),
