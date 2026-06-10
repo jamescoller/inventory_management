@@ -4095,3 +4095,31 @@ class TelemetryJsonExportTests(TestCase):
             asleep = next(p for p in result if p["name"] == "Asleep")
             self.assertIsNone(asleep["gcode_state"])
             self.assertEqual(asleep["ams"], [])
+
+
+class InventoryExportTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="exporter", password="pass")
+        self.client.login(username="exporter", password="pass")
+        product = Filament.objects.create(name="PLA Red", upc="0000000000001")
+        loc = Location.objects.create(name="Shelf X")
+        InventoryItem.objects.create(product=product, location=loc)
+
+    def test_export_returns_valid_xlsx(self):
+        import io
+
+        import openpyxl
+
+        resp = self.client.get(reverse("inventory_export"))
+        self.assertEqual(resp.status_code, 200)
+        # Re-open the bytes: catches both a hard error AND silent corruption
+        # (openpyxl's zip writer needs a seekable target — HttpResponse isn't).
+        wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+        ws = wb.active
+        self.assertEqual(
+            [c.value for c in ws[1]],
+            ["Serial", "Product", "SKU", "UPC", "Status", "Date Added", "Location"],
+        )
+        self.assertEqual(ws.max_row, 2)  # header + 1 item
+        self.assertEqual(ws.cell(row=2, column=2).value, "PLA Red")  # Product col
