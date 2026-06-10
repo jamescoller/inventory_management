@@ -4161,3 +4161,122 @@ class FilamentHexParseTests(TestCase):
         self.assertEqual(
             material_from_filename("filament_hex/Bambu_TPU_85A_Hex_Code.pdf"), "TPU 85A"
         )
+
+
+class UnfoldAdminSmokeTests(TestCase):
+    """Phase 18.1 — django-unfold admin theme smoke tests.
+
+    A superuser loads every admin surface that the theme swap could have broken:
+    the Unfold dashboard (KPI cards + custom index template), the polymorphic
+    Product parent/child admins (the highest-risk MRO change), the SimpleHistory
+    InventoryItem changelist with its custom change_list template + status-badge
+    legend, the three custom admin URLs (bulk-material, view-log), and a
+    read-only telemetry-model changelist. All must return 200.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = User.objects.create_superuser(
+            username="root", password="pass", email="root@example.com"
+        )
+        cls.material = Material.objects.create(name="PLA", material_type="")
+        cls.location = Location.objects.create(
+            name="Shelf A", default_status=InventoryItem.Status.NEW
+        )
+        cls.filament = Filament.objects.create(
+            name="PLA Black",
+            upc="3000000000099",
+            material=cls.material,
+            color="Black",
+            hex_code="#000000",
+        )
+        # Item carries a unit_cost so the "spend on hand" KPI exercises Sum().
+        cls.item = InventoryItem.objects.create(
+            product=cls.filament,
+            location=cls.location,
+            unit_cost=Decimal("19.99"),
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username="root", password="pass")
+
+    def _ok(self, url):
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200, f"{url} -> {resp.status_code}")
+        return resp
+
+    # --- Dashboard / theme ------------------------------------------------
+    def test_admin_index_dashboard(self):
+        """Index renders the custom Unfold dashboard with KPI cards."""
+        resp = self._ok(reverse("admin:index"))
+        # KPI card titles injected by inventory.admin_dashboard.dashboard_callback.
+        self.assertContains(resp, "Spend on hand")
+        self.assertContains(resp, "Low stock")
+        self.assertContains(resp, "Open faults")
+        self.assertContains(resp, "Printing now")
+        # The legacy "View Log" tool link survives the index override.
+        self.assertContains(resp, reverse("admin:inventory-log"))
+
+    def test_unfold_colors_normalized_to_rgb(self):
+        """The RGB-triplet primary scale is accepted and normalized by Unfold.
+
+        Proves the COLORS config is valid (Unfold converts "R G B" -> rgb()).
+        """
+        from unfold.sites import UnfoldAdminSite
+
+        ctx = UnfoldAdminSite().each_context(
+            self.client.get(reverse("admin:index")).wsgi_request
+        )
+        self.assertIn("colors", ctx)
+        # 600 is the Zephyr brand anchor #3459e6 == rgb(52, 89, 230).
+        self.assertEqual(ctx["colors"]["primary"]["600"], "rgb(52, 89, 230)")
+
+    # --- Polymorphic admin (highest risk) --------------------------------
+    def test_product_parent_changelist(self):
+        """Polymorphic parent admin loads under Unfold."""
+        self._ok(reverse("admin:inventory_product_changelist"))
+
+    def test_product_child_changelist(self):
+        """Polymorphic child (Filament) changelist loads."""
+        self._ok(reverse("admin:inventory_filament_changelist"))
+
+    def test_product_child_changeform(self):
+        """Polymorphic child changeform renders (get_form / child fieldsets)."""
+        self._ok(reverse("admin:inventory_filament_change", args=[self.filament.pk]))
+
+    # --- SimpleHistory + custom templates --------------------------------
+    def test_inventoryitem_changelist(self):
+        """SimpleHistory admin + custom change_list template + badge legend."""
+        resp = self._ok(reverse("admin:inventory_inventoryitem_changelist"))
+        self.assertContains(resp, "Status Legend")  # custom change_list block
+
+    def test_inventoryitem_history(self):
+        """django-simple-history object history view (Unfold-styled)."""
+        self._ok(reverse("admin:inventory_inventoryitem_history", args=[self.item.pk]))
+
+    def test_custom_view_log_url(self):
+        """log_view.html (extends admin/base_site.html)."""
+        self._ok(reverse("admin:inventory-log"))
+
+    def test_custom_bulk_update_material_url(self):
+        """bulk_update_material.html (extends admin/base_site.html)."""
+        self._ok(reverse("admin:bulk_update_material"))
+
+    # --- Telemetry (read-only) -------------------------------------------
+    def test_telemetry_changelist(self):
+        """A read-only telemetry mirror model changelist loads."""
+        from inventory.models import PrinterDevice, PrinterState
+
+        device = PrinterDevice.objects.create(
+            serial="SN-TEST-1", name="P1", ip_address="10.0.0.9"
+        )
+        PrinterState.objects.create(device=device, gcode_state="RUNNING")
+        self._ok(reverse("admin:inventory_printerstate_changelist"))
+
+    # --- Other model admins (spot-check the bulk swap) -------------------
+    def test_location_changelist(self):
+        self._ok(reverse("admin:inventory_location_changelist"))
+
+    def test_material_changelist(self):
+        self._ok(reverse("admin:inventory_material_changelist"))

@@ -4,6 +4,7 @@ Django>=6.0.6,<7.0
 django-crispy-forms==2.6
 django-polymorphic==4.11.5
 django-simple-history>=3.11.0
+django-unfold>=0.97.0
 et_xmlfile==2.0.0
 gunicorn==26.0.0
 openpyxl==3.1.5

@@ -1,24 +1,23 @@
 {% extends "admin/change_list.html" %}
-{% load static %}
+{% load i18n static %}
 
-{% block content_title %}
+{% comment %}
+Unfold-compatible InventoryItem changelist.
+
+Unfold's admin/change_list.html dropped Django's ``content_title`` block, so the
+status-badge legend can't ride there any more. Instead it renders via Unfold's
+first-class ``ModelAdmin.list_before_template`` hook (set on InventoryItemAdmin)
+which injects a partial directly above the result list. The View-Log button uses
+Unfold's ``object-tools-items`` block; ``extrahead`` still pulls in the badge CSS
+(Media) — both blocks exist in Unfold's change_list.
+{% endcomment %}
+
+{% block object-tools-items %}
     {{ block.super }}
-    <div style="margin-top: 10px;">
-        <strong>Status Legend:</strong>
-        <span class="badge badge-new">New</span>
-        <span class="badge badge-in-use">In Use</span>
-        <span class="badge badge-drying">Drying</span>
-        <span class="badge badge-stored">Stored</span>
-        <span class="badge badge-depleted">Depleted</span>
-    </div>
-{% endblock content_title %}
-
-{% block object-tools %}
-	{{ block.super }}
-	<li>
-		<a href="{% url 'admin:inventory-log' %}" class="button">View Log</a>
-	</li>
-{% endblock object-tools %}
+    <li>
+        <a href="{% url 'admin:inventory-log' %}" class="button">{% translate "View Log" %}</a>
+    </li>
+{% endblock object-tools-items %}
 
 {% block extrahead %}
     {{ block.super }}
