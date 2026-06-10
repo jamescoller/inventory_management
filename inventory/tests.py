@@ -3982,3 +3982,26 @@ class SeedPrinterDevicesTests(TestCase):
         self.assertEqual(
             PrinterDevice.objects.get(serial="0948CD531200537").access_code, "abc123"
         )
+
+
+class RunTelemetryConsumerTests(TestCase):
+    def test_no_enabled_devices_exits_clean(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("run_telemetry_consumer", "--once", stdout=out)
+        self.assertIn("No enabled PrinterDevice", out.getvalue())
+
+    def test_make_client_sets_credentials(self):
+        from inventory.management.commands.run_telemetry_consumer import Command
+        from inventory.models import PrinterDevice
+
+        dev = PrinterDevice.objects.create(
+            serial="s1", name="n1", ip_address="10.0.0.5", access_code="secret"
+        )
+        client = Command().make_client(dev)
+        # paho stores the username/password as bytes on the client
+        self.assertEqual(client._username, b"bblp")
+        self.assertEqual(client._password, b"secret")
