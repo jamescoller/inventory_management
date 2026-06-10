@@ -262,8 +262,9 @@ PrintJobFilamentFormSet = forms.inlineformset_factory(
 class InventoryEditForm(forms.ModelForm):
     class Meta:
         model = InventoryItem
-        fields = ["serial_number", "location", "date_depleted"]
+        fields = ["serial_number", "status", "location", "date_depleted"]
         widgets = {
+            "status": forms.Select(attrs={"class": "form-select"}),
             "location": forms.Select(attrs={"class": "form-select"}),
             "serial_number": forms.TextInput(attrs={"class": "form-control"}),
             "date_depleted": forms.DateInput(
@@ -274,3 +275,13 @@ class InventoryEditForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["location"].queryset = Location.assignable()
+        # Status: user-settable choices only (excludes UNKNOWN; DEPLETED/SOLD are
+        # set via the Mark-Depleted/Sold buttons, not this dropdown). If the item is
+        # already in a sticky/terminal status, surface it as the selected default so
+        # the form round-trips without forcing a change — only an explicit pick alters
+        # it, applied via items.set_status() so it isn't re-derived from location.
+        choices = list(_USER_SETTABLE_STATUSES)
+        current = self.instance.status if self.instance and self.instance.pk else None
+        if current is not None and current not in [value for value, _ in choices]:
+            choices = [(current, self.instance.get_status_display()), *choices]
+        self.fields["status"].choices = choices

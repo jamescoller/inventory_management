@@ -464,7 +464,10 @@ class InventoryEditView(LoginRequiredMixin, UpdateView):
                 elif level == "warning":
                     messages.warning(request, message)
 
-            form.save()
+            # Location/serial/date are already on the bound instance; set status
+            # explicitly so the model does NOT re-derive it from the new location
+            # (honours the user's pick + the sticky-status mechanism).
+            items.set_status(form.instance, form.cleaned_data["status"])
             return redirect("inventory_search")
         else:
             # Form is not valid, render the page with errors
