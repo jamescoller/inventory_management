@@ -1615,15 +1615,27 @@ class DryStorageOverviewView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        roots = list(
-            Location.objects.filter(
-                parent__isnull=True,
-                kind__in=[Location.Kind.RACK, Location.Kind.DRY_STORAGE],
-            ).order_by("name")
+        stored = InventoryItem.Status.STORED
+        stored_items = list(
+            InventoryItem.objects.filter(status=stored).select_related(
+                "product", "location", "location__parent"
+            )
         )
-        context["location_tree"] = build_location_tree(
-            roots, statuses=[InventoryItem.Status.STORED]
-        )
+        # Roots = the top-level ancestor of every location that holds a STORED item,
+        # so the tree contains exactly the relevant subtrees: flat dry-storage bins,
+        # or a dry-storage rack expanded to its shelves. Empty top-level RACKs (the
+        # receiving racks) never bleed in because they hold no STORED items.
+        root_ids = set()
+        for loc in {it.location for it in stored_items if it.location_id}:
+            cur = loc
+            while cur.parent_id:
+                cur = cur.parent
+            root_ids.add(cur.id)
+        roots = list(Location.objects.filter(id__in=root_ids).order_by("name"))
+        context["location_tree"] = build_location_tree(roots, statuses=[stored])
+        # Location-less STORED items live in no subtree — surface them so nothing is
+        # lost vs the old flat "Unassigned" group.
+        context["other_items"] = [it for it in stored_items if not it.location_id]
         return context
 
 

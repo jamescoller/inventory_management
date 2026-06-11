@@ -5785,6 +5785,25 @@ class DryStorageOverviewTreeTests(TestCase):
         self.assertContains(resp, "PLA Stored")
         self.assertContains(resp, 'data-bs-toggle="collapse"')
 
+    def test_unassigned_stored_item_is_not_lost(self):
+        # Regression: a STORED item with no location must still appear (it has no
+        # subtree, so the old flat view's 'Unassigned' group is preserved).
+        orphan = InventoryItem.objects.create(
+            product=Filament.objects.create(name="Orphan PLA", upc="7700000000099"),
+        )
+        orphan.status = InventoryItem.Status.STORED
+        orphan.save()
+        resp = self.client.get(reverse("dry_storage_overview"))
+        self.assertContains(resp, "Orphan PLA")
+        self.assertContains(resp, "Unassigned")
+
+    def test_empty_receiving_rack_does_not_bleed_in(self):
+        # A receiving rack with no STORED items must not appear on the dry-storage
+        # page (RACK kind can't be distinguished, so root off items, not kind).
+        Location.objects.create(name="Receiving Rack 9", kind=Location.Kind.RACK)
+        resp = self.client.get(reverse("dry_storage_overview"))
+        self.assertNotContains(resp, "Receiving Rack 9")
+
     def test_overview_requires_login(self):
         self.client.logout()
         resp = self.client.get(reverse("dry_storage_overview"))
