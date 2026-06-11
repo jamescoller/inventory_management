@@ -2026,6 +2026,18 @@ class FilamentSearchFilterTests(TestCase):
         self.assertEqual(sv["material"], "PLA")
         self.assertEqual(sv["color"], "Red")
 
+    def test_search_page_forms_roundtrip_filament_filters(self):
+        # The search/export/bulk forms must carry the four filament filters as
+        # hidden inputs so the filtered state survives re-search, Export-to-Excel,
+        # and bulk actions (otherwise the results silently widen). Regression for
+        # the export button dropping the filters.
+        resp = self.client.get(
+            reverse("inventory_search"), {"material": "PLA", "color": "Red"}
+        )
+        html = resp.content.decode()
+        self.assertGreaterEqual(html.count('name="material" value="PLA"'), 2)
+        self.assertGreaterEqual(html.count('name="color" value="Red"'), 2)
+
     def test_export_honors_material_filter(self):
         import io
 

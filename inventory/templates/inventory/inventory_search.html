@@ -122,6 +122,11 @@
                        value="{{ search_values.date_to }}">
             </div>
 
+            <input type="hidden" name="material" value="{{ search_values.material }}">
+            <input type="hidden" name="material_type" value="{{ search_values.material_type }}">
+            <input type="hidden" name="color" value="{{ search_values.color }}">
+            <input type="hidden" name="color_family" value="{{ search_values.color_family }}">
+
 			<div class="col-12 text-end">
                 <a href="{% url 'inventory_search' %}" class="btn btn-outline-secondary mt-2">Reset</a>
                 <button type="submit" class="btn btn-primary mt-2">Search</button>
@@ -146,6 +151,10 @@
             <input type="hidden" name="date_from" value="{{ search_values.date_from }}">
             <input type="hidden" name="date_to" value="{{ search_values.date_to }}">
             <input type="hidden" name="preset" value="{{ search_values.preset }}">
+            <input type="hidden" name="material" value="{{ search_values.material }}">
+            <input type="hidden" name="material_type" value="{{ search_values.material_type }}">
+            <input type="hidden" name="color" value="{{ search_values.color }}">
+            <input type="hidden" name="color_family" value="{{ search_values.color_family }}">
             <button type="submit" class="btn btn-outline-success mb-3">⬇ Export to Excel</button>
         </form>
 
@@ -229,6 +238,10 @@
             <input type="hidden" name="date_from" value="{{ search_values.date_from }}">
             <input type="hidden" name="date_to" value="{{ search_values.date_to }}">
             <input type="hidden" name="preset" value="{{ search_values.preset }}">
+            <input type="hidden" name="material" value="{{ search_values.material }}">
+            <input type="hidden" name="material_type" value="{{ search_values.material_type }}">
+            <input type="hidden" name="color" value="{{ search_values.color }}">
+            <input type="hidden" name="color_family" value="{{ search_values.color_family }}">
             <!-- Selected item IDs injected by JS on submit -->
             <div id="bulk-id-container"></div>
             <!-- Sticky action bar — shown only when items are selected -->
