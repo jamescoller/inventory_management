@@ -5064,6 +5064,29 @@ class MachineUnitLabelViewTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertNotContains(resp, reverse("print_unit_label", args=[item.pk]))
 
+    def test_print_failure_redirects_with_roll_hint_not_500(self):
+        # A media-mismatch ("wrong size") or any other print error must surface as a
+        # friendly message + redirect, never a 500.
+        from unittest.mock import patch
+
+        from inventory.models import AMS
+
+        ams = AMS.objects.create(name="AMS UL3", upc="700000088024")
+        item = InventoryItem.objects.create(product=ams, serial_number="SN-AMS-11")
+        Location.objects.create(name="AMS UL3 Loc", kind=Location.Kind.AMS, unit=item)
+        with patch(
+            "inventory.views.print_unit_label",
+            side_effect=RuntimeError("wrong size"),
+        ):
+            resp = self.client.get(
+                reverse("print_unit_label", args=[item.pk]), follow=True
+            )
+        self.assertEqual(
+            resp.status_code, 200
+        )  # followed the redirect to the edit page
+        self.assertContains(resp, "DK-1201")
+        self.assertContains(resp, "wrong size")
+
 
 class UnitLabelProfileTests(TestCase):
     """The AMS/dryer/printer unit label is DK-1201 (29x90) sized with a decorative

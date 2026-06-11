@@ -183,6 +183,17 @@ class MachineUnitLabelView(LoginRequiredMixin, View):
         except PrinterUnreachableError as exc:
             messages.error(request, str(exc))
             return redirect("inventory_edit", item_id=item_id)
+        except Exception as exc:  # noqa: BLE001 - surface any print failure, never 500
+            # The usual cause is a media mismatch: the printer rejects a 29x90 job
+            # ("wrong size") unless the DK-1201 roll is loaded. Hint at the roll
+            # instead of letting the brother_ql error bubble up as a 500.
+            messages.error(
+                request,
+                f"Couldn't print the unit label: {exc}. Unit labels need the "
+                "DK-1201 (29x90) roll loaded — check the roll and clear the "
+                "printer's error state, then try again.",
+            )
+            return redirect("inventory_edit", item_id=item_id)
 
 
 class BarcodeRedirectView(LoginRequiredMixin, View):
