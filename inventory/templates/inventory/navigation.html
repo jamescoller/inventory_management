@@ -47,6 +47,14 @@
 					<li class="nav-item">
 						<a class="nav-link" href="#">{{ user.username }}</a>
 					</li>
+					<li class="nav-item">
+						<a class="nav-link" href="{% url 'password_change' %}">Change Password</a>
+					</li>
+					{% if user.is_staff %}
+						<li class="nav-item">
+							<a class="nav-link" href="{% url 'staff_user_list' %}">Users</a>
+						</li>
+					{% endif %}
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'admin:index' %}">Admin</a>
                     </li>
