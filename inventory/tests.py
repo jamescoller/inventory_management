@@ -4980,6 +4980,8 @@ class PrintUnitLabelsTests(TestCase):
             kwargs["qr_value"],
             f"https://inventory.home.collerco.com/barcode/LOC-{loc.pk}/",
         )
+        # Unit labels use the DK-1201 (29x90) profile, not the 17x54 default.
+        self.assertEqual(kwargs["profile"].code, "29x90")
 
     def test_non_unit_location_skipped(self):
         from unittest.mock import patch
@@ -4994,3 +4996,55 @@ class PrintUnitLabelsTests(TestCase):
         ) as mock_print, patch.object(admin_obj, "message_user"):
             admin_obj.print_unit_labels(req, Location.objects.filter(pk=shelf.pk))
         mock_print.assert_not_called()
+
+
+class UnitLabelProfileTests(TestCase):
+    """The AMS/dryer/printer unit label is DK-1201 (29x90) sized with a decorative
+    rounded border; the 17x54 default label is unchanged."""
+
+    QR = "https://inventory.home.collerco.com/barcode/LOC-1/"
+
+    def test_dk1201_canvas_size(self):
+        from inventory.barcode_utils import UNIT_PROFILE, create_label_image
+
+        img = create_label_image(
+            "19F06A532302491",
+            text="AMS HT-2 · 19F06A532302491",
+            qr_value=self.QR,
+            profile=UNIT_PROFILE,
+        )
+        self.assertEqual(UNIT_PROFILE.code, "29x90")
+        self.assertEqual(img.size, (991, 306))
+
+    def test_border_drawn_only_when_enabled(self):
+        import dataclasses
+
+        from inventory.barcode_utils import UNIT_PROFILE, create_label_image
+
+        bordered = create_label_image("SN-X-1", qr_value=self.QR, profile=UNIT_PROFILE)
+        plain = create_label_image(
+            "SN-X-1",
+            qr_value=self.QR,
+            profile=dataclasses.replace(UNIT_PROFILE, border=False),
+        )
+        _w, h = bordered.size
+
+        def black_in_left_edge(img):
+            # The left border stroke lives in the first ~20px; the unbordered
+            # variant has only whitespace there (content starts past the margin).
+            return any(img.getpixel((x, h // 2)) == 0 for x in range(0, 22))
+
+        self.assertTrue(black_in_left_edge(bordered))
+        self.assertFalse(black_in_left_edge(plain))
+        # Slightly rounded: the very corner stays white (not part of the stroke).
+        self.assertNotEqual(bordered.getpixel((0, 0)), 0)
+
+    def test_default_17x54_layout_unchanged(self):
+        from inventory.barcode_utils import DEFAULT_PROFILE, create_label_image
+
+        img = create_label_image(
+            "INV-1", qr_value="https://x/barcode/INV-1/", profile=DEFAULT_PROFILE
+        )
+        self.assertEqual(img.size, (566, 165))
+        # No border: the top-left corner band is white (unlike the bordered unit label).
+        self.assertNotEqual(img.getpixel((1, 1)), 0)
