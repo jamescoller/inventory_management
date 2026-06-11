@@ -1622,6 +1622,23 @@ class QuickMoveView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
+        # The /edit/ "Move" button deep-links here as /move/?item=<id> to preload
+        # the item as the active one (skips the first scan).
+        item_id = self.request.GET.get("item")
+        if item_id:
+            try:
+                item = quickmove.resolve_active_item(f"INV-{item_id}")
+            except quickmove.QuickMoveError as exc:
+                ctx["state"] = "idle"
+                ctx["last_result"] = ("danger", str(exc))
+                return ctx
+            ctx["state"] = "item"
+            ctx["active_item"] = item
+            ctx["last_result"] = (
+                "info",
+                f"Moving {item.product.name} (INV-{item.pk}). Scan a destination.",
+            )
+            return ctx
         ctx["state"] = "idle"
         return ctx
 
