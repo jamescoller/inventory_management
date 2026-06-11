@@ -1,0 +1,17 @@
+{% extends "inventory/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container py-3" style="max-width: 640px;">
+  <h1 class="h4 mb-3"><i class="bi bi-arrow-left-right"></i> Quick Move</h1>
+  <div id="quick-move-body">
+    {% include "inventory/partials/quick_move_body.html" %}
+  </div>
+</div>
+{% endblock content %}
+
+{% block extra_scripts %}
+  <script src="{% static 'inventory/js/vendor/zxing-browser.min.js' %}"></script>
+  <script src="{% static 'inventory/js/scanner.js' %}"></script>
+  <script src="{% static 'inventory/js/quick_move.js' %}"></script>
+{% endblock extra_scripts %}

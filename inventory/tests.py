@@ -4341,3 +4341,548 @@ class AdminLogLevelParseTests(TestCase):
         self.assertEqual(rx.search("[INFO] Adding PLA to inventory").group(1), "INFO")
         self.assertEqual(rx.search("traceback ERROR boom").group(1), "ERROR")
         self.assertIsNone(rx.search("a line with no level keyword"))
+
+
+class SiteBaseUrlSettingTests(TestCase):
+    def test_site_base_url_default_is_https_host(self):
+        from django.conf import settings
+
+        self.assertTrue(settings.SITE_BASE_URL.startswith("https://"))
+        self.assertIn("inventory.home.collerco.com", settings.SITE_BASE_URL)
+
+    def test_https_origin_is_csrf_trusted(self):
+        from django.conf import settings
+
+        self.assertIn(
+            "https://inventory.home.collerco.com", settings.CSRF_TRUSTED_ORIGINS
+        )
+
+
+class LabelQrTests(TestCase):
+    def test_label_qr_url_builds_absolute_barcode_url(self):
+        from inventory.barcode_utils import label_qr_url
+
+        url = label_qr_url("INV-563")
+        self.assertEqual(url, "https://inventory.home.collerco.com/barcode/INV-563/")
+
+    def test_create_label_image_with_qr_matches_profile_size(self):
+        from inventory.barcode_utils import DEFAULT_PROFILE, create_label_image
+
+        img = create_label_image(
+            "INV-563", text="INV-563", qr_value="https://x/barcode/INV-563/"
+        )
+        self.assertEqual(img.size, DEFAULT_PROFILE.canvas_size_px)
+        self.assertEqual(img.mode, "1")
+
+    def test_create_label_image_without_qr_still_renders(self):
+        from inventory.barcode_utils import DEFAULT_PROFILE, create_label_image
+
+        img = create_label_image("INV-563", text="INV-563")
+        self.assertEqual(img.size, DEFAULT_PROFILE.canvas_size_px)
+
+
+class GenerateBarcodeQrTests(TestCase):
+    def test_unique_mode_embeds_qr(self):
+        from unittest.mock import patch
+
+        from inventory.barcode_utils import generate_and_print_barcode
+        from inventory.models import Filament, InventoryItem
+
+        product = Filament.objects.create(name="PLA QR", upc="700000000777")
+        item = InventoryItem.objects.create(product=product)
+        with patch("inventory.barcode_utils.create_label_image") as mock_create:
+            mock_create.return_value.save = lambda *a, **k: None
+            generate_and_print_barcode(item, mode="unique")
+        _, kwargs = mock_create.call_args
+        self.assertEqual(
+            kwargs["qr_value"],
+            f"https://inventory.home.collerco.com/barcode/INV-{item.id}/",
+        )
+
+
+class QuickMoveServiceTests(TestCase):
+    def setUp(self):
+        from inventory.models import Filament, InventoryItem, Location
+
+        self.shelf = Location.objects.create(
+            name="QM Shelf",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.STORED,
+        )
+        self.slot = Location.objects.create(
+            name="QM Slot",
+            kind=Location.Kind.AMS_SLOT,
+            default_status=InventoryItem.Status.IN_USE,
+        )  # capacity defaults to 1
+        self.ams = Location.objects.create(name="QM AMS", kind=Location.Kind.AMS)
+        self.ams_slot1 = Location.objects.create(
+            name="QM AMS s1",
+            kind=Location.Kind.AMS_SLOT,
+            parent=self.ams,
+            slot_index=1,
+            default_status=InventoryItem.Status.IN_USE,
+        )
+        product = Filament.objects.create(name="PLA QM", upc="700000000010")
+        self.item = InventoryItem.objects.create(product=product, location=self.shelf)
+
+    def test_resolve_active_item_from_inv_code(self):
+        from inventory import quickmove
+
+        self.assertEqual(
+            quickmove.resolve_active_item(f"INV-{self.item.pk}"), self.item
+        )
+
+    def test_resolve_active_item_strips_url(self):
+        from inventory import quickmove
+
+        url = f"https://inventory.home.collerco.com/barcode/INV-{self.item.pk}/"
+        self.assertEqual(quickmove.resolve_active_item(url), self.item)
+
+    def test_resolve_active_item_rejects_location(self):
+        from inventory import quickmove
+
+        with self.assertRaises(quickmove.QuickMoveError):
+            quickmove.resolve_active_item(f"LOC-{self.shelf.pk}")
+
+    def test_resolve_destination_leaf(self):
+        from inventory import quickmove
+
+        dest = quickmove.resolve_destination(f"LOC-{self.shelf.pk}")
+        self.assertEqual(dest.location, self.shelf)
+        self.assertFalse(dest.needs_slot_pick)
+
+    def test_resolve_destination_container_needs_slot_pick(self):
+        from inventory import quickmove
+
+        dest = quickmove.resolve_destination(f"LOC-{self.ams.pk}")
+        self.assertEqual(dest.location, self.ams)
+        self.assertTrue(dest.needs_slot_pick)
+
+    def test_attempt_move_ok_sets_location_and_derives_status(self):
+        from inventory import quickmove
+        from inventory.models import InventoryItem
+
+        outcome = quickmove.attempt_move(self.item, self.slot)
+        self.assertEqual(outcome.kind, "ok")
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.location_id, self.slot.id)
+        self.assertEqual(self.item.status, InventoryItem.Status.IN_USE)
+
+    def test_attempt_move_full_returns_occupant(self):
+        from inventory import quickmove
+        from inventory.models import Filament, InventoryItem
+
+        sitting = InventoryItem.objects.create(
+            product=Filament.objects.create(name="Occ", upc="700000000011"),
+            location=self.slot,
+        )
+        outcome = quickmove.attempt_move(self.item, self.slot)
+        self.assertEqual(outcome.kind, "full")
+        self.assertEqual(outcome.occupant, sitting)
+
+    def test_evict_and_place_deplete_old(self):
+        from inventory import quickmove
+        from inventory.models import Filament, InventoryItem
+
+        occ = InventoryItem.objects.create(
+            product=Filament.objects.create(name="Empty", upc="700000000012"),
+            location=self.slot,
+        )
+        result, evicted = quickmove.evict_and_place(
+            occ, self.item, self.slot, deplete_old=True
+        )
+        self.assertTrue(result.ok)
+        self.assertIsNone(evicted)
+        occ.refresh_from_db()
+        self.item.refresh_from_db()
+        self.assertEqual(occ.status, InventoryItem.Status.DEPLETED)
+        self.assertEqual(self.item.location_id, self.slot.id)
+
+    def test_evict_and_place_rehome_old_returns_evicted(self):
+        from inventory import quickmove
+        from inventory.models import Filament, InventoryItem
+
+        occ = InventoryItem.objects.create(
+            product=Filament.objects.create(name="Move", upc="700000000013"),
+            location=self.slot,
+        )
+        result, evicted = quickmove.evict_and_place(
+            occ, self.item, self.slot, deplete_old=False
+        )
+        self.assertTrue(result.ok)
+        self.assertEqual(evicted, occ)
+        occ.refresh_from_db()
+        self.assertIsNone(occ.location_id)  # unassigned, awaiting the chain
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.location_id, self.slot.id)
+
+    def test_unknown_item_stays_unknown_after_move(self):
+        from inventory import quickmove
+        from inventory.models import InventoryItem
+
+        self.item.status = InventoryItem.Status.UNKNOWN
+        self.item.save()
+        quickmove.attempt_move(self.item, self.slot)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, InventoryItem.Status.UNKNOWN)
+
+
+class QuickMoveViewTests(TestCase):
+    def setUp(self):
+        from inventory.models import Filament, InventoryItem, Location
+
+        self.client = Client()
+        User.objects.create_user(username="qm", password="pass")
+        self.client.login(username="qm", password="pass")
+        self.shelf = Location.objects.create(
+            name="QMV Shelf",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.STORED,
+        )
+        self.slot = Location.objects.create(
+            name="QMV Slot",
+            kind=Location.Kind.AMS_SLOT,
+            default_status=InventoryItem.Status.IN_USE,
+        )
+        self.product = Filament.objects.create(name="PLA QMV", upc="700000000020")
+        self.item = InventoryItem.objects.create(
+            product=self.product, location=self.shelf
+        )
+
+    def _scan(self, **data):
+        return self.client.post(
+            reverse("quick_move_scan"), data, HTTP_HX_REQUEST="true"
+        )
+
+    def test_get_page(self):
+        resp = self.client.get(reverse("quick_move"))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_scan_item_then_destination_moves(self):
+        from inventory.models import InventoryItem
+
+        r1 = self._scan(code=f"INV-{self.item.pk}", active_item_id="")
+        self.assertEqual(r1.status_code, 200)
+        r2 = self._scan(code=f"LOC-{self.slot.pk}", active_item_id=str(self.item.pk))
+        self.assertEqual(r2.status_code, 200)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.location_id, self.slot.id)
+        self.assertEqual(self.item.status, InventoryItem.Status.IN_USE)
+
+    def test_scan_into_full_slot_shows_confirm(self):
+        from inventory.models import Filament, InventoryItem
+
+        InventoryItem.objects.create(
+            product=Filament.objects.create(name="Sitting", upc="700000000021"),
+            location=self.slot,
+        )
+        resp = self._scan(code=f"LOC-{self.slot.pk}", active_item_id=str(self.item.pk))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "is full")
+        # Not moved yet.
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.location_id, self.shelf.id)
+
+    def test_evict_deplete_then_place(self):
+        from inventory.models import Filament, InventoryItem
+
+        occ = InventoryItem.objects.create(
+            product=Filament.objects.create(name="Empty", upc="700000000022"),
+            location=self.slot,
+        )
+        resp = self._scan(
+            action="evict",
+            deplete_old="1",
+            active_item_id=str(self.item.pk),
+            dest_id=str(self.slot.pk),
+            occupant_id=str(occ.pk),
+        )
+        self.assertEqual(resp.status_code, 200)
+        occ.refresh_from_db()
+        self.item.refresh_from_db()
+        self.assertEqual(occ.status, InventoryItem.Status.DEPLETED)
+        self.assertEqual(self.item.location_id, self.slot.id)
+
+    def test_evict_rehome_chains_old_item(self):
+        from inventory.models import Filament, InventoryItem
+
+        occ = InventoryItem.objects.create(
+            product=Filament.objects.create(name="Rehome", upc="700000000023"),
+            location=self.slot,
+        )
+        resp = self._scan(
+            action="evict",
+            deplete_old="0",
+            active_item_id=str(self.item.pk),
+            dest_id=str(self.slot.pk),
+            occupant_id=str(occ.pk),
+        )
+        self.assertEqual(resp.status_code, 200)
+        # The evicted item is now the active one to re-home.
+        self.assertContains(resp, f"INV-{occ.pk}")
+        occ.refresh_from_db()
+        self.assertIsNone(occ.location_id)
+
+    def test_deplete_active_from_card(self):
+        from inventory.models import InventoryItem
+
+        resp = self._scan(action="deplete_active", active_item_id=str(self.item.pk))
+        self.assertEqual(resp.status_code, 200)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, InventoryItem.Status.DEPLETED)
+
+    def test_requires_login(self):
+        self.client.logout()
+        resp = self.client.get(reverse("quick_move"))
+        self.assertEqual(resp.status_code, 302)
+
+
+class QuickMoveAdversarialTests(TestCase):
+    """Regression tests for the Phase 12 adversarial review (bugs 1-4)."""
+
+    def setUp(self):
+        from inventory.models import Filament, InventoryItem, Location, Material
+
+        self.client = Client()
+        User.objects.create_user(username="qmadv", password="pass")
+        self.client.login(username="qmadv", password="pass")
+
+        # A non-dry shelf the wet roll starts on. No default_status so a NEW roll
+        # placed here stays NEW (the drying-warning logic only fires for NEW), and
+        # the move is a pure location change without a status recompute.
+        self.shelf = Location.objects.create(
+            name="QMADV Shelf",
+            kind=Location.Kind.SHELF,
+            default_status=None,
+        )
+        # A dry-storage leaf that triggers the wet->dry error.
+        self.dry = Location.objects.create(
+            name="QMADV Dry",
+            kind=Location.Kind.DRY_STORAGE,
+            default_status=InventoryItem.Status.STORED,
+        )
+        # A normal slot used for the terminal-status guard test.
+        self.slot = Location.objects.create(
+            name="QMADV Slot",
+            kind=Location.Kind.AMS_SLOT,
+            default_status=InventoryItem.Status.IN_USE,
+        )
+        material = Material.objects.create(name="WetPLA", drying_required=True)
+        self.wet_product = Filament.objects.create(
+            name="Wet PLA", upc="700000000030", material=material
+        )
+        self.wet_item = InventoryItem.objects.create(
+            product=self.wet_product,
+            location=self.shelf,
+            status=InventoryItem.Status.NEW,
+        )
+
+    def _scan(self, **data):
+        return self.client.post(
+            reverse("quick_move_scan"), data, HTTP_HX_REQUEST="true"
+        )
+
+    # --- BUG 1: drying-safety block must fire in quick-move ---------------
+    def test_drying_error_blocks_move_to_dry_storage(self):
+        """A NEW, drying-required filament scanned into dry storage is blocked.
+
+        With select_related("product") the active item's product was a base
+        Product, not Filament, so filament_drying_warning() returned None and the
+        move went through. The item must NOT move and the error text must show.
+        """
+        from inventory.models import InventoryItem
+
+        resp = self._scan(
+            code=f"LOC-{self.dry.pk}", active_item_id=str(self.wet_item.pk)
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.wet_item.refresh_from_db()
+        # Still on the original shelf — the move was blocked.
+        self.assertEqual(self.wet_item.location_id, self.shelf.id)
+        self.assertEqual(self.wet_item.status, InventoryItem.Status.NEW)
+        self.assertContains(resp, "must be dried")
+
+    def test_resolve_active_item_product_is_real_filament(self):
+        """The resolved active item exposes its polymorphic Filament subclass."""
+        from inventory import quickmove
+        from inventory.models import Filament
+
+        item = quickmove.resolve_active_item(f"INV-{self.wet_item.pk}")
+        self.assertIsInstance(item.product, Filament)
+        # And the drying check actually fires off it.
+        warning = item.filament_drying_warning(self.dry)
+        self.assertIsNotNone(warning)
+        self.assertEqual(warning[0], "error")
+
+    # --- BUG 2: terminal-status items are not movable --------------------
+    def test_resolve_active_item_rejects_depleted(self):
+        from inventory import quickmove
+        from inventory.models import InventoryItem
+
+        self.wet_item.status = InventoryItem.Status.DEPLETED
+        self.wet_item.save()
+        with self.assertRaises(quickmove.QuickMoveError):
+            quickmove.resolve_active_item(f"INV-{self.wet_item.pk}")
+
+    def test_resolve_active_item_rejects_sold(self):
+        from inventory import quickmove
+        from inventory.models import InventoryItem
+
+        self.wet_item.status = InventoryItem.Status.SOLD
+        self.wet_item.save()
+        with self.assertRaises(quickmove.QuickMoveError):
+            quickmove.resolve_active_item(f"INV-{self.wet_item.pk}")
+
+    def test_resolve_active_item_rejects_depleted_by_serial(self):
+        from inventory import quickmove
+        from inventory.models import Filament, InventoryItem
+
+        dead = InventoryItem.objects.create(
+            product=Filament.objects.create(name="Dead", upc="700000000031"),
+            serial_number="DEADSERIAL",
+            status=InventoryItem.Status.DEPLETED,
+        )
+        self.assertEqual(dead.status, InventoryItem.Status.DEPLETED)
+        with self.assertRaises(quickmove.QuickMoveError):
+            quickmove.resolve_active_item("DEADSERIAL")
+
+    def test_resolve_active_item_allows_unknown(self):
+        """UNKNOWN is not terminal — a found/lost item stays movable."""
+        from inventory import quickmove
+        from inventory.models import InventoryItem
+
+        self.wet_item.status = InventoryItem.Status.UNKNOWN
+        self.wet_item.save()
+        item = quickmove.resolve_active_item(f"INV-{self.wet_item.pk}")
+        self.assertEqual(item.pk, self.wet_item.pk)
+
+    def test_scan_depleted_item_shows_danger_and_no_move(self):
+        from inventory.models import InventoryItem
+
+        self.wet_item.status = InventoryItem.Status.DEPLETED
+        self.wet_item.save()
+        resp = self._scan(code=f"INV-{self.wet_item.pk}", active_item_id="")
+        self.assertEqual(resp.status_code, 200)
+        # No active item established; the scan was rejected.
+        self.assertNotContains(resp, "Scan a destination")
+
+    def test_scan_destination_with_terminal_active_id_is_rejected(self):
+        """A forged/replayed POST carrying a terminal active_item_id is blocked.
+
+        The legitimate UI never populates active_item_id from a terminal item
+        (resolve_active_item guards that), but the destination re-entry point
+        fetches via _item() which has no guard. Without a re-entry guard the
+        move no-ops yet the view renders a false "Moved" success.
+        """
+        from inventory.models import InventoryItem
+
+        self.wet_item.status = InventoryItem.Status.DEPLETED
+        self.wet_item.save()
+        self.wet_item.refresh_from_db()
+        loc_before = self.wet_item.location_id
+        resp = self._scan(
+            code=f"LOC-{self.slot.pk}", active_item_id=str(self.wet_item.pk)
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "revive it from its edit page first")
+        self.assertNotContains(resp, "Moved")
+        self.wet_item.refresh_from_db()
+        # Not moved into the destination slot; status stays terminal.
+        self.assertEqual(self.wet_item.location_id, loc_before)
+        self.assertNotEqual(self.wet_item.location_id, self.slot.id)
+        self.assertEqual(self.wet_item.status, InventoryItem.Status.DEPLETED)
+
+    def test_evict_with_terminal_incoming_id_is_rejected(self):
+        """A forged evict POST whose incoming item is terminal is blocked."""
+        from inventory.models import Filament, InventoryItem
+
+        occ = InventoryItem.objects.create(
+            product=Filament.objects.create(name="EvictOcc", upc="700000000034"),
+            location=self.slot,
+        )
+        self.wet_item.status = InventoryItem.Status.SOLD
+        self.wet_item.save()
+        resp = self._scan(
+            action="evict",
+            deplete_old="0",
+            active_item_id=str(self.wet_item.pk),
+            dest_id=str(self.slot.pk),
+            occupant_id=str(occ.pk),
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "revive it from its edit page first")
+        self.assertNotContains(resp, "Placed")
+        occ.refresh_from_db()
+        # The occupant was not evicted.
+        self.assertEqual(occ.location_id, self.slot.id)
+
+    # --- BUG 3: non-numeric pk must not 500 ------------------------------
+    def test_junk_active_item_id_does_not_500(self):
+        resp = self._scan(code="", active_item_id="abc")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_junk_occupant_and_dest_ids_do_not_500(self):
+        resp = self._scan(
+            action="evict",
+            deplete_old="1",
+            active_item_id="abc",
+            dest_id="xyz",
+            occupant_id="nope",
+        )
+        self.assertEqual(resp.status_code, 200)
+
+    # --- FIX 4: evict_and_place is transactional -------------------------
+    def test_evict_and_place_rolls_back_on_placement_failure(self):
+        """If the incoming placement raises, the occupant must keep its location."""
+        from unittest import mock
+
+        from inventory import items as items_mod
+        from inventory import quickmove
+        from inventory.models import Filament, InventoryItem
+
+        occ = InventoryItem.objects.create(
+            product=Filament.objects.create(name="OccTxn", upc="700000000032"),
+            location=self.slot,
+        )
+        incoming = InventoryItem.objects.create(
+            product=Filament.objects.create(name="IncTxn", upc="700000000033"),
+            location=self.shelf,
+        )
+        real_move_to = items_mod.move_to
+
+        def flaky_move_to(item, location, **kwargs):
+            # First call clears the occupant; second call (the placement) blows up.
+            if item.pk == incoming.pk:
+                raise RuntimeError("boom")
+            return real_move_to(item, location, **kwargs)
+
+        with mock.patch.object(quickmove.items, "move_to", side_effect=flaky_move_to):
+            with self.assertRaises(RuntimeError):
+                quickmove.evict_and_place(occ, incoming, self.slot, deplete_old=False)
+        occ.refresh_from_db()
+        # Rolled back: occupant is NOT stranded with a null location.
+        self.assertEqual(occ.location_id, self.slot.id)
+
+
+class PwaManifestTests(TestCase):
+    def test_manifest_is_valid_and_complete(self):
+        import json
+        from pathlib import Path
+
+        from django.conf import settings
+
+        path = Path(settings.BASE_DIR) / "inventory/static/inventory/manifest.json"
+        data = json.loads(path.read_text())
+        self.assertEqual(data["start_url"], "/")
+        self.assertEqual(data["display"], "standalone")
+        sizes = {icon["sizes"] for icon in data["icons"]}
+        self.assertEqual(sizes, {"192x192", "512x512"})
+
+    def test_icons_exist(self):
+        from pathlib import Path
+
+        from django.conf import settings
+
+        base = Path(settings.BASE_DIR) / "inventory/static/inventory/images"
+        self.assertTrue((base / "icon-192.png").exists())
+        self.assertTrue((base / "icon-512.png").exists())
