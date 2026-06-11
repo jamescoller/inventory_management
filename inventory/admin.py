@@ -529,7 +529,7 @@ class LocationAdmin(UnfoldModelAdmin):
         location page. The native phone camera opens that page; the in-app move
         scanner strips the URL to ``LOC-<id>`` -> the slot picker. Non-unit or
         serial-less locations are skipped."""
-        from .barcode_utils import generate_and_print_label, label_qr_url
+        from .barcode_utils import UNIT_PROFILE, generate_and_print_label, label_qr_url
 
         unit_kinds = (Location.Kind.AMS, Location.Kind.DRYER, Location.Kind.PRINTER)
         printed = 0
@@ -544,6 +544,7 @@ class LocationAdmin(UnfoldModelAdmin):
                     data=sn,
                     text=f"{loc.name} · {sn}",
                     qr_value=label_qr_url(f"LOC-{loc.pk}"),
+                    profile=UNIT_PROFILE,
                 )
                 printed += 1
             except Exception as exc:  # noqa: BLE001 - surface to admin, keep going

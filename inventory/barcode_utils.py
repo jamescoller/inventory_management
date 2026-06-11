@@ -70,7 +70,10 @@ DEFAULT_LABEL_HEIGHT_MM = 17.0
 # For 17x54 labels, convert() expects 566x165.
 BROTHER_LABEL_PIXEL_SIZES = {
     "17x54": (566, 165),
-    # You can add more here later: "29x90": (??? , ???)
+    # DK-1201 standard address label (29mm x 90mm / 1.1" x 3.5"). brother_ql's
+    # dots_printable is (306, 991) = (short, long); the canvas is stored long x short
+    # (landscape), matching the 17x54 convention above.
+    "29x90": (991, 306),
 }
 
 
@@ -84,6 +87,9 @@ class LabelProfile:
     dpi: Printer resolution used if we have to fall back to mm->px.
     barcode_area_ratio: Portion of the label height reserved for the barcode.
     side_margin_mm: Left/right quiet margin in mm.
+    border: Draw a decorative rounded black box border around the label edge.
+    border_pt: Border stroke width in points (1pt = 1/72").
+    border_radius_mm: Corner radius of the border in mm.
     """
 
     code: str
@@ -93,6 +99,9 @@ class LabelProfile:
     barcode_area_ratio: float = 0.7
     side_margin_mm: float = 2.0
     include_qr: bool = True
+    border: bool = False
+    border_pt: float = 3.0
+    border_radius_mm: float = 2.0
 
     @property
     def canvas_size_px(self) -> tuple[int, int]:
@@ -146,6 +155,23 @@ DEFAULT_PROFILE = LabelProfile(
     dpi=DEFAULT_DPI,
     barcode_area_ratio=0.7,
     side_margin_mm=2.0,
+)
+
+# Larger DK-1201 (29x90 mm / 1.1" x 3.5") profile used ONLY for machine-unit labels
+# (AMS / dryer / printer), with a decorative 3pt rounded black border. All other
+# labels (INV-/UPC inventory tags, plain LOC- location labels) keep DEFAULT_PROFILE.
+# NOTE: printing these requires a DK-1201 roll loaded in the Brother QL.
+UNIT_PROFILE = LabelProfile(
+    code="29x90",
+    width_mm=90.0,
+    height_mm=29.0,
+    dpi=DEFAULT_DPI,
+    barcode_area_ratio=0.55,
+    side_margin_mm=4.0,
+    include_qr=True,
+    border=True,
+    border_pt=3.0,
+    border_radius_mm=2.5,
 )
 
 # ---------------------------------------------------------------------------
@@ -291,17 +317,28 @@ def create_label_image(
     label_img = Image.new("1", (canvas_width, canvas_height), 1)
     margin = profile.side_margin_px
 
+    # A decorative border (when the profile asks for one) reserves a ``frame`` of
+    # whitespace so the stroke never clips the QR/barcode/text. ``frame`` is 0 for
+    # unbordered profiles, so their layout -- and every existing 17x54 label -- is
+    # byte-for-byte unchanged.
+    border_w = 0
+    frame = 0
+    if profile.border:
+        border_w = max(1, round(profile.border_pt / 72.0 * profile.dpi))
+        frame = 2 * border_w
+    pad = max(margin, frame)
+
     draw_qr = bool(qr_value) and profile.include_qr
     if draw_qr:
-        qr_side = canvas_height - 2 * margin
+        qr_side = canvas_height - 2 * pad
         qr_img = _render_qr(qr_value, qr_side)
-        label_img.paste(qr_img, (margin, margin))
-        barcode_left = margin + qr_side + margin
+        label_img.paste(qr_img, (pad, pad))
+        barcode_left = pad + qr_side + margin
     else:
-        barcode_left = margin
+        barcode_left = pad
 
-    barcode_area_width = canvas_width - barcode_left - margin
-    barcode_height_px = int(canvas_height * profile.barcode_area_ratio)
+    barcode_area_width = canvas_width - barcode_left - pad
+    barcode_height_px = int((canvas_height - 2 * frame) * profile.barcode_area_ratio)
 
     barcode_img = generate_barcode_to_fit(
         data=data,
@@ -311,7 +348,7 @@ def create_label_image(
     )
 
     barcode_x = barcode_left + (barcode_area_width - barcode_img.width) // 2
-    barcode_y = 0
+    barcode_y = frame
     label_img.paste(barcode_img, (barcode_x, barcode_y))
 
     if text is None:
@@ -320,11 +357,24 @@ def create_label_image(
         drawer = ImageDraw.Draw(label_img)
         font = _get_default_font()
         text_y_top = barcode_y + barcode_img.height + 2
-        if text_y_top < canvas_height:
+        if text_y_top < canvas_height - frame:
             text_center_x = barcode_left + barcode_area_width // 2
             drawer.text(
                 (text_center_x, text_y_top), text, font=font, anchor="ma", fill=0
             )
+
+    if profile.border:
+        drawer = ImageDraw.Draw(label_img)
+        radius = max(0, round(profile.border_radius_mm / 25.4 * profile.dpi))
+        off = (
+            border_w  # stroke path inset; its outer edge sits ~border_w/2 from the edge
+        )
+        drawer.rounded_rectangle(
+            [off, off, canvas_width - 1 - off, canvas_height - 1 - off],
+            radius=radius,
+            outline=0,
+            width=border_w,
+        )
 
     # Do NOT rotate; brother_ql.convert(..., rotate="auto") handles it.
     return label_img
@@ -500,6 +550,10 @@ def generate_and_print_label(
     """
     img = create_label_image(data=data, text=text, profile=profile, qr_value=qr_value)
     if settings.ENABLE_BARCODE_PRINTING:
+        # Tell the printer which physical label is loaded (the profile's Brother
+        # code) so a 29x90 unit label isn't sent as the 17x54 default. A caller can
+        # still override via print_kwargs["label"] or the BROTHER_QL_LABEL env var.
+        print_kwargs.setdefault("label", (profile or DEFAULT_PROFILE).code)
         print_label_image(img, **print_kwargs)
     else:
         logger.info("[TEST MODE] Skipping actual label print for item %s", data)
@@ -681,6 +735,7 @@ def generate_and_print_barcode(
 __all__ = [
     "LabelProfile",
     "DEFAULT_PROFILE",
+    "UNIT_PROFILE",
     "generate_barcode_to_fit",
     "create_label_image",
     "print_label_image",
