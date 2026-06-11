@@ -116,6 +116,25 @@ depleted/sold/unknown), item type, location subtree, and date-added range.
 Missing or unreadable `INV-` tags can be reprinted in bulk: search for the items, tick
 the rows, and use the **Reprint tags** button in the selection bar.
 
+## Quick move & phone scanning
+
+For the everyday "this spool now lives here" task without starting a full audit, use
+**Move** in the nav (`/move/`): scan an item (`INV-` tag or its QR), then scan the
+destination (a `LOC-` barcode or an AMS/dryer/printer **serial**). The item moves via
+the shared move service and its status follows the destination's default. If the
+destination slot/unit is already full, the page asks **what's leaving to make room** —
+deplete the current occupant or rehome it. Wet filament headed for dry storage is
+blocked and a printer destination warns, reusing the same drying-safety check as the
+rest of the app.
+
+`INV-` and `LOC-` labels now print a **QR code alongside the Code128 barcode** —
+phone cameras decode QR far more reliably than 1-D barcodes, and the QR encodes a link
+straight to the item/location page. The **Move** and **Audit** scan boxes have an
+in-browser **camera scanner** (the camera button next to the input) that decodes
+barcodes/QR with the device camera over HTTPS, so a phone works as the scanner with no
+extra hardware. The app is an installable **PWA** — "Add to Home Screen" from a phone
+browser gives a one-tap field shortcut.
+
 ## Print jobs & utilization
 
 Log a print run from **Print Jobs** in the nav (`/print-jobs/`): pick the printer,

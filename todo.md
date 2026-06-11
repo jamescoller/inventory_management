@@ -96,19 +96,21 @@ consolidation + inline-JS extraction (18.2), and the **visual/UX beauty** pass (
 - [x] AMS/Dryer render as a **slot map** (see 12.x / ideas) showing slot occupancy.
 
 ### 12.2 — Quick scan-to-move  *(workflow §3; no audit session)*
-- [ ] Phone-first flow: scan item (INV/QR) → item card → scan destination (`LOC-`/serial) →
+- [x] Phone-first flow: scan item (INV/QR) → item card → scan destination (`LOC-`/serial) →
   `move_to()`; status follows the destination's `default_status`.
-- [ ] **Slot-capacity guard (item #3.1):** if the destination slot/unit is full, prompt
+- [x] **Slot-capacity guard (item #3.1):** if the destination slot/unit is full, prompt
   *"what's leaving to make room?"* (evict-and-place vs pick-another).
-- [ ] Drying-safety reuse: surface `filament_drying_warning()` on the move (wet filament →
+- [x] Drying-safety reuse: surface `filament_drying_warning()` on the move (wet filament →
   dry storage blocked; → printer warned).
 
 ### 12.3 — Phone camera barcode scanning  *(item #4)*
-- [ ] `@zxing/browser` camera modal → POST decoded code to the already input-agnostic
+- [x] `@zxing/browser` camera modal → POST decoded code to the already input-agnostic
   `/audit/scan/` and the new quick-move endpoint. Scan `LOC-` → location page; `INV-` → item.
-- [ ] **Add QR labels alongside Code128** — phone cameras decode QR far more reliably than
+- [x] **Add QR labels alongside Code128** — phone cameras decode QR far more reliably than
   1-D barcodes; keep human-readable text. (Brother QL label template change.)
-- [ ] PWA "add to home screen" (manifest + icons already exist) for one-tap field access.
+- [x] PWA "add to home screen" — manifest + icons + base.html links were **created in this
+  work** (the prior "already exist" note was inaccurate). Service worker intentionally
+  omitted (no offline requirement; manifest alone enables installability).
 
 ---
 
@@ -392,7 +394,7 @@ blast radius; (3) MQTT auto-sync writing back to real inventory.
   reprint, undo adds, serial-scan, whole-unit audit, keep-unknown), **`Location.unit` guard**
   (PR #128).
 - [x] **#49 location-based views → Phase 12.1.**
-- [ ] **Phone camera scanning → Phase 12.3.**
+- [x] **Phone camera scanning → Phase 12.3.**
 - [ ] *Remaining manual prod setup:* link AMS/dryer slot `unit` FKs, add 2 new dryers,
   reconcile old flat shelves vs new rack hierarchy, print `LOC-`/`INV-` labels.
 
