@@ -1,4 +1,5 @@
 {% extends "inventory/base.html" %}
+{% load static %}
 
 {% block content %}
 <div class="container-fluid py-3">
@@ -48,6 +49,10 @@
         <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
         <input type="text" name="code" class="form-control" autocomplete="off"
                autofocus placeholder="Scan a location (LOC-…), item (INV-…), UPC, or unit serial">
+        <button class="btn btn-outline-light" type="button" id="audit-camera-btn"
+                data-scan-mode="feed" data-scan-target="#scan-form" title="Scan with camera">
+          <i class="bi bi-camera"></i>
+        </button>
         <button class="btn btn-primary" type="submit">Scan</button>
       </div>
       <div class="form-text">
@@ -63,3 +68,9 @@
 
 </div>
 {% endblock content %}
+
+{% block extra_scripts %}
+  <script src="{% static 'inventory/js/vendor/zxing-browser.min.js' %}"></script>
+  <script src="{% static 'inventory/js/scanner.js' %}"></script>
+  <script src="{% static 'inventory/js/quick_move.js' %}"></script>
+{% endblock extra_scripts %}
