@@ -4933,6 +4933,15 @@ class EditPageMoveButtonTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, reverse("quick_move") + f"?item={self.item.pk}")
 
+    def test_move_button_hidden_on_machine_page(self):
+        from inventory.models import AMS
+
+        ams = AMS.objects.create(name="AMS ED", upc="700000088013")
+        unit = InventoryItem.objects.create(product=ams, serial_number="SN-ED-1")
+        resp = self.client.get(reverse("inventory_edit", args=[unit.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, reverse("quick_move") + f"?item={unit.pk}")
+
 
 @override_settings(ENABLE_BARCODE_PRINTING=False)
 class PrintUnitLabelsTests(TestCase):
