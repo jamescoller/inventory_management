@@ -271,12 +271,29 @@ blast radius; (3) MQTT auto-sync writing back to real inventory.
 ---
 
 ## New Ideas
-- [ ] Expose "status" in the inventory item edit pages `/edit/`
+- [x] Expose "status" in the inventory item edit pages `/edit/` — editable status dropdown
+  applied via `items.set_status()` (PR #147, 2026-06-11).
 - [x] Expose full system log in the admin panel; filterable and sortable — the admin
   `view-log` page now parses a level out of each line and renders a **DataTables** table
   (sortable columns + global search + a level-filter dropdown), tailing up to 1000 lines
   (`?lines=` overridable). (2026-06-10)
 - [ ] Expose a full FTS5 search box to enable improved search functions including wildcards and contains across fields
+
+### Shipped 2026-06-11 (evening batch — James's field-test items + autonomous backlog)
+- [x] **Phase 12 follow-ups** — `/edit/` **Move** button (preloads the item); **DK-1201 unit
+  labels** for AMS/dryer/printer (SN Code128 + LOC- URL QR + rounded 3pt border, barcode
+  vertically centered) via a `Print Unit Label` button + Location-admin action. (PRs #152–155)
+- [x] **Filament manufacturer** (Bambu vs Polymaker) — per-product `Filament.manufacturer`,
+  captured at intake, surfaced in summary (now grouped by manufacturer) / color-guide / edit,
+  searchable; migrations `0035` + `0036` backfill from `Material.mfr` (177 rows → Bambu Lab). (PR #159)
+- [x] **Click a filament row → pre-filtered search** — summary/color-guide/selection rows link to
+  `/search/?material=…&color=…`; new `material`/`material_type`/`color`/`color_family` search
+  filters, round-tripped through the search/export/bulk forms. (PR #157)
+- [x] **In-app password reset** — self-service Change Password (`/account/password/`) + staff-only
+  reset of another user's password (`/account/staff/users/`). Email forgot-password deferred (SMTP). (PR #160)
+- [x] **Expandable rack ▸ shelf ▸ items location tree** — reusable Bootstrap-collapse component;
+  dry-storage overview retrofit (rooted off STORED items, Unassigned group, no receiving-rack
+  leak) + new `/receiving/` overview. (PR #161)
 
 ## Fixes
 - [x] On the `/edit/` pages with hardware (AMS, Printers, Dryers) that have the `Maintenance`
@@ -291,6 +308,9 @@ blast radius; (3) MQTT auto-sync writing back to real inventory.
 - [x] Fix static image needs that log warnings in the app log (favicon.ico, apple-touch-icon.png,
   apple-touch-icon-precomposed.png): added `<link>` tags in `base.html` + nginx exact-match root
   aliases so root probes resolve to the collected static icons instead of 404ing through to Django.
+- [x] DataTables "Incorrect column count" on the **spend-report** (PR #156), then a sweep of the
+  remaining instances — **maintenance reliability-table** + **filament-guide-table** (PR #158).
+  Same `{% empty %}` colspan-vs-header bug; dropped the colspan rows → `language.emptyTable`. (2026-06-11)
 
 ## Backlog
 *Real value, no current phase slot. Revisit during sprint planning.*
