@@ -61,8 +61,6 @@
                     <td class="text-end">{{ row.ordered_value|default:0 }}</td>
                     <td class="text-end">{{ row.received_value|default:0 }}</td>
                 </tr>
-                {% empty %}
-                <tr><td colspan="3" class="text-center text-muted">No purchase orders yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -73,7 +71,10 @@
 {% block extra_scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        new DataTable('#spend-table', { ordering: true, paging: false, info: false, searching: false });
+        new DataTable('#spend-table', {
+            ordering: true, paging: false, info: false, searching: false,
+            language: { emptyTable: 'No purchase orders yet.' }
+        });
     });
 </script>
 {% endblock extra_scripts %}
