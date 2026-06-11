@@ -4356,3 +4356,45 @@ class SiteBaseUrlSettingTests(TestCase):
         self.assertIn(
             "https://inventory.home.collerco.com", settings.CSRF_TRUSTED_ORIGINS
         )
+
+
+class LabelQrTests(TestCase):
+    def test_label_qr_url_builds_absolute_barcode_url(self):
+        from inventory.barcode_utils import label_qr_url
+
+        url = label_qr_url("INV-563")
+        self.assertEqual(url, "https://inventory.home.collerco.com/barcode/INV-563/")
+
+    def test_create_label_image_with_qr_matches_profile_size(self):
+        from inventory.barcode_utils import DEFAULT_PROFILE, create_label_image
+
+        img = create_label_image(
+            "INV-563", text="INV-563", qr_value="https://x/barcode/INV-563/"
+        )
+        self.assertEqual(img.size, DEFAULT_PROFILE.canvas_size_px)
+        self.assertEqual(img.mode, "1")
+
+    def test_create_label_image_without_qr_still_renders(self):
+        from inventory.barcode_utils import DEFAULT_PROFILE, create_label_image
+
+        img = create_label_image("INV-563", text="INV-563")
+        self.assertEqual(img.size, DEFAULT_PROFILE.canvas_size_px)
+
+
+class GenerateBarcodeQrTests(TestCase):
+    def test_unique_mode_embeds_qr(self):
+        from unittest.mock import patch
+
+        from inventory.barcode_utils import generate_and_print_barcode
+        from inventory.models import Filament, InventoryItem
+
+        product = Filament.objects.create(name="PLA QR", upc="700000000777")
+        item = InventoryItem.objects.create(product=product)
+        with patch("inventory.barcode_utils.create_label_image") as mock_create:
+            mock_create.return_value.save = lambda *a, **k: None
+            generate_and_print_barcode(item, mode="unique")
+        _, kwargs = mock_create.call_args
+        self.assertEqual(
+            kwargs["qr_value"],
+            f"https://inventory.home.collerco.com/barcode/INV-{item.id}/",
+        )

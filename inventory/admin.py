@@ -505,12 +505,16 @@ class LocationAdmin(UnfoldModelAdmin):
 
     @admin.action(description="Print location labels (LOC-<id>)")
     def print_location_labels(self, request, queryset):
-        from .barcode_utils import generate_and_print_label
+        from .barcode_utils import generate_and_print_label, label_qr_url
 
         printed = 0
         for loc in queryset:
             try:
-                generate_and_print_label(data=f"LOC-{loc.pk}", text=loc.name)
+                generate_and_print_label(
+                    data=f"LOC-{loc.pk}",
+                    text=loc.name,
+                    qr_value=label_qr_url(f"LOC-{loc.pk}"),
+                )
                 printed += 1
             except Exception as exc:  # noqa: BLE001 - surface to admin, keep going
                 self.message_user(

@@ -92,6 +92,7 @@ class LabelProfile:
     dpi: int = DEFAULT_DPI
     barcode_area_ratio: float = 0.7
     side_margin_mm: float = 2.0
+    include_qr: bool = True
 
     @property
     def canvas_size_px(self) -> tuple[int, int]:
@@ -241,65 +242,91 @@ def generate_barcode_to_fit(
 # ---------------------------------------------------------------------------
 
 
+def label_qr_url(value: str) -> str:
+    """Absolute URL encoded in a label's QR code, e.g.
+    'https://host/barcode/INV-563/'. Decoded by BarcodeRedirectView; a phone's
+    native camera opens it directly, the in-app scanner strips it back to the code.
+    """
+    from django.urls import reverse
+
+    base = getattr(settings, "SITE_BASE_URL", "").rstrip("/")
+    return f"{base}{reverse('barcode_redirect', args=[value])}"
+
+
+def _render_qr(data: str, side_px: int) -> Image.Image:
+    """Render a 1-bit square QR image of the given pixel side."""
+    import qrcode
+
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=1,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white").convert("1")
+    return img.resize((side_px, side_px), resample=Image.NEAREST)
+
+
 def create_label_image(
     data: str,
     text: str | None = None,
     profile: LabelProfile | None = None,
+    qr_value: str | None = None,
 ) -> Image.Image:
     """
-    Build a full label image (barcode + optional text) in mode '1'.
+    Build a full label image in mode '1'.
 
-    - data: exact string encoded in the barcode (e.g. "INV-739").
+    - data: exact string encoded in the Code128 barcode (e.g. "INV-739").
     - text: optional human-readable label (defaults to `data`).
     - profile: LabelProfile controlling layout and size.
+    - qr_value: optional URL to render as a QR code on the left of the label. Only
+      drawn when given AND profile.include_qr is True.
     """
     if profile is None:
         profile = DEFAULT_PROFILE
 
     canvas_width, canvas_height = profile.canvas_size_px
-
-    # Create base label canvas (1-bit, white)
     label_img = Image.new("1", (canvas_width, canvas_height), 1)
+    margin = profile.side_margin_px
 
-    # Compute barcode area
+    draw_qr = bool(qr_value) and profile.include_qr
+    if draw_qr:
+        qr_side = canvas_height - 2 * margin
+        qr_img = _render_qr(qr_value, qr_side)
+        label_img.paste(qr_img, (margin, margin))
+        barcode_left = margin + qr_side + margin
+    else:
+        barcode_left = margin
+
+    barcode_area_width = canvas_width - barcode_left - margin
     barcode_height_px = int(canvas_height * profile.barcode_area_ratio)
-    max_barcode_width_px = canvas_width - 2 * profile.side_margin_px
 
-    # Generate barcode to fit that area
     barcode_img = generate_barcode_to_fit(
         data=data,
-        max_width_px=max_barcode_width_px,
+        max_width_px=barcode_area_width,
         target_height_px=barcode_height_px,
         dpi=profile.dpi,
     )
 
-    # Center barcode horizontally at top
-    barcode_x = (canvas_width - barcode_img.width) // 2
+    barcode_x = barcode_left + (barcode_area_width - barcode_img.width) // 2
     barcode_y = 0
     label_img.paste(barcode_img, (barcode_x, barcode_y))
 
-    # Draw text (if any) below barcode
     if text is None:
         text = data
-
     if text:
-        draw = ImageDraw.Draw(label_img)
+        drawer = ImageDraw.Draw(label_img)
         font = _get_default_font()
-
-        text_y_top = barcode_y + barcode_img.height + 2  # small gap
+        text_y_top = barcode_y + barcode_img.height + 2
         if text_y_top < canvas_height:
-            # Centered text
-            draw.text(
-                (canvas_width // 2, text_y_top),
-                text,
-                font=font,
-                anchor="ma",  # middle, top
-                fill=0,  # black
+            text_center_x = barcode_left + barcode_area_width // 2
+            drawer.text(
+                (text_center_x, text_y_top), text, font=font, anchor="ma", fill=0
             )
 
-    # IMPORTANT: do NOT rotate here.
-    # brother_ql.convert(..., rotate="auto") will rotate as needed, and
-    # it expects the raw image size to match the label spec (e.g. 566x165).
+    # Do NOT rotate; brother_ql.convert(..., rotate="auto") handles it.
     return label_img
 
 
@@ -461,6 +488,7 @@ def generate_and_print_label(
     data: str,
     text: str | None = None,
     profile: LabelProfile | None = None,
+    qr_value: str | None = None,
     **print_kwargs,
 ) -> HttpResponse:
     """
@@ -470,10 +498,9 @@ def generate_and_print_label(
         generate_and_print_label("INV-739")
         generate_and_print_label("INV-739", text="INV-739 | PLA Black")
     """
-    img = create_label_image(data=data, text=text, profile=profile)
+    img = create_label_image(data=data, text=text, profile=profile, qr_value=qr_value)
     if settings.ENABLE_BARCODE_PRINTING:
         print_label_image(img, **print_kwargs)
-
     else:
         logger.info("[TEST MODE] Skipping actual label print for item %s", data)
 
@@ -642,8 +669,11 @@ def generate_and_print_barcode(
         mode,
         data,
     )
+    qr_value = (
+        label_qr_url(data) if mode_lower in ("unique", "inv", "inventory") else None
+    )
     response = generate_and_print_label(
-        data=data, text=text, profile=profile, **print_kwargs
+        data=data, text=text, profile=profile, qr_value=qr_value, **print_kwargs
     )
     return response
 
