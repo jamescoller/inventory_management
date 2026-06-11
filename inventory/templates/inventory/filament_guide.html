@@ -40,8 +40,12 @@
                         {% for m in materials %}
                         <tr>
                             <td>
-                                <strong>{{ m.name }}</strong>
-                                {% if m.material_type %}<span class="text-muted"> {{ m.material_type }}</span>{% endif %}
+                                <a href="{% url 'inventory_search' %}?item_type=filament&material={{ m.name|urlencode }}&material_type={{ m.material_type|urlencode }}"
+                                   title="See where these spools are"
+                                   style="cursor: pointer;">
+                                    <strong>{{ m.name }}</strong>
+                                    {% if m.material_type %}<span class="text-muted"> {{ m.material_type }}</span>{% endif %}
+                                </a>
                             </td>
                             <td>{{ m.description }}</td>
                             <td data-sort="{{ m.uv_resistant|yesno:'1,0' }}" class="text-center">

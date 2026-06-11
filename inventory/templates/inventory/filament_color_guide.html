@@ -50,7 +50,10 @@
     <div class="row row-cols-3 row-cols-sm-4 row-cols-md-6 row-cols-lg-8 g-3 swatch-grid">
       {% for filament in filaments %}
       <div class="col swatch-item">
-        <div class="text-center">
+        <a class="text-center text-decoration-none text-reset d-block"
+           href="{% url 'inventory_search' %}?item_type=filament&material={{ filament.material.name|urlencode }}&color={{ filament.color|urlencode }}&color_family={{ filament.color_family|urlencode }}"
+           title="See where these spools are"
+           style="cursor: pointer;">
           {% if filament.hex_code %}
             {% filament_spool filament.hex_code %}
           {% else %}
@@ -66,7 +69,7 @@
           <div class="mt-1">
             <span class="badge bg-secondary">{{ filament.active_count }} on hand</span>
           </div>
-        </div>
+        </a>
       </div>
       {% endfor %}
     </div>

@@ -1913,6 +1913,163 @@ class InventorySearchFilterTests(TestCase):
         self.assertEqual(ws.max_row, 2)
 
 
+class FilamentSearchFilterTests(TestCase):
+    """Clicking a filament row/card should jump to a pre-filtered inventory search.
+
+    The search page learns four filament-scoped filters keyed off the polymorphic
+    join: ``material`` / ``material_type`` / ``color`` / ``color_family``. Because
+    the join only resolves for Filament products, non-filament rows naturally drop
+    out (no item_type gating needed). These tests pin the backend filtering and
+    that each filament view renders a link carrying the right querystring.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="fs", password="pass")
+        self.client.login(username="fs", password="pass")
+
+        self.shelf = Location.objects.create(
+            name="Shelf F-1", default_status=InventoryItem.Status.NEW
+        )
+
+        self.pla = Material.objects.create(name="PLA")
+        self.pla_cf = Material.objects.create(name="PLA", material_type="CF")
+        self.petg = Material.objects.create(name="PETG")
+
+        # PLA Red (RED family) — no hex so color_family is not overwritten on save
+        self.fil_pla_red = Filament.objects.create(
+            name="PLA Red",
+            upc="7200000000001",
+            material=self.pla,
+            color="Red",
+            color_family="RED",
+        )
+        # PLA Blue (BLUE family)
+        self.fil_pla_blue = Filament.objects.create(
+            name="PLA Blue",
+            upc="7200000000002",
+            material=self.pla,
+            color="Blue",
+            color_family="BLUE",
+        )
+        # PLA CF Black (subtype CF, BLACK family)
+        self.fil_pla_cf_black = Filament.objects.create(
+            name="PLA CF Black",
+            upc="7200000000003",
+            material=self.pla_cf,
+            color="Black",
+            color_family="BLACK",
+        )
+        # PETG Red (RED family but PETG material)
+        self.fil_petg_red = Filament.objects.create(
+            name="PETG Red",
+            upc="7200000000004",
+            material=self.petg,
+            color="Red",
+            color_family="RED",
+        )
+        # A non-filament product to prove the join excludes it
+        self.printer = Printer.objects.create(
+            name="X1C",
+            upc="7200000000005",
+            num_extruders=1,
+            bed_length_mm=256,
+            bed_width_mm=256,
+            max_height_mm=256,
+        )
+
+        mk = InventoryItem.objects.create
+        self.i_pla_red = mk(product=self.fil_pla_red, location=self.shelf)
+        self.i_pla_blue = mk(product=self.fil_pla_blue, location=self.shelf)
+        self.i_pla_cf_black = mk(product=self.fil_pla_cf_black, location=self.shelf)
+        self.i_petg_red = mk(product=self.fil_petg_red, location=self.shelf)
+        self.i_printer = mk(product=self.printer, location=self.shelf)
+
+    def _ids(self, resp):
+        return {i.id for i in resp.context["items"]}
+
+    # --- backend filtering --------------------------------------------------
+    def test_material_filter_returns_only_that_material(self):
+        resp = self.client.get(reverse("inventory_search"), {"material": "PLA"})
+        ids = self._ids(resp)
+        self.assertEqual(
+            ids,
+            {self.i_pla_red.id, self.i_pla_blue.id, self.i_pla_cf_black.id},
+        )
+        self.assertNotIn(self.i_petg_red.id, ids)
+        self.assertNotIn(self.i_printer.id, ids)
+
+    def test_material_and_color_narrows(self):
+        resp = self.client.get(
+            reverse("inventory_search"), {"material": "PLA", "color": "Red"}
+        )
+        self.assertEqual(self._ids(resp), {self.i_pla_red.id})
+
+    def test_material_type_filter(self):
+        resp = self.client.get(reverse("inventory_search"), {"material_type": "CF"})
+        self.assertEqual(self._ids(resp), {self.i_pla_cf_black.id})
+
+    def test_color_family_filter(self):
+        resp = self.client.get(reverse("inventory_search"), {"color_family": "BLUE"})
+        self.assertEqual(self._ids(resp), {self.i_pla_blue.id})
+
+    def test_color_filter(self):
+        resp = self.client.get(reverse("inventory_search"), {"color": "Red"})
+        self.assertEqual(self._ids(resp), {self.i_pla_red.id, self.i_petg_red.id})
+
+    def test_values_round_trip_into_context(self):
+        resp = self.client.get(
+            reverse("inventory_search"),
+            {"material": "PLA", "color": "Red"},
+        )
+        sv = resp.context["search_values"]
+        self.assertEqual(sv["material"], "PLA")
+        self.assertEqual(sv["color"], "Red")
+
+    def test_search_page_forms_roundtrip_filament_filters(self):
+        # The search/export/bulk forms must carry the four filament filters as
+        # hidden inputs so the filtered state survives re-search, Export-to-Excel,
+        # and bulk actions (otherwise the results silently widen). Regression for
+        # the export button dropping the filters.
+        resp = self.client.get(
+            reverse("inventory_search"), {"material": "PLA", "color": "Red"}
+        )
+        html = resp.content.decode()
+        self.assertGreaterEqual(html.count('name="material" value="PLA"'), 2)
+        self.assertGreaterEqual(html.count('name="color" value="Red"'), 2)
+
+    def test_export_honors_material_filter(self):
+        import io
+
+        import openpyxl
+
+        resp = self.client.get(reverse("inventory_export"), {"material": "PETG"})
+        self.assertEqual(resp.status_code, 200)
+        wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+        ws = wb.active
+        # Header row + exactly the one PETG item.
+        self.assertEqual(ws.max_row, 2)
+
+    # --- frontend links -----------------------------------------------------
+    def test_summary_view_links_to_filtered_search(self):
+        resp = self.client.get(reverse("filament_summary"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, reverse("inventory_search"))
+        self.assertContains(resp, "material=PLA")
+
+    def test_color_guide_view_links_to_filtered_search(self):
+        resp = self.client.get(reverse("filament_color_guide"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, reverse("inventory_search"))
+        self.assertContains(resp, "material=PLA")
+
+    def test_guide_view_links_to_filtered_search(self):
+        resp = self.client.get(reverse("filament_guide"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, reverse("inventory_search"))
+        self.assertContains(resp, "material=PLA")
+
+
 @override_settings(LOW_QUANTITY=3)
 class LowStockAlertTests(TestCase):
     """Low-stock alerts must key off the SKU's true active count.
