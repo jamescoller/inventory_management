@@ -319,6 +319,10 @@ def _filtered_search_items(params):
     date_from = params.get("date_from", "")
     date_to = params.get("date_to", "")
     preset = params.get("preset", "")
+    material = params.get("material", "")
+    material_type = params.get("material_type", "")
+    color = params.get("color", "")
+    color_family = params.get("color_family", "")
 
     selected_statuses = _parse_status_params(params.getlist("status"))
     selected_types = {
@@ -376,6 +380,20 @@ def _filtered_search_items(params):
     if selected_types:
         items = items.filter(product__polymorphic_ctype__model__in=selected_types)
 
+    # --- filament-scoped filters ------------------------------------------
+    # The polymorphic ``product__filament__*`` join only resolves for Filament
+    # products, so these naturally restrict to filament rows (non-filament
+    # products yield null and drop out) — no item_type gating needed. Reached
+    # by clicking a row/card in the three filament views.
+    if material:
+        items = items.filter(product__filament__material__name=material)
+    if material_type:
+        items = items.filter(product__filament__material__material_type=material_type)
+    if color:
+        items = items.filter(product__filament__color=color)
+    if color_family:
+        items = items.filter(product__filament__color_family=color_family)
+
     # --- date-added range -------------------------------------------------
     if date_from:
         items = items.filter(date_added__date__gte=date_from)
@@ -393,6 +411,10 @@ def _filtered_search_items(params):
             "date_from": date_from,
             "date_to": date_to,
             "preset": preset,
+            "material": material,
+            "material_type": material_type,
+            "color": color,
+            "color_family": color_family,
         },
         "selected_statuses": selected_statuses,
         "selected_types": selected_types,
