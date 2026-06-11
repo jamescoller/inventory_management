@@ -4398,3 +4398,130 @@ class GenerateBarcodeQrTests(TestCase):
             kwargs["qr_value"],
             f"https://inventory.home.collerco.com/barcode/INV-{item.id}/",
         )
+
+
+class QuickMoveServiceTests(TestCase):
+    def setUp(self):
+        from inventory.models import Filament, InventoryItem, Location
+
+        self.shelf = Location.objects.create(
+            name="QM Shelf",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.STORED,
+        )
+        self.slot = Location.objects.create(
+            name="QM Slot",
+            kind=Location.Kind.AMS_SLOT,
+            default_status=InventoryItem.Status.IN_USE,
+        )  # capacity defaults to 1
+        self.ams = Location.objects.create(name="QM AMS", kind=Location.Kind.AMS)
+        self.ams_slot1 = Location.objects.create(
+            name="QM AMS s1",
+            kind=Location.Kind.AMS_SLOT,
+            parent=self.ams,
+            slot_index=1,
+            default_status=InventoryItem.Status.IN_USE,
+        )
+        product = Filament.objects.create(name="PLA QM", upc="700000000010")
+        self.item = InventoryItem.objects.create(product=product, location=self.shelf)
+
+    def test_resolve_active_item_from_inv_code(self):
+        from inventory import quickmove
+
+        self.assertEqual(
+            quickmove.resolve_active_item(f"INV-{self.item.pk}"), self.item
+        )
+
+    def test_resolve_active_item_strips_url(self):
+        from inventory import quickmove
+
+        url = f"https://inventory.home.collerco.com/barcode/INV-{self.item.pk}/"
+        self.assertEqual(quickmove.resolve_active_item(url), self.item)
+
+    def test_resolve_active_item_rejects_location(self):
+        from inventory import quickmove
+
+        with self.assertRaises(quickmove.QuickMoveError):
+            quickmove.resolve_active_item(f"LOC-{self.shelf.pk}")
+
+    def test_resolve_destination_leaf(self):
+        from inventory import quickmove
+
+        dest = quickmove.resolve_destination(f"LOC-{self.shelf.pk}")
+        self.assertEqual(dest.location, self.shelf)
+        self.assertFalse(dest.needs_slot_pick)
+
+    def test_resolve_destination_container_needs_slot_pick(self):
+        from inventory import quickmove
+
+        dest = quickmove.resolve_destination(f"LOC-{self.ams.pk}")
+        self.assertEqual(dest.location, self.ams)
+        self.assertTrue(dest.needs_slot_pick)
+
+    def test_attempt_move_ok_sets_location_and_derives_status(self):
+        from inventory import quickmove
+        from inventory.models import InventoryItem
+
+        outcome = quickmove.attempt_move(self.item, self.slot)
+        self.assertEqual(outcome.kind, "ok")
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.location_id, self.slot.id)
+        self.assertEqual(self.item.status, InventoryItem.Status.IN_USE)
+
+    def test_attempt_move_full_returns_occupant(self):
+        from inventory import quickmove
+        from inventory.models import Filament, InventoryItem
+
+        sitting = InventoryItem.objects.create(
+            product=Filament.objects.create(name="Occ", upc="700000000011"),
+            location=self.slot,
+        )
+        outcome = quickmove.attempt_move(self.item, self.slot)
+        self.assertEqual(outcome.kind, "full")
+        self.assertEqual(outcome.occupant, sitting)
+
+    def test_evict_and_place_deplete_old(self):
+        from inventory import quickmove
+        from inventory.models import Filament, InventoryItem
+
+        occ = InventoryItem.objects.create(
+            product=Filament.objects.create(name="Empty", upc="700000000012"),
+            location=self.slot,
+        )
+        result, evicted = quickmove.evict_and_place(
+            occ, self.item, self.slot, deplete_old=True
+        )
+        self.assertTrue(result.ok)
+        self.assertIsNone(evicted)
+        occ.refresh_from_db()
+        self.item.refresh_from_db()
+        self.assertEqual(occ.status, InventoryItem.Status.DEPLETED)
+        self.assertEqual(self.item.location_id, self.slot.id)
+
+    def test_evict_and_place_rehome_old_returns_evicted(self):
+        from inventory import quickmove
+        from inventory.models import Filament, InventoryItem
+
+        occ = InventoryItem.objects.create(
+            product=Filament.objects.create(name="Move", upc="700000000013"),
+            location=self.slot,
+        )
+        result, evicted = quickmove.evict_and_place(
+            occ, self.item, self.slot, deplete_old=False
+        )
+        self.assertTrue(result.ok)
+        self.assertEqual(evicted, occ)
+        occ.refresh_from_db()
+        self.assertIsNone(occ.location_id)  # unassigned, awaiting the chain
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.location_id, self.slot.id)
+
+    def test_unknown_item_stays_unknown_after_move(self):
+        from inventory import quickmove
+        from inventory.models import InventoryItem
+
+        self.item.status = InventoryItem.Status.UNKNOWN
+        self.item.save()
+        quickmove.attempt_move(self.item, self.slot)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, InventoryItem.Status.UNKNOWN)
