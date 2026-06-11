@@ -1,0 +1,114 @@
+{% if last_result %}
+  <div class="alert alert-{{ last_result.0 }} py-2">{{ last_result.1 }}</div>
+{% endif %}
+
+<form id="qm-scan-form" class="mb-3"
+      hx-post="{% url 'quick_move_scan' %}"
+      hx-target="#quick-move-body" hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful){var c=this.querySelector('input[name=code]');c.value='';c.focus();}">
+  {% csrf_token %}
+  <input type="hidden" name="active_item_id" value="{{ active_item.id|default:'' }}">
+  <div class="input-group input-group-lg">
+    <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
+    <input type="text" name="code" class="form-control" autocomplete="off" autofocus
+           placeholder="{% if active_item %}Scan destination (LOC-… / serial){% else %}Scan an item (INV-… / QR){% endif %}">
+    <button class="btn btn-outline-secondary" type="button" id="qm-camera-btn"
+            data-scan-mode="feed" data-scan-target="#qm-scan-form" title="Scan with camera">
+      <i class="bi bi-camera"></i>
+    </button>
+    <button class="btn btn-primary" type="submit">Go</button>
+  </div>
+</form>
+
+{% if state == "item" %}
+  <div class="card mb-3">
+    <div class="card-body">
+      <h5 class="card-title mb-1">{{ active_item.product.name }}</h5>
+      <div class="text-muted small mb-3">
+        INV-{{ active_item.pk }} ·
+        <span class="badge bg-secondary">{{ active_item.get_status_display }}</span> ·
+        {{ active_item.location.name|default:"no location" }}
+        {% if active_item.percent_remaining is not None %} · {{ active_item.percent_remaining }}%{% endif %}
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-sm btn-outline-primary" href="{% url 'inventory_edit' active_item.id %}">
+          <i class="bi bi-pencil"></i> Edit
+        </a>
+        <form hx-post="{% url 'quick_move_scan' %}" hx-target="#quick-move-body" hx-swap="innerHTML">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="deplete_active">
+          <input type="hidden" name="active_item_id" value="{{ active_item.id }}">
+          <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-x-octagon"></i> Deplete</button>
+        </form>
+        <form hx-post="{% url 'quick_move_scan' %}" hx-target="#quick-move-body" hx-swap="innerHTML">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="reset">
+          <button class="btn btn-sm btn-outline-secondary" type="submit">Cancel</button>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% if state == "container" %}
+  <div class="card mb-3">
+    <div class="card-header">{{ dest.name }} — pick a slot</div>
+    <div class="card-body d-flex flex-wrap gap-2">
+      {% for row in slot_rows %}
+        {% if row.item %}
+          <div class="border rounded p-2 text-muted small text-center" style="width: 8rem;">
+            Slot {{ row.location.slot_index|default:"–" }}<br>{{ row.item.product.name }}<br>
+            <span class="badge bg-secondary">full</span>
+          </div>
+        {% else %}
+          <form hx-post="{% url 'quick_move_scan' %}" hx-target="#quick-move-body" hx-swap="innerHTML">
+            {% csrf_token %}
+            <input type="hidden" name="active_item_id" value="{{ active_item.id }}">
+            <input type="hidden" name="code" value="LOC-{{ row.location.pk }}">
+            <button class="btn btn-outline-primary text-center" style="width: 8rem; height: 5rem;" type="submit">
+              Slot {{ row.location.slot_index|default:"–" }}<br>(empty)
+            </button>
+          </form>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+{% if state == "full" %}
+  <div class="card border-warning mb-3">
+    <div class="card-header">
+      {{ dest.name }} is full — {{ occupant.product.name }} (INV-{{ occupant.pk }}) is here
+    </div>
+    <div class="card-body d-flex flex-column gap-2">
+      <form hx-post="{% url 'quick_move_scan' %}" hx-target="#quick-move-body" hx-swap="innerHTML">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="evict">
+        <input type="hidden" name="deplete_old" value="1">
+        <input type="hidden" name="active_item_id" value="{{ active_item.id }}">
+        <input type="hidden" name="dest_id" value="{{ dest.id }}">
+        <input type="hidden" name="occupant_id" value="{{ occupant.id }}">
+        <button class="btn btn-danger w-100" type="submit">
+          Evict &amp; place — {{ occupant.product.name }} is empty (deplete it)
+        </button>
+      </form>
+      <form hx-post="{% url 'quick_move_scan' %}" hx-target="#quick-move-body" hx-swap="innerHTML">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="evict">
+        <input type="hidden" name="deplete_old" value="0">
+        <input type="hidden" name="active_item_id" value="{{ active_item.id }}">
+        <input type="hidden" name="dest_id" value="{{ dest.id }}">
+        <input type="hidden" name="occupant_id" value="{{ occupant.id }}">
+        <button class="btn btn-outline-primary w-100" type="submit">
+          Evict &amp; place — re-home {{ occupant.product.name }} (scan where it goes next)
+        </button>
+      </form>
+      <form hx-post="{% url 'quick_move_scan' %}" hx-target="#quick-move-body" hx-swap="innerHTML">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="show_item">
+        <input type="hidden" name="active_item_id" value="{{ active_item.id }}">
+        <button class="btn btn-outline-secondary w-100" type="submit">Pick another slot</button>
+      </form>
+    </div>
+  </div>
+{% endif %}

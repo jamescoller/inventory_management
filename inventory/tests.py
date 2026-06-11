@@ -4525,3 +4525,113 @@ class QuickMoveServiceTests(TestCase):
         quickmove.attempt_move(self.item, self.slot)
         self.item.refresh_from_db()
         self.assertEqual(self.item.status, InventoryItem.Status.UNKNOWN)
+
+
+class QuickMoveViewTests(TestCase):
+    def setUp(self):
+        from inventory.models import Filament, InventoryItem, Location
+
+        self.client = Client()
+        User.objects.create_user(username="qm", password="pass")
+        self.client.login(username="qm", password="pass")
+        self.shelf = Location.objects.create(
+            name="QMV Shelf",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.STORED,
+        )
+        self.slot = Location.objects.create(
+            name="QMV Slot",
+            kind=Location.Kind.AMS_SLOT,
+            default_status=InventoryItem.Status.IN_USE,
+        )
+        self.product = Filament.objects.create(name="PLA QMV", upc="700000000020")
+        self.item = InventoryItem.objects.create(
+            product=self.product, location=self.shelf
+        )
+
+    def _scan(self, **data):
+        return self.client.post(
+            reverse("quick_move_scan"), data, HTTP_HX_REQUEST="true"
+        )
+
+    def test_get_page(self):
+        resp = self.client.get(reverse("quick_move"))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_scan_item_then_destination_moves(self):
+        from inventory.models import InventoryItem
+
+        r1 = self._scan(code=f"INV-{self.item.pk}", active_item_id="")
+        self.assertEqual(r1.status_code, 200)
+        r2 = self._scan(code=f"LOC-{self.slot.pk}", active_item_id=str(self.item.pk))
+        self.assertEqual(r2.status_code, 200)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.location_id, self.slot.id)
+        self.assertEqual(self.item.status, InventoryItem.Status.IN_USE)
+
+    def test_scan_into_full_slot_shows_confirm(self):
+        from inventory.models import Filament, InventoryItem
+
+        InventoryItem.objects.create(
+            product=Filament.objects.create(name="Sitting", upc="700000000021"),
+            location=self.slot,
+        )
+        resp = self._scan(code=f"LOC-{self.slot.pk}", active_item_id=str(self.item.pk))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "is full")
+        # Not moved yet.
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.location_id, self.shelf.id)
+
+    def test_evict_deplete_then_place(self):
+        from inventory.models import Filament, InventoryItem
+
+        occ = InventoryItem.objects.create(
+            product=Filament.objects.create(name="Empty", upc="700000000022"),
+            location=self.slot,
+        )
+        resp = self._scan(
+            action="evict",
+            deplete_old="1",
+            active_item_id=str(self.item.pk),
+            dest_id=str(self.slot.pk),
+            occupant_id=str(occ.pk),
+        )
+        self.assertEqual(resp.status_code, 200)
+        occ.refresh_from_db()
+        self.item.refresh_from_db()
+        self.assertEqual(occ.status, InventoryItem.Status.DEPLETED)
+        self.assertEqual(self.item.location_id, self.slot.id)
+
+    def test_evict_rehome_chains_old_item(self):
+        from inventory.models import Filament, InventoryItem
+
+        occ = InventoryItem.objects.create(
+            product=Filament.objects.create(name="Rehome", upc="700000000023"),
+            location=self.slot,
+        )
+        resp = self._scan(
+            action="evict",
+            deplete_old="0",
+            active_item_id=str(self.item.pk),
+            dest_id=str(self.slot.pk),
+            occupant_id=str(occ.pk),
+        )
+        self.assertEqual(resp.status_code, 200)
+        # The evicted item is now the active one to re-home.
+        self.assertContains(resp, f"INV-{occ.pk}")
+        occ.refresh_from_db()
+        self.assertIsNone(occ.location_id)
+
+    def test_deplete_active_from_card(self):
+        from inventory.models import InventoryItem
+
+        resp = self._scan(action="deplete_active", active_item_id=str(self.item.pk))
+        self.assertEqual(resp.status_code, 200)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.status, InventoryItem.Status.DEPLETED)
+
+    def test_requires_login(self):
+        self.client.logout()
+        resp = self.client.get(reverse("quick_move"))
+        self.assertEqual(resp.status_code, 302)

@@ -44,6 +44,8 @@ from .views import (
     PrintJobListView,
     PurchaseOrderDetailView,
     PurchaseOrderListView,
+    QuickMoveScanView,
+    QuickMoveView,
     ReceivingConsoleView,
     ReceivingScanView,
     SignUpView,
@@ -85,6 +87,8 @@ urlpatterns = [
         LocationDetailView.as_view(),
         name="location_detail",
     ),
+    path("move/", QuickMoveView.as_view(), name="quick_move"),
+    path("move/scan/", QuickMoveScanView.as_view(), name="quick_move_scan"),
     path("search/export/", InventoryExportView.as_view(), name="inventory_export"),
     path(
         "print_barcode/<int:item_id>/<str:mode>/",

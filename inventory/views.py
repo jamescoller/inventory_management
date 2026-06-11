@@ -20,7 +20,7 @@ from django.utils.timezone import localtime
 from django.utils.timezone import now as timezone_now
 from django.views.generic import CreateView, TemplateView, UpdateView, View
 
-from . import audit, items, maintenance, printjobs, procurement
+from . import audit, items, maintenance, printjobs, procurement, quickmove
 from .barcode_utils import generate_and_print_barcode
 from .forms import (
     AMSForm,
@@ -1612,6 +1612,200 @@ class LocationDetailView(LoginRequiredMixin, View):
 
         messages.success(request, f"Moved {item.product.name} to {dest.name}.")
         return redirect("location_detail", location_id=location.id)
+
+
+class QuickMoveView(LoginRequiredMixin, TemplateView):
+    """Phone-first quick scan-to-move page. The interactive body is an HTMX
+    fragment (see QuickMoveScanView); this just renders the idle shell."""
+
+    template_name = "inventory/quick_move.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["state"] = "idle"
+        return ctx
+
+
+class QuickMoveScanView(LoginRequiredMixin, View):
+    """Input-agnostic scan/action endpoint for the quick-move flow.
+
+    State is carried client-side via the hidden ``active_item_id`` field, so a
+    typed entry, USB wedge, or camera decode all POST the same payload. Returns the
+    ``quick_move_body.html`` fragment on an HX request; falls back to the full page
+    otherwise.
+    """
+
+    def post(self, request):
+        action = request.POST.get("action", "")
+        if action == "reset":
+            return self._render(request, state="idle")
+        if action == "show_item":
+            item = self._item(request.POST.get("active_item_id"))
+            if item is None:
+                return self._render(request, state="idle")
+            return self._render(request, state="item", active_item=item)
+        if action == "deplete_active":
+            item = self._item(request.POST.get("active_item_id"))
+            if item is None:
+                return self._render(request, state="idle")
+            items.deplete(item, reason="quick-move")
+            return self._render(
+                request,
+                state="idle",
+                last_result=("success", f"Depleted {item.product.name}."),
+            )
+        if action == "evict":
+            return self._evict(request)
+
+        # A scan (no action): resolve item if none active, else a destination.
+        active = self._item(request.POST.get("active_item_id"))
+        code = request.POST.get("code", "")
+        if active is None:
+            return self._scan_item(request, code)
+        return self._scan_destination(request, active, code)
+
+    # --- helpers ---------------------------------------------------------
+    def _item(self, raw_id):
+        if not raw_id:
+            return None
+        return (
+            InventoryItem.objects.filter(pk=raw_id)
+            .select_related("product", "location")
+            .first()
+        )
+
+    def _scan_item(self, request, code):
+        try:
+            item = quickmove.resolve_active_item(code)
+        except quickmove.QuickMoveError as exc:
+            return self._render(request, state="idle", last_result=("danger", str(exc)))
+        return self._render(
+            request,
+            state="item",
+            active_item=item,
+            last_result=(
+                "info",
+                f"Moving {item.product.name} (INV-{item.pk}). Scan a destination.",
+            ),
+        )
+
+    def _scan_destination(self, request, active, code):
+        try:
+            dest = quickmove.resolve_destination(code)
+        except quickmove.QuickMoveError as exc:
+            return self._render(
+                request,
+                state="item",
+                active_item=active,
+                last_result=("danger", str(exc)),
+            )
+        if dest.needs_slot_pick:
+            return self._render(
+                request,
+                state="container",
+                active_item=active,
+                dest=dest.location,
+                slot_rows=_slot_map_for_unit(dest.location),
+                last_result=("info", f"{dest.location.name}: pick a slot."),
+            )
+        # Mirror the edit view: an error-level drying warning blocks the move.
+        warning = active.filament_drying_warning(dest.location)
+        if warning and warning[0] == "error":
+            return self._render(
+                request,
+                state="item",
+                active_item=active,
+                last_result=("danger", warning[1]),
+            )
+        outcome = quickmove.attempt_move(active, dest.location)
+        if outcome.kind == "ok":
+            return self._placed(request, active, dest.location, outcome.result)
+        if outcome.kind == "full":
+            return self._render(
+                request,
+                state="full",
+                active_item=active,
+                dest=dest.location,
+                occupant=outcome.occupant,
+                last_result=("warning", f"{dest.location.name} is full."),
+            )
+        return self._render(
+            request,
+            state="item",
+            active_item=active,
+            last_result=("danger", outcome.message),
+        )
+
+    def _placed(self, request, item, dest, result):
+        tag, msg = "success", f"Moved {item.product.name} to {dest.name}."
+        if result.drying_warning:
+            level, wmsg, _ = result.drying_warning
+            msg = f"{msg} — {wmsg}"
+            if level in ("warning", "error"):
+                tag = "warning"
+        return self._render(request, state="idle", last_result=(tag, msg))
+
+    def _evict(self, request):
+        incoming = self._item(request.POST.get("active_item_id"))
+        occupant = self._item(request.POST.get("occupant_id"))
+        dest = Location.objects.filter(pk=request.POST.get("dest_id") or 0).first()
+        deplete_old = request.POST.get("deplete_old") == "1"
+        if not (incoming and occupant and dest):
+            return self._render(
+                request,
+                state="idle",
+                last_result=("danger", "Lost track of the swap — rescan the item."),
+            )
+        result, evicted = quickmove.evict_and_place(
+            occupant, incoming, dest, deplete_old=deplete_old
+        )
+        if not result.ok:
+            return self._render(
+                request, state="idle", last_result=("danger", result.message)
+            )
+        if evicted is None:
+            return self._render(
+                request,
+                state="idle",
+                last_result=(
+                    "success",
+                    f"Depleted {occupant.product.name}; placed "
+                    f"{incoming.product.name} in {dest.name}.",
+                ),
+            )
+        return self._render(
+            request,
+            state="item",
+            active_item=evicted,
+            last_result=(
+                "success",
+                f"Placed {incoming.product.name} in {dest.name}. Now scan where "
+                f"{evicted.product.name} (INV-{evicted.pk}) goes.",
+            ),
+        )
+
+    def _render(
+        self,
+        request,
+        *,
+        state,
+        active_item=None,
+        dest=None,
+        occupant=None,
+        slot_rows=None,
+        last_result=None,
+    ):
+        context = {
+            "state": state,
+            "active_item": active_item,
+            "dest": dest,
+            "occupant": occupant,
+            "slot_rows": slot_rows,
+            "last_result": last_result,
+        }
+        if request.headers.get("HX-Request"):
+            return render(request, "inventory/partials/quick_move_body.html", context)
+        return render(request, "inventory/quick_move.html", context)
 
 
 # ---------------------------------------------------------------------------
