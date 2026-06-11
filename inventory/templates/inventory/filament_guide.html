@@ -85,10 +85,6 @@
                                 {% if m.dry_time_hrs %}{{ m.dry_time_hrs }} h{% else %}<span class="text-muted">—</span>{% endif %}
                             </td>
                         </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="14" class="text-center text-muted">No materials with filament in inventory.</td>
-                        </tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -106,6 +102,7 @@
             paging: false,
             info: false,
             searching: true,
+            language: { emptyTable: 'No materials with filament in inventory.' },
         });
 
         // Enable Bootstrap tooltips on column headers
