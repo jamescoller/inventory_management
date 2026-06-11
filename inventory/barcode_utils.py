@@ -90,6 +90,8 @@ class LabelProfile:
     border: Draw a decorative rounded black box border around the label edge.
     border_pt: Border stroke width in points (1pt = 1/72").
     border_radius_mm: Corner radius of the border in mm.
+    center_vertically: Vertically center the barcode+text block in the content
+        area (instead of top-aligning it). Used for the taller DK-1201 unit label.
     """
 
     code: str
@@ -102,6 +104,7 @@ class LabelProfile:
     border: bool = False
     border_pt: float = 3.0
     border_radius_mm: float = 2.0
+    center_vertically: bool = False
 
     @property
     def canvas_size_px(self) -> tuple[int, int]:
@@ -172,6 +175,7 @@ UNIT_PROFILE = LabelProfile(
     border=True,
     border_pt=3.0,
     border_radius_mm=2.5,
+    center_vertically=True,
 )
 
 # ---------------------------------------------------------------------------
@@ -348,11 +352,25 @@ def create_label_image(
     )
 
     barcode_x = barcode_left + (barcode_area_width - barcode_img.width) // 2
-    barcode_y = frame
-    label_img.paste(barcode_img, (barcode_x, barcode_y))
 
+    # Resolve the label text up front so the barcode+text can be centered as a unit.
     if text is None:
         text = data
+
+    # Top-align by default (frame == 0 for 17x54, so that layout is unchanged). When
+    # the profile asks, vertically center the barcode+text block in the content area.
+    barcode_y = frame
+    if profile.center_vertically:
+        text_height = 0
+        if text:
+            bbox = _get_default_font().getbbox(text)
+            text_height = bbox[3] - bbox[1]
+        block_height = barcode_img.height + (2 + text_height if text else 0)
+        available = canvas_height - 2 * frame
+        barcode_y = frame + max(0, (available - block_height) // 2)
+
+    label_img.paste(barcode_img, (barcode_x, barcode_y))
+
     if text:
         drawer = ImageDraw.Draw(label_img)
         font = _get_default_font()

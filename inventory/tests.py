@@ -5138,3 +5138,43 @@ class UnitLabelProfileTests(TestCase):
         self.assertEqual(img.size, (566, 165))
         # No border: the top-left corner band is white (unlike the bordered unit label).
         self.assertNotEqual(img.getpixel((1, 1)), 0)
+        # Top-aligned (not centered): the barcode sits in the top of the label.
+        self.assertTrue(
+            any(
+                img.getpixel((x, y)) == 0
+                for y in range(0, 15)
+                for x in range(180, 540, 4)
+            )
+        )
+
+    def test_unit_label_barcode_is_vertically_centered(self):
+        import dataclasses
+
+        from inventory.barcode_utils import UNIT_PROFILE, create_label_image
+
+        text = "AMS HT-2 · 19F06A532302491"
+        centered = create_label_image(
+            "19F06A532302491", text=text, qr_value=self.QR, profile=UNIT_PROFILE
+        )
+        plain = create_label_image(
+            "19F06A532302491",
+            text=text,
+            qr_value=self.QR,
+            profile=dataclasses.replace(UNIT_PROFILE, center_vertically=False),
+        )
+        w, h = centered.size
+
+        def first_barcode_row(img):
+            # Skip the top border (~top 22px) and the left QR / side borders, then
+            # find the first black row in the barcode region = the barcode's top edge.
+            for y in range(25, h - 25):
+                if any(img.getpixel((x, y)) == 0 for x in range(320, w - 60, 3)):
+                    return y
+            return h
+
+        top_centered = first_barcode_row(centered)
+        top_plain = first_barcode_row(plain)
+        # The centered barcode sits well below the top-aligned one, with real
+        # whitespace above it.
+        self.assertGreater(top_centered, top_plain + 20)
+        self.assertGreater(top_centered, 50)
