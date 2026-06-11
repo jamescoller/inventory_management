@@ -115,14 +115,31 @@ class ProductChildAdmin(PolymorphicChildModelAdmin, UnfoldModelAdmin):
 class FilamentAdmin(ProductChildAdmin):
     base_model = Filament
     show_in_index = True
-    list_display = ["name", "material", "color", "hex_code", "get_sku", "color_family"]
-    list_filter = ["material", "color_family"]
-    search_fields = ["name", "notes", "color", "color_family", "hex_code", "get_sku"]
+    list_display = [
+        "name",
+        "material",
+        "manufacturer",
+        "color",
+        "hex_code",
+        "get_sku",
+        "color_family",
+    ]
+    list_filter = ["material", "manufacturer", "color_family"]
+    search_fields = [
+        "name",
+        "notes",
+        "color",
+        "color_family",
+        "hex_code",
+        "get_sku",
+        "manufacturer",
+    ]
     actions = ["bulk_update_material"]
     fields = [
         "color",
         "hex_code",
         "material",
+        "manufacturer",
         "weight",
         "has_spool",
         "notes",
@@ -341,6 +358,8 @@ class InventoryItemAdmin(SimpleHistoryAdmin, UnfoldModelAdmin):
         details = []
         if isinstance(product, Filament):
             details.append(f"Material: {product.material}")
+            if product.manufacturer:
+                details.append(f"Manufacturer: {product.manufacturer}")
             details.append(f"Color: {product.color} ({product.hex_code})")
             details.append(f"SKU: {product.sku}")
             details.append(f"UPC: {product.upc}")

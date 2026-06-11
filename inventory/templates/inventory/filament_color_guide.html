@@ -51,7 +51,7 @@
       {% for filament in filaments %}
       <div class="col swatch-item">
         <a class="text-center text-decoration-none text-reset d-block"
-           href="{% url 'inventory_search' %}?item_type=filament&material={{ filament.material.name|urlencode }}&color={{ filament.color|urlencode }}&color_family={{ filament.color_family|urlencode }}"
+           href="{% url 'inventory_search' %}?item_type=filament&material={{ filament.material.name|urlencode }}&manufacturer={{ filament.manufacturer|urlencode }}&color={{ filament.color|urlencode }}&color_family={{ filament.color_family|urlencode }}"
            title="See where these spools are"
            style="cursor: pointer;">
           {% if filament.hex_code %}
@@ -65,6 +65,9 @@
           {% endif %}
           {% if filament.material %}
             <div class="small text-muted">{{ filament.material }}</div>
+          {% endif %}
+          {% if filament.manufacturer %}
+            <div class="small text-muted fst-italic">{{ filament.manufacturer }}</div>
           {% endif %}
           <div class="mt-1">
             <span class="badge bg-secondary">{{ filament.active_count }} on hand</span>

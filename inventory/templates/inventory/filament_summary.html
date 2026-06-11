@@ -98,6 +98,7 @@
       <tr>
         <th>Material</th>
         <th>Subtype</th>
+        <th>Manufacturer</th>
         <th>Color</th>
         <th>Color Family</th>
         <th>On Hand</th>
@@ -107,13 +108,14 @@
     </thead>
     <tbody>
       {% for row in rows %}
-      <tr data-material="{{ row.material_name }}" data-family="{{ row.color_family }}" data-subtype="{{ row.material_type }}">
+      <tr data-material="{{ row.material_name }}" data-family="{{ row.color_family }}" data-subtype="{{ row.material_type }}" data-manufacturer="{{ row.manufacturer }}">
         <td>
-          <a href="{% url 'inventory_search' %}?item_type=filament&material={{ row.material_name|urlencode }}&material_type={{ row.material_type|urlencode }}&color={{ row.color|urlencode }}&color_family={{ row.color_family|urlencode }}"
+          <a href="{% url 'inventory_search' %}?item_type=filament&material={{ row.material_name|urlencode }}&material_type={{ row.material_type|urlencode }}&manufacturer={{ row.manufacturer|urlencode }}&color={{ row.color|urlencode }}&color_family={{ row.color_family|urlencode }}"
              title="See where these spools are"
              style="cursor: pointer;">{{ row.material_name }}</a>
         </td>
         <td>{{ row.material_type|default:"—" }}</td>
+        <td>{{ row.manufacturer|default:"—" }}</td>
         <td>
           {% if row.hex_code %}
           <span style="display:inline-block;width:12px;height:12px;border-radius:2px;

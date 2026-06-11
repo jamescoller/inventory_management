@@ -70,6 +70,9 @@
 							<dd class="col-sm-8">{{ item.serial_number }}</dd>
 
 							{% if is_filament %}
+								<dt class="col-sm-4 mt-2">Manufacturer</dt>
+								<dd class="col-sm-8 mt-2">{{ product.manufacturer|default:"—" }}</dd>
+
 								<dt class="col-sm-4 mt-2">Has Spool</dt>
 								<dd class="col-sm-8 mt-2">
 									{% if product.has_spool %}
