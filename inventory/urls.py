@@ -1,5 +1,5 @@
 from django.contrib.auth import views as auth_views
-from django.urls import path
+from django.urls import path, reverse_lazy
 
 from .views import (
     AboutView,
@@ -51,6 +51,8 @@ from .views import (
     ReceivingScanView,
     SignUpView,
     SpendReportView,
+    StaffUserListView,
+    StaffUserPasswordView,
     UnitMaintenanceView,
     UtilizationView,
 )
@@ -69,6 +71,31 @@ urlpatterns = [
         "logout/",
         auth_views.LogoutView.as_view(template_name="inventory/logout.html"),
         name="logout",
+    ),
+    path(
+        "account/password/",
+        auth_views.PasswordChangeView.as_view(
+            template_name="inventory/password_change_form.html",
+            success_url=reverse_lazy("password_change_done"),
+        ),
+        name="password_change",
+    ),
+    path(
+        "account/password/done/",
+        auth_views.PasswordChangeDoneView.as_view(
+            template_name="inventory/password_change_done.html",
+        ),
+        name="password_change_done",
+    ),
+    path(
+        "account/staff/users/",
+        StaffUserListView.as_view(),
+        name="staff_user_list",
+    ),
+    path(
+        "account/staff/users/<int:user_id>/password/",
+        StaffUserPasswordView.as_view(),
+        name="staff_user_password",
     ),
     path("addinventory/", AddInventoryView.as_view(), name="add_inventory"),
     path(

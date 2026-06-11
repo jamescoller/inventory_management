@@ -7,8 +7,9 @@ from urllib.parse import urlencode
 import openpyxl
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import authenticate, login
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth import authenticate, get_user_model, login
+from django.contrib.auth.forms import SetPasswordForm
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.db import transaction
 from django.db.models import Count, Max, Q, Sum
 from django.http import HttpResponse
@@ -2553,3 +2554,62 @@ class SpendReportView(LoginRequiredMixin, TemplateView):
         context["summary"] = procurement.spend_summary()
         context["by_supplier"] = procurement.spend_by_supplier()
         return context
+
+
+class StaffRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
+    """Gate a view to staff users.
+
+    Anonymous → 302 to login; authenticated non-staff → 403. ``raise_exception``
+    is computed dynamically so anonymous users fall through to
+    LoginRequiredMixin's redirect instead of being 403'd.
+    """
+
+    def test_func(self):
+        return self.request.user.is_staff
+
+    @property
+    def raise_exception(self):
+        # Only raise (403) for authenticated users; anonymous users get the
+        # login redirect from LoginRequiredMixin.
+        return self.request.user.is_authenticated
+
+
+class StaffUserListView(StaffRequiredMixin, View):
+    """Staff-only list of all users, each linking to a password-reset page."""
+
+    def get(self, request):
+        users = get_user_model().objects.order_by("username")
+        return render(request, "inventory/staff_user_list.html", {"users": users})
+
+
+class StaffUserPasswordView(StaffRequiredMixin, View):
+    """Staff-only: set a new password for another user via SetPasswordForm."""
+
+    def _get_target(self, user_id):
+        return get_object_or_404(get_user_model(), pk=user_id)
+
+    def get(self, request, user_id):
+        target = self._get_target(user_id)
+        form = SetPasswordForm(target)
+        return render(
+            request,
+            "inventory/staff_user_password.html",
+            {"form": form, "target_user": target},
+        )
+
+    def post(self, request, user_id):
+        target = self._get_target(user_id)
+        form = SetPasswordForm(target, request.POST)
+        if form.is_valid():
+            form.save()
+            logger.info(
+                f"Staff user {request.user.username} reset password for "
+                f"{target.username}"
+            )
+            messages.success(request, f"Password updated for {target.username}.")
+            return redirect("staff_user_list")
+        return render(
+            request,
+            "inventory/staff_user_password.html",
+            {"form": form, "target_user": target},
+        )

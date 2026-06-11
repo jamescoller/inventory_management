@@ -5535,3 +5535,109 @@ class FilamentManufacturerTests(TestCase):
         kept.refresh_from_db()
         self.assertEqual(f.manufacturer, "Polymaker")
         self.assertEqual(kept.manufacturer, "Custom")
+
+
+class PasswordChangeViewTests(TestCase):
+    """Self-service: a logged-in user changes their OWN password."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username="changer", password="old-password-123"
+        )
+        self.client.login(username="changer", password="old-password-123")
+
+    def test_get_renders_form(self):
+        resp = self.client.get(reverse("password_change"))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_post_changes_own_password(self):
+        from django.contrib.auth import authenticate
+
+        resp = self.client.post(
+            reverse("password_change"),
+            {
+                "old_password": "old-password-123",
+                "new_password1": "brand-new-pw-987",
+                "new_password2": "brand-new-pw-987",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("password_change_done"))
+        # New password works, old one no longer does.
+        self.assertIsNotNone(
+            authenticate(username="changer", password="brand-new-pw-987")
+        )
+        self.assertIsNone(authenticate(username="changer", password="old-password-123"))
+
+    def test_done_page_renders(self):
+        resp = self.client.get(reverse("password_change_done"))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_nav_shows_change_password_link(self):
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, reverse("password_change"))
+
+
+class StaffUserPasswordTests(TestCase):
+    """Admin reset of ANOTHER user's password — staff-only, in-app."""
+
+    def setUp(self):
+        self.client = Client()
+        self.staff = User.objects.create_user(
+            username="boss", password="boss-pw-123", is_staff=True
+        )
+        self.target = User.objects.create_user(
+            username="victim", password="victim-old-pw"
+        )
+
+    def test_staff_can_list_users(self):
+        self.client.login(username="boss", password="boss-pw-123")
+        resp = self.client.get(reverse("staff_user_list"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "victim")
+
+    def test_staff_can_get_reset_page(self):
+        self.client.login(username="boss", password="boss-pw-123")
+        resp = self.client.get(reverse("staff_user_password", args=[self.target.pk]))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_staff_resets_target_password(self):
+        from django.contrib.auth import authenticate
+
+        self.client.login(username="boss", password="boss-pw-123")
+        resp = self.client.post(
+            reverse("staff_user_password", args=[self.target.pk]),
+            {
+                "new_password1": "reset-by-admin-55",
+                "new_password2": "reset-by-admin-55",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("staff_user_list"))
+        self.assertIsNotNone(
+            authenticate(username="victim", password="reset-by-admin-55")
+        )
+        self.assertIsNone(authenticate(username="victim", password="victim-old-pw"))
+
+    def test_non_staff_forbidden_on_list(self):
+        User.objects.create_user(username="peon", password="peon-pw-123")
+        self.client.login(username="peon", password="peon-pw-123")
+        resp = self.client.get(reverse("staff_user_list"))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_non_staff_forbidden_on_reset(self):
+        User.objects.create_user(username="peon", password="peon-pw-123")
+        self.client.login(username="peon", password="peon-pw-123")
+        resp = self.client.get(reverse("staff_user_password", args=[self.target.pk]))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_anonymous_redirected_to_login_on_list(self):
+        resp = self.client.get(reverse("staff_user_list"))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn(reverse("login"), resp.url)
+
+    def test_anonymous_redirected_to_login_on_reset(self):
+        resp = self.client.get(reverse("staff_user_password", args=[self.target.pk]))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn(reverse("login"), resp.url)
