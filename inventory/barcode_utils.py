@@ -640,6 +640,22 @@ def _get_item_display_name(item) -> str:
     return str(item)
 
 
+def print_unit_label(serial: str, location_pk: int, location_name: str) -> HttpResponse:
+    """Print a DK-1201 machine-unit label for an AMS/dryer/printer.
+
+    Encodes the unit's serial number in the Code128 (USB-wedge friendly) plus a
+    QR linking to ``LOC-<location_pk>`` (the unit's location page), using the
+    bordered 29x90 :data:`UNIT_PROFILE`. Shared by the Location admin action and
+    the per-item edit-page button so both render an identical label.
+    """
+    return generate_and_print_label(
+        data=serial,
+        text=f"{location_name} · {serial}",
+        qr_value=label_qr_url(f"LOC-{location_pk}"),
+        profile=UNIT_PROFILE,
+    )
+
+
 def generate_and_print_barcode(
     item,
     mode: str,
@@ -740,5 +756,6 @@ __all__ = [
     "create_label_image",
     "print_label_image",
     "generate_and_print_label",
+    "print_unit_label",
     "generate_and_print_barcode",
 ]

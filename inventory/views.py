@@ -21,7 +21,11 @@ from django.utils.timezone import now as timezone_now
 from django.views.generic import CreateView, TemplateView, UpdateView, View
 
 from . import audit, items, maintenance, printjobs, procurement, quickmove
-from .barcode_utils import generate_and_print_barcode
+from .barcode_utils import (
+    PrinterUnreachableError,
+    generate_and_print_barcode,
+    print_unit_label,
+)
 from .forms import (
     AMSForm,
     DryerForm,
@@ -138,6 +142,47 @@ class PrintBarcodeView(LoginRequiredMixin, View):
             return HttpResponse(html_wrapped)
 
         return redirect("inventory_edit", item_id=item_id)
+
+
+class MachineUnitLabelView(LoginRequiredMixin, View):
+    """Print a DK-1201 unit label for a machine item straight from its edit page.
+
+    The edit-page "Print Barcode"/"Print Inventory Tag" buttons make 17x54 labels;
+    AMS/dryer/printer units carry a larger DK-1201 (29x90) "unit label" (SN
+    Code128 + a QR to the unit's location), previously reachable only via the
+    Location admin action. This resolves the item's machine location by kind
+    (the AMS/dryer container or the printer leaf — slots are excluded) and prints
+    the shared :func:`barcode_utils.print_unit_label`.
+    """
+
+    def get(self, request, item_id):
+        item = get_object_or_404(InventoryItem, pk=item_id)
+        loc = Location.objects.filter(
+            unit=item,
+            kind__in=(
+                Location.Kind.AMS,
+                Location.Kind.DRYER,
+                Location.Kind.PRINTER,
+            ),
+        ).first()
+        if loc is None:
+            messages.error(
+                request,
+                "This item is not a tracked AMS/dryer/printer unit, or it isn't "
+                "linked to a location.",
+            )
+            return redirect("inventory_edit", item_id=item_id)
+
+        sn = (item.serial_number or "").strip()
+        if not sn:
+            messages.error(request, "This unit has no serial number to print.")
+            return redirect("inventory_edit", item_id=item_id)
+
+        try:
+            return print_unit_label(sn, loc.pk, loc.name)
+        except PrinterUnreachableError as exc:
+            messages.error(request, str(exc))
+            return redirect("inventory_edit", item_id=item_id)
 
 
 class BarcodeRedirectView(LoginRequiredMixin, View):

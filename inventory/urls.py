@@ -35,6 +35,7 @@ from .views import (
     InventoryExportView,
     InventorySearchView,
     LocationDetailView,
+    MachineUnitLabelView,
     MaintenanceLogCreateView,
     MaintenanceSummaryView,
     PrintBarcodeView,
@@ -94,6 +95,11 @@ urlpatterns = [
         "print_barcode/<int:item_id>/<str:mode>/",
         PrintBarcodeView.as_view(),
         name="print_barcode",
+    ),
+    path(
+        "print-unit-label/<int:item_id>/",
+        MachineUnitLabelView.as_view(),
+        name="print_unit_label",
     ),
     path(
         "barcode/<str:value>/", BarcodeRedirectView.as_view(), name="barcode_redirect"
