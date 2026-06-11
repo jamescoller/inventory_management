@@ -5,6 +5,9 @@
         <h2>Edit Inventory Item</h2>
 			<!-- Print Buttons Group -->
 			<div class="btn-group">
+				<a href="{% url 'quick_move' %}?item={{ item.id }}" class="btn btn-success">
+					<i class="bi bi-arrow-left-right"></i> Move
+				</a>
 				{% if is_printer %}
 					<a href="{% url 'printer_utilization_detail' item.id %}" class="btn btn-outline-primary">
 						<i class="bi bi-bar-chart-line"></i> Utilization

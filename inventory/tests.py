@@ -4886,3 +4886,102 @@ class PwaManifestTests(TestCase):
         base = Path(settings.BASE_DIR) / "inventory/static/inventory/images"
         self.assertTrue((base / "icon-192.png").exists())
         self.assertTrue((base / "icon-512.png").exists())
+
+
+class QuickMovePreloadTests(TestCase):
+    """The /edit/ Move button opens /move/?item=<id> with the item preloaded."""
+
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="mover", password="pass")
+        self.client.login(username="mover", password="pass")
+        self.shelf = Location.objects.create(
+            name="MP Shelf",
+            kind=Location.Kind.SHELF,
+            default_status=InventoryItem.Status.STORED,
+        )
+        product = Filament.objects.create(name="PLA MP", upc="700000088010")
+        self.item = InventoryItem.objects.create(product=product, location=self.shelf)
+
+    def test_preload_item_renders_item_state(self):
+        resp = self.client.get(reverse("quick_move") + f"?item={self.item.pk}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["state"], "item")
+        self.assertEqual(resp.context["active_item"].pk, self.item.pk)
+        self.assertContains(resp, f"INV-{self.item.pk}")
+
+    def test_preload_bad_item_degrades_to_idle(self):
+        resp = self.client.get(reverse("quick_move") + "?item=99999")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["state"], "idle")
+
+    def test_no_param_is_idle(self):
+        resp = self.client.get(reverse("quick_move"))
+        self.assertEqual(resp.context["state"], "idle")
+
+
+class EditPageMoveButtonTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="ed", password="pass")
+        self.client.login(username="ed", password="pass")
+        product = Filament.objects.create(name="PLA ED", upc="700000088011")
+        self.item = InventoryItem.objects.create(product=product)
+
+    def test_edit_page_has_move_button(self):
+        resp = self.client.get(reverse("inventory_edit", args=[self.item.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, reverse("quick_move") + f"?item={self.item.pk}")
+
+
+@override_settings(ENABLE_BARCODE_PRINTING=False)
+class PrintUnitLabelsTests(TestCase):
+    """The unit-label admin action prints SN on the Code128 + a LOC- URL QR for
+    AMS/dryer/printer locations, and skips everything else."""
+
+    def _admin(self):
+        from django.contrib.admin.sites import site
+
+        from inventory.admin import LocationAdmin
+
+        return LocationAdmin(Location, site)
+
+    def test_unit_label_uses_sn_and_loc_url_qr(self):
+        from unittest.mock import patch
+
+        from django.test import RequestFactory
+
+        from inventory.models import AMS
+
+        ams = AMS.objects.create(name="AMS U", upc="700000088012")
+        unit = InventoryItem.objects.create(product=ams, serial_number="SN-AMS-9")
+        loc = Location.objects.create(
+            name="AMS Unit Loc", kind=Location.Kind.AMS, unit=unit
+        )
+        admin_obj = self._admin()
+        req = RequestFactory().post("/admin/")
+        with patch(
+            "inventory.barcode_utils.generate_and_print_label"
+        ) as mock_print, patch.object(admin_obj, "message_user"):
+            admin_obj.print_unit_labels(req, Location.objects.filter(pk=loc.pk))
+        mock_print.assert_called_once()
+        kwargs = mock_print.call_args.kwargs
+        self.assertEqual(kwargs["data"], "SN-AMS-9")
+        self.assertEqual(
+            kwargs["qr_value"],
+            f"https://inventory.home.collerco.com/barcode/LOC-{loc.pk}/",
+        )
+
+    def test_non_unit_location_skipped(self):
+        from unittest.mock import patch
+
+        from django.test import RequestFactory
+
+        shelf = Location.objects.create(name="Plain Shelf", kind=Location.Kind.SHELF)
+        admin_obj = self._admin()
+        req = RequestFactory().post("/admin/")
+        with patch(
+            "inventory.barcode_utils.generate_and_print_label"
+        ) as mock_print, patch.object(admin_obj, "message_user"):
+            admin_obj.print_unit_labels(req, Location.objects.filter(pk=shelf.pk))
+        mock_print.assert_not_called()

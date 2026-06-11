@@ -469,7 +469,7 @@ class LocationAdmin(UnfoldModelAdmin):
     list_select_related = ["parent", "unit"]
     search_fields = ["name"]
     autocomplete_fields = ["parent"]
-    actions = ["print_location_labels"]
+    actions = ["print_location_labels", "print_unit_labels"]
 
     # Polymorphic product types that represent a trackable physical machine a
     # slot can belong to. Filament/Hardware are never a slot's ``unit``.
@@ -521,6 +521,40 @@ class LocationAdmin(UnfoldModelAdmin):
                     request, f"Failed to print {loc.name}: {exc}", level="error"
                 )
         self.message_user(request, f"Printed {printed} location label(s).")
+
+    @admin.action(description="Print unit labels (SN barcode + QR) — AMS/dryer/printer")
+    def print_unit_labels(self, request, queryset):
+        """Label for a machine-unit location (AMS/dryer/printer): a Code128 of the
+        unit's serial number (USB-wedge friendly) plus a QR linking to the unit's
+        location page. The native phone camera opens that page; the in-app move
+        scanner strips the URL to ``LOC-<id>`` -> the slot picker. Non-unit or
+        serial-less locations are skipped."""
+        from .barcode_utils import generate_and_print_label, label_qr_url
+
+        unit_kinds = (Location.Kind.AMS, Location.Kind.DRYER, Location.Kind.PRINTER)
+        printed = 0
+        skipped = 0
+        for loc in queryset:
+            sn = (loc.unit.serial_number or "").strip() if loc.unit_id else ""
+            if loc.kind not in unit_kinds or not sn:
+                skipped += 1
+                continue
+            try:
+                generate_and_print_label(
+                    data=sn,
+                    text=f"{loc.name} · {sn}",
+                    qr_value=label_qr_url(f"LOC-{loc.pk}"),
+                )
+                printed += 1
+            except Exception as exc:  # noqa: BLE001 - surface to admin, keep going
+                self.message_user(
+                    request, f"Failed to print {loc.name}: {exc}", level="error"
+                )
+        self.message_user(
+            request,
+            f"Printed {printed} unit label(s); skipped {skipped} "
+            "(not an AMS/dryer/printer location, or no linked unit serial).",
+        )
 
 
 @admin.register(Material)
