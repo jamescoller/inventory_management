@@ -321,6 +321,7 @@ def _filtered_search_items(params):
     preset = params.get("preset", "")
     material = params.get("material", "")
     material_type = params.get("material_type", "")
+    manufacturer = params.get("manufacturer", "")
     color = params.get("color", "")
     color_family = params.get("color_family", "")
 
@@ -389,6 +390,8 @@ def _filtered_search_items(params):
         items = items.filter(product__filament__material__name=material)
     if material_type:
         items = items.filter(product__filament__material__material_type=material_type)
+    if manufacturer:
+        items = items.filter(product__filament__manufacturer=manufacturer)
     if color:
         items = items.filter(product__filament__color=color)
     if color_family:
@@ -413,6 +416,7 @@ def _filtered_search_items(params):
             "preset": preset,
             "material": material,
             "material_type": material_type,
+            "manufacturer": manufacturer,
             "color": color,
             "color_family": color_family,
         },
@@ -1030,6 +1034,7 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
             .values(
                 "material__name",
                 "material__material_type",
+                "manufacturer",
                 "color",
                 "color_family",
             )
@@ -1049,6 +1054,7 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
             (
                 row["material__name"],
                 row["material__material_type"],
+                row["manufacturer"],
                 row["color"],
                 row["color_family"],
             ): row
@@ -1056,6 +1062,7 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
             .values(
                 "material__name",
                 "material__material_type",
+                "manufacturer",
                 "color",
                 "color_family",
             )
@@ -1091,6 +1098,7 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
             key = (
                 row["material__name"],
                 row["material__material_type"],
+                row["manufacturer"],
                 row["color"],
                 row["color_family"],
             )
@@ -1102,6 +1110,7 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
                 {
                     "material_name": row["material__name"] or "",
                     "material_type": row["material__material_type"] or "",
+                    "manufacturer": row["manufacturer"] or "",
                     "color": row["color"] or "",
                     "color_family": row["color_family"] or "",
                     "hex_code": row["hex_code"]
@@ -1113,7 +1122,14 @@ class FilamentSummaryView(LoginRequiredMixin, TemplateView):
                     "est_weight_kg": est_kg,
                 }
             )
-        rows.sort(key=lambda r: (r["material_name"], r["material_type"], r["color"]))
+        rows.sort(
+            key=lambda r: (
+                r["material_name"],
+                r["material_type"],
+                r["color"],
+                r["manufacturer"],
+            )
+        )
 
         # Build material cards
         cards_dict = {}

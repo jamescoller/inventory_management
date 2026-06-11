@@ -9,6 +9,7 @@ from django.utils import timezone
 from django.utils.timezone import now as timezone_now
 
 from . import items, printjobs
+from .forms import FilamentForm
 from .models import (
     AMS,
     AuditSession,
@@ -5335,3 +5336,202 @@ class UnitLabelProfileTests(TestCase):
         # whitespace above it.
         self.assertGreater(top_centered, top_plain + 20)
         self.assertGreater(top_centered, 50)
+
+
+@override_settings(ENABLE_BARCODE_PRINTING=False)
+class FilamentManufacturerTests(TestCase):
+    """A per-product manufacturer distinguishes Bambu Lab vs Polymaker spools.
+
+    Lives on the Filament product (not Material). Captured at intake, grouped by
+    in the summary so same-material/same-color but different-manufacturer spools
+    are SEPARATE rows, surfaced on the edit page, and a search filter.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="mfr", password="pass")
+        self.client.login(username="mfr", password="pass")
+        self.shelf = Location.objects.create(
+            name="Shelf M-1", default_status=InventoryItem.Status.NEW
+        )
+        self.pla = Material.objects.create(name="PLA", material_type="")
+
+    # --- model -------------------------------------------------------------
+    def test_filament_round_trips_manufacturer(self):
+        f = Filament.objects.create(
+            name="Bambu PLA Red",
+            upc="7300000000001",
+            material=self.pla,
+            color="Red",
+            color_family="RED",
+            manufacturer="Bambu Lab",
+        )
+        f.refresh_from_db()
+        self.assertEqual(f.manufacturer, "Bambu Lab")
+
+    def test_manufacturer_defaults_blank(self):
+        f = Filament.objects.create(
+            name="No MFR PLA",
+            upc="7300000000002",
+            material=self.pla,
+            color="Red",
+        )
+        f.refresh_from_db()
+        self.assertEqual(f.manufacturer, "")
+
+    # --- form --------------------------------------------------------------
+    def test_form_includes_manufacturer(self):
+        self.assertIn("manufacturer", FilamentForm().fields)
+
+    def test_form_accepts_manufacturer(self):
+        form = FilamentForm(
+            data={
+                "name": "Polymaker PLA Red",
+                "upc": "7300000000003",
+                "material": self.pla.id,
+                "color": "Red",
+                "manufacturer": "Polymaker",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        obj = form.save()
+        obj.refresh_from_db()
+        self.assertEqual(obj.manufacturer, "Polymaker")
+
+    # --- summary group-by --------------------------------------------------
+    def test_summary_splits_rows_by_manufacturer(self):
+        bambu = Filament.objects.create(
+            name="Bambu PLA Red",
+            upc="7300000000010",
+            material=self.pla,
+            color="Red",
+            color_family="RED",
+            manufacturer="Bambu Lab",
+        )
+        poly = Filament.objects.create(
+            name="Polymaker PLA Red",
+            upc="7300000000011",
+            material=self.pla,
+            color="Red",
+            color_family="RED",
+            manufacturer="Polymaker",
+        )
+        InventoryItem.objects.create(product=bambu, location=self.shelf)
+        InventoryItem.objects.create(product=poly, location=self.shelf)
+
+        resp = self.client.get(reverse("filament_summary"))
+        self.assertEqual(resp.status_code, 200)
+        rows = resp.context["rows"]
+        # Same material/subtype/color/family but different manufacturer => 2 rows.
+        red_rows = [r for r in rows if r["color"] == "Red"]
+        self.assertEqual(len(red_rows), 2)
+        mfrs = {r["manufacturer"] for r in red_rows}
+        self.assertEqual(mfrs, {"Bambu Lab", "Polymaker"})
+
+    def test_summary_link_carries_manufacturer(self):
+        poly = Filament.objects.create(
+            name="Polymaker PLA Blue",
+            upc="7300000000012",
+            material=self.pla,
+            color="Blue",
+            color_family="BLUE",
+            manufacturer="Polymaker",
+        )
+        InventoryItem.objects.create(product=poly, location=self.shelf)
+        resp = self.client.get(reverse("filament_summary"))
+        self.assertContains(resp, "manufacturer=Polymaker")
+
+    # --- search filter -----------------------------------------------------
+    def test_search_filters_by_manufacturer(self):
+        bambu = Filament.objects.create(
+            name="Bambu PLA Red",
+            upc="7300000000020",
+            material=self.pla,
+            color="Red",
+            color_family="RED",
+            manufacturer="Bambu Lab",
+        )
+        poly = Filament.objects.create(
+            name="Polymaker PLA Red",
+            upc="7300000000021",
+            material=self.pla,
+            color="Red",
+            color_family="RED",
+            manufacturer="Polymaker",
+        )
+        printer = Printer.objects.create(
+            name="X1C-mfr",
+            upc="7300000000022",
+            num_extruders=1,
+            bed_length_mm=256,
+            bed_width_mm=256,
+            max_height_mm=256,
+        )
+        i_bambu = InventoryItem.objects.create(product=bambu, location=self.shelf)
+        i_poly = InventoryItem.objects.create(product=poly, location=self.shelf)
+        i_printer = InventoryItem.objects.create(product=printer, location=self.shelf)
+
+        resp = self.client.get(
+            reverse("inventory_search"), {"manufacturer": "Polymaker"}
+        )
+        ids = {i.id for i in resp.context["items"]}
+        self.assertEqual(ids, {i_poly.id})
+        self.assertNotIn(i_bambu.id, ids)
+        self.assertNotIn(i_printer.id, ids)
+
+    def test_manufacturer_round_trips_into_context(self):
+        resp = self.client.get(
+            reverse("inventory_search"), {"manufacturer": "Bambu Lab"}
+        )
+        self.assertEqual(resp.context["search_values"]["manufacturer"], "Bambu Lab")
+
+    def test_search_forms_roundtrip_manufacturer_hidden_inputs(self):
+        # search + export + bulk forms must each carry manufacturer as a hidden
+        # input so the filtered state survives re-search / export / bulk actions.
+        resp = self.client.get(
+            reverse("inventory_search"), {"manufacturer": "Polymaker"}
+        )
+        html = resp.content.decode()
+        self.assertGreaterEqual(html.count('name="manufacturer" value="Polymaker"'), 2)
+
+    # --- edit page ---------------------------------------------------------
+    def test_edit_page_shows_manufacturer_for_filament(self):
+        poly = Filament.objects.create(
+            name="Polymaker PLA Green",
+            upc="7300000000030",
+            material=self.pla,
+            color="Green",
+            color_family="GREEN",
+            manufacturer="Polymaker",
+        )
+        item = InventoryItem.objects.create(product=poly, location=self.shelf)
+        resp = self.client.get(reverse("inventory_edit", kwargs={"item_id": item.id}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Manufacturer")
+        self.assertContains(resp, "Polymaker")
+
+    # --- backfill ----------------------------------------------------------
+    def test_backfill_copies_material_mfr(self):
+        from .migrations import _mfr_backfill_helper
+
+        poly_mat = Material.objects.create(name="ASA", mfr="Polymaker")
+        # Blank manufacturer + material set => should be backfilled from mfr.
+        f = Filament.objects.create(
+            name="ASA Black",
+            upc="7300000000040",
+            material=poly_mat,
+            color="Black",
+        )
+        # Pre-set one with an explicit manufacturer => must NOT be overwritten.
+        kept = Filament.objects.create(
+            name="ASA White",
+            upc="7300000000041",
+            material=poly_mat,
+            color="White",
+            manufacturer="Custom",
+        )
+        _mfr_backfill_helper(Filament)
+        f.refresh_from_db()
+        kept.refresh_from_db()
+        self.assertEqual(f.manufacturer, "Polymaker")
+        self.assertEqual(kept.manufacturer, "Custom")

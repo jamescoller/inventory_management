@@ -91,6 +91,13 @@ class Filament(Product):
         "Material", on_delete=models.SET_NULL, blank=True, null=True
     )
 
+    manufacturer = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Brand of this spool (e.g. Bambu Lab, Polymaker)",
+    )
+
     color = models.CharField(
         max_length=50, blank=True, help_text="Human-readable color name"
     )  # The name of the color (human-readable)

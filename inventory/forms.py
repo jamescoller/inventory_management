@@ -112,6 +112,7 @@ class FilamentForm(forms.ModelForm):
             "price",
             "notes",
             "material",
+            "manufacturer",
             "color",
             "hex_code",
             "weight",
