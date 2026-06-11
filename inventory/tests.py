@@ -4635,3 +4635,27 @@ class QuickMoveViewTests(TestCase):
         self.client.logout()
         resp = self.client.get(reverse("quick_move"))
         self.assertEqual(resp.status_code, 302)
+
+
+class PwaManifestTests(TestCase):
+    def test_manifest_is_valid_and_complete(self):
+        import json
+        from pathlib import Path
+
+        from django.conf import settings
+
+        path = Path(settings.BASE_DIR) / "inventory/static/inventory/manifest.json"
+        data = json.loads(path.read_text())
+        self.assertEqual(data["start_url"], "/")
+        self.assertEqual(data["display"], "standalone")
+        sizes = {icon["sizes"] for icon in data["icons"]}
+        self.assertEqual(sizes, {"192x192", "512x512"})
+
+    def test_icons_exist(self):
+        from pathlib import Path
+
+        from django.conf import settings
+
+        base = Path(settings.BASE_DIR) / "inventory/static/inventory/images"
+        self.assertTrue((base / "icon-192.png").exists())
+        self.assertTrue((base / "icon-512.png").exists())
