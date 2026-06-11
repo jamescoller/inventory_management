@@ -47,10 +47,6 @@
                                 {% if r.mtbf_days %}{{ r.mtbf_days|floatformat:1 }}{% else %}<span class="text-muted">—</span>{% endif %}
                             </td>
                         </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="8" class="text-center text-muted">No machine units in inventory yet.</td>
-                        </tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -109,6 +105,7 @@
             info: false,
             searching: true,
             order: [[3, 'desc']],
+            language: { emptyTable: 'No machine units in inventory yet.' },
         });
         document.querySelectorAll('#reliability-table th[title]').forEach(function (el) {
             new bootstrap.Tooltip(el, { placement: 'top' });
