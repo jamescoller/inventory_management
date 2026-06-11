@@ -1,0 +1,13 @@
+{% comment %}
+A single inventory item line within the location tree.
+
+Context:
+  item  -- an InventoryItem (with select_related product/location)
+{% endcomment %}
+<li class="mb-1">
+    <a href="{% url 'inventory_edit' item.id %}"
+       class="text-decoration-none">
+        <i class="bi bi-tag me-1 text-muted" aria-hidden="true"></i>{{ item.product.name }}
+    </a>
+    <span class="badge bg-light text-dark border ms-1">{{ item.get_status_display }}</span>
+</li>
