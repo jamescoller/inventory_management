@@ -1538,43 +1538,123 @@ class InUseOverviewView(LoginRequiredMixin, TemplateView):
         return context
 
 
+def build_location_tree(roots, *, statuses=None):
+    """Build a nested, expandable location tree for the given ``roots``.
+
+    Returns a list of node dicts (one per root), each shaped::
+
+        {
+            "location": <Location>,
+            "item_count": <int>,   # active items in this node's WHOLE subtree
+            "items": [<InventoryItem>, ...],  # active items DIRECTLY here
+            "children": [<node>, ...],        # child nodes, recursively
+        }
+
+    "Active" excludes :data:`items.TERMINAL_STATUSES` (depleted/sold). When
+    ``statuses`` is given, items are *additionally* restricted to those statuses
+    (e.g. dry-storage shows only ``STORED``). Children are ordered by
+    ``(slot_index, name)`` and the walk recurses to arbitrary depth via the
+    ``parent`` reverse relation (rack→shelf, rack→ams→slot, etc.).
+
+    To avoid N+1, every location in each root's subtree is gathered up front, the
+    active items for the whole set are fetched in one query, and subtree counts
+    are rolled up from the leaves.
+    """
+    # Gather every location in the subtrees rooted at ``roots`` (BFS over parent).
+    all_locs = {}
+    children_of = {}
+    frontier = []
+    for root in roots:
+        all_locs[root.id] = root
+        children_of.setdefault(root.id, [])
+        frontier.append(root.id)
+    while frontier:
+        kids = list(
+            Location.objects.filter(parent_id__in=frontier).order_by(
+                "slot_index", "name"
+            )
+        )
+        frontier = []
+        for kid in kids:
+            if kid.id in all_locs:
+                continue
+            all_locs[kid.id] = kid
+            children_of.setdefault(kid.id, [])
+            children_of.setdefault(kid.parent_id, []).append(kid)
+            frontier.append(kid.id)
+
+    # One query for all active items located anywhere in these subtrees.
+    item_qs = (
+        InventoryItem.objects.filter(location_id__in=all_locs.keys())
+        .exclude(status__in=items.TERMINAL_STATUSES)
+        .select_related("product", "location")
+    )
+    if statuses is not None:
+        item_qs = item_qs.filter(status__in=statuses)
+
+    direct_items = {loc_id: [] for loc_id in all_locs}
+    for item in item_qs.order_by("id"):
+        direct_items[item.location_id].append(item)
+
+    def build_node(loc):
+        children = [build_node(child) for child in children_of.get(loc.id, [])]
+        own = direct_items.get(loc.id, [])
+        subtree_count = len(own) + sum(c["item_count"] for c in children)
+        return {
+            "location": loc,
+            "item_count": subtree_count,
+            "items": own,
+            "children": children,
+        }
+
+    return [build_node(root) for root in roots]
+
+
 class DryStorageOverviewView(LoginRequiredMixin, TemplateView):
     template_name = "inventory/dry_storage_overview.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        stored_items = InventoryItem.objects.filter(
-            status=InventoryItem.Status.STORED
-        ).select_related("location", "product")
-
-        grouped_by_location = {}
-        for item in stored_items:
-            loc = item.location.name if item.location else "Unassigned"
-            item.product_type = str(
-                item.product.polymorphic_ctype.model
-            )  # Add model type
-
-            tooltip_lines = []
-            if item.serial_number:
-                tooltip_lines.append(
-                    f"<strong>Serial:</strong> {escape(item.serial_number)}"
-                )
-
-            if (
-                item.product_type == "filament"
-                and hasattr(item.product.filament, "color")
-                and item.product.filament.color
-            ):
-                tooltip_lines.append(
-                    f"<strong>Color:</strong> {escape(item.product.filament.color)}"
-                )
-            item.tooltip_html = "'{}'".format(
-                "<br>".join(tooltip_lines).replace('"', "&quot;")
+        stored = InventoryItem.Status.STORED
+        stored_items = list(
+            InventoryItem.objects.filter(status=stored).select_related(
+                "product", "location", "location__parent"
             )
+        )
+        # Roots = the top-level ancestor of every location that holds a STORED item,
+        # so the tree contains exactly the relevant subtrees: flat dry-storage bins,
+        # or a dry-storage rack expanded to its shelves. Empty top-level RACKs (the
+        # receiving racks) never bleed in because they hold no STORED items.
+        root_ids = set()
+        for loc in {it.location for it in stored_items if it.location_id}:
+            cur = loc
+            while cur.parent_id:
+                cur = cur.parent
+            root_ids.add(cur.id)
+        roots = list(Location.objects.filter(id__in=root_ids).order_by("name"))
+        context["location_tree"] = build_location_tree(roots, statuses=[stored])
+        # Location-less STORED items live in no subtree — surface them so nothing is
+        # lost vs the old flat "Unassigned" group.
+        context["other_items"] = [it for it in stored_items if not it.location_id]
+        return context
 
-            grouped_by_location.setdefault(loc, []).append(item)
 
-        context["grouped_items"] = grouped_by_location
+class ReceivingOverviewView(LoginRequiredMixin, TemplateView):
+    """Expandable tree of the receiving rack(s) — what's currently in receiving.
+
+    Prefers racks whose name mentions "receiv" if any exist, otherwise shows all
+    racks. Items are shown for all active statuses (not just NEW) so anything
+    physically sitting in receiving by shelf is visible.
+    """
+
+    template_name = "inventory/receiving_overview.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        racks = Location.objects.filter(kind=Location.Kind.RACK)
+        receiving = list(racks.filter(name__icontains="receiv").order_by("name"))
+        roots = receiving if receiving else list(racks.order_by("name"))
+        context["location_tree"] = build_location_tree(roots, statuses=None)
         return context
 
 

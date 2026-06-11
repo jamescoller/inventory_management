@@ -1,0 +1,19 @@
+{% comment %}
+Reusable expandable/collapsible location tree.
+
+Context:
+  location_tree  -- list of node dicts from views.build_location_tree()
+
+Renders a server-side Bootstrap-5 collapse tree (no extra JS lib). Each node with
+children is a toggle; leaf nodes list their items. Used by the dry-storage and
+receiving overviews.
+{% endcomment %}
+{% if location_tree %}
+    <ul class="list-unstyled">
+        {% for node in location_tree %}
+            {% include "inventory/includes/location_tree_node.html" with node=node %}
+        {% endfor %}
+    </ul>
+{% else %}
+    <p class="text-muted">No locations to show.</p>
+{% endif %}

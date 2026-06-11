@@ -5641,3 +5641,217 @@ class StaffUserPasswordTests(TestCase):
         resp = self.client.get(reverse("staff_user_password", args=[self.target.pk]))
         self.assertEqual(resp.status_code, 302)
         self.assertIn(reverse("login"), resp.url)
+
+
+class BuildLocationTreeTests(TestCase):
+    """Unit tests for the reusable build_location_tree helper."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.product = Filament.objects.create(name="PLA Red", upc="7700000000001")
+        cls.rack = Location.objects.create(name="Rack 1", kind=Location.Kind.RACK)
+        cls.shelf_a = Location.objects.create(
+            name="Rack 1 / Shelf A",
+            kind=Location.Kind.SHELF,
+            parent=cls.rack,
+            slot_index=1,
+            default_status=InventoryItem.Status.NEW,
+        )
+        cls.shelf_b = Location.objects.create(
+            name="Rack 1 / Shelf B",
+            kind=Location.Kind.SHELF,
+            parent=cls.rack,
+            slot_index=2,
+            default_status=InventoryItem.Status.NEW,
+        )
+        # Two items on shelf A, one on shelf B.
+        cls.a1 = InventoryItem.objects.create(product=cls.product, location=cls.shelf_a)
+        cls.a2 = InventoryItem.objects.create(product=cls.product, location=cls.shelf_a)
+        cls.b1 = InventoryItem.objects.create(product=cls.product, location=cls.shelf_b)
+
+    def test_tree_shape_and_counts(self):
+        from .views import build_location_tree
+
+        tree = build_location_tree([self.rack])
+        self.assertEqual(len(tree), 1)
+        root = tree[0]
+        self.assertEqual(root["location"], self.rack)
+        # Rack subtree holds all three items.
+        self.assertEqual(root["item_count"], 3)
+        # Items live on the shelves, not directly on the rack.
+        self.assertEqual(root["items"], [])
+        self.assertEqual(len(root["children"]), 2)
+
+    def test_children_ordered_by_slot_index_then_name(self):
+        from .views import build_location_tree
+
+        root = build_location_tree([self.rack])[0]
+        child_locs = [c["location"] for c in root["children"]]
+        self.assertEqual(child_locs, [self.shelf_a, self.shelf_b])
+
+    def test_child_nodes_carry_their_direct_items(self):
+        from .views import build_location_tree
+
+        root = build_location_tree([self.rack])[0]
+        by_loc = {c["location"]: c for c in root["children"]}
+        self.assertEqual(by_loc[self.shelf_a]["item_count"], 2)
+        self.assertCountEqual(by_loc[self.shelf_a]["items"], [self.a1, self.a2])
+        self.assertEqual(by_loc[self.shelf_b]["item_count"], 1)
+        self.assertCountEqual(by_loc[self.shelf_b]["items"], [self.b1])
+
+    def test_statuses_filter_restricts_items(self):
+        from .views import build_location_tree
+
+        # Add a dry-storage bin (default STORED) under the rack with one item, so
+        # restricting to STORED returns only that item, not the NEW shelf items.
+        dry_bin = Location.objects.create(
+            name="Rack 1 / Dry Bin",
+            kind=Location.Kind.DRY_STORAGE,
+            parent=self.rack,
+            slot_index=4,
+            default_status=InventoryItem.Status.STORED,
+        )
+        stored = InventoryItem.objects.create(product=self.product, location=dry_bin)
+        self.assertEqual(stored.status, InventoryItem.Status.STORED)
+        tree = build_location_tree([self.rack], statuses=[InventoryItem.Status.STORED])
+        root = tree[0]
+        self.assertEqual(root["item_count"], 1)
+        by_loc = {c["location"]: c for c in root["children"]}
+        self.assertCountEqual(by_loc[dry_bin]["items"], [stored])
+        self.assertEqual(by_loc[self.shelf_a]["items"], [])
+        self.assertEqual(by_loc[self.shelf_b]["items"], [])
+
+    def test_terminal_items_excluded(self):
+        from .views import build_location_tree
+
+        self.b1.status = InventoryItem.Status.DEPLETED
+        self.b1.save()
+        root = build_location_tree([self.rack])[0]
+        self.assertEqual(root["item_count"], 2)
+        by_loc = {c["location"]: c for c in root["children"]}
+        self.assertEqual(by_loc[self.shelf_b]["items"], [])
+
+    def test_empty_node_still_present(self):
+        from .views import build_location_tree
+
+        empty_shelf = Location.objects.create(
+            name="Rack 1 / Shelf C",
+            kind=Location.Kind.SHELF,
+            parent=self.rack,
+            slot_index=3,
+            default_status=InventoryItem.Status.NEW,
+        )
+        root = build_location_tree([self.rack])[0]
+        child_locs = [c["location"] for c in root["children"]]
+        self.assertIn(empty_shelf, child_locs)
+        node = next(c for c in root["children"] if c["location"] == empty_shelf)
+        self.assertEqual(node["item_count"], 0)
+        self.assertEqual(node["items"], [])
+
+
+class DryStorageOverviewTreeTests(TestCase):
+    """The dry-storage overview now renders a collapsible location tree."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="dryuser", password="pass")
+        cls.material = Material.objects.create(name="PLA", material_type="")
+        cls.rack = Location.objects.create(name="Dry Rack", kind=Location.Kind.RACK)
+        cls.shelf = Location.objects.create(
+            name="Dry Rack / Bin 1",
+            kind=Location.Kind.DRY_STORAGE,
+            parent=cls.rack,
+            slot_index=1,
+            default_status=InventoryItem.Status.STORED,
+        )
+        cls.filament = Filament.objects.create(
+            name="PLA Stored", upc="7700000000010", material=cls.material
+        )
+        cls.item = InventoryItem.objects.create(
+            product=cls.filament, location=cls.shelf
+        )
+        cls.item.status = InventoryItem.Status.STORED
+        cls.item.save()
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username="dryuser", password="pass")
+
+    def test_overview_renders_tree(self):
+        resp = self.client.get(reverse("dry_storage_overview"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Dry Rack")
+        self.assertContains(resp, "Bin 1")
+        self.assertContains(resp, "PLA Stored")
+        self.assertContains(resp, 'data-bs-toggle="collapse"')
+
+    def test_unassigned_stored_item_is_not_lost(self):
+        # Regression: a STORED item with no location must still appear (it has no
+        # subtree, so the old flat view's 'Unassigned' group is preserved).
+        orphan = InventoryItem.objects.create(
+            product=Filament.objects.create(name="Orphan PLA", upc="7700000000099"),
+        )
+        orphan.status = InventoryItem.Status.STORED
+        orphan.save()
+        resp = self.client.get(reverse("dry_storage_overview"))
+        self.assertContains(resp, "Orphan PLA")
+        self.assertContains(resp, "Unassigned")
+
+    def test_empty_receiving_rack_does_not_bleed_in(self):
+        # A receiving rack with no STORED items must not appear on the dry-storage
+        # page (RACK kind can't be distinguished, so root off items, not kind).
+        Location.objects.create(name="Receiving Rack 9", kind=Location.Kind.RACK)
+        resp = self.client.get(reverse("dry_storage_overview"))
+        self.assertNotContains(resp, "Receiving Rack 9")
+
+    def test_overview_requires_login(self):
+        self.client.logout()
+        resp = self.client.get(reverse("dry_storage_overview"))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login/", resp["Location"])
+
+
+class ReceivingOverviewTreeTests(TestCase):
+    """New receiving overview renders the receiving rack(s) as a tree."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="recvuser", password="pass")
+        cls.rack = Location.objects.create(
+            name="Receiving Rack", kind=Location.Kind.RACK
+        )
+        cls.shelf = Location.objects.create(
+            name="Receiving Rack / Shelf 1",
+            kind=Location.Kind.SHELF,
+            parent=cls.rack,
+            slot_index=1,
+            default_status=InventoryItem.Status.NEW,
+        )
+        cls.filament = Filament.objects.create(name="PLA Incoming", upc="7700000000020")
+        cls.item = InventoryItem.objects.create(
+            product=cls.filament, location=cls.shelf
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.login(username="recvuser", password="pass")
+
+    def test_receiving_overview_renders_tree(self):
+        resp = self.client.get(reverse("receiving_overview"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Receiving Rack")
+        self.assertContains(resp, "Shelf 1")
+        self.assertContains(resp, "PLA Incoming")
+        self.assertContains(resp, 'data-bs-toggle="collapse"')
+
+    def test_receiving_overview_requires_login(self):
+        self.client.logout()
+        resp = self.client.get(reverse("receiving_overview"))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login/", resp["Location"])
+
+    def test_receiving_overview_empty_state(self):
+        # No receiving rack at all -> friendly empty state, still 200.
+        Location.objects.all().delete()
+        resp = self.client.get(reverse("receiving_overview"))
+        self.assertEqual(resp.status_code, 200)

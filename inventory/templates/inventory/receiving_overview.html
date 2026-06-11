@@ -1,0 +1,22 @@
+{% extends "inventory/base.html" %}
+{% load inventory_tags %}
+
+{% block content %}
+<div class="container py-4">
+    <h1 class="mb-4">Receiving / New Inventory</h1>
+    {% if location_tree %}
+        <div class="card shadow-sm border-0 rounded-4">
+            <div class="card-body">
+                {% include "inventory/includes/location_tree.html" %}
+            </div>
+        </div>
+    {% else %}
+        <div class="alert alert-info" role="alert">
+            <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
+            No receiving rack is configured yet. Create a Location of kind
+            <strong>Receiving Rack</strong> (and child shelves) to track incoming
+            inventory here.
+        </div>
+    {% endif %}
+</div>
+{% endblock content %}

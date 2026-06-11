@@ -48,6 +48,7 @@ from .views import (
     QuickMoveScanView,
     QuickMoveView,
     ReceivingConsoleView,
+    ReceivingOverviewView,
     ReceivingScanView,
     SignUpView,
     SpendReportView,
@@ -144,6 +145,11 @@ urlpatterns = [
         "dry-storage-overview/",
         DryStorageOverviewView.as_view(),
         name="dry_storage_overview",
+    ),
+    path(
+        "receiving/",
+        ReceivingOverviewView.as_view(),
+        name="receiving_overview",
     ),
     path(
         "maintenance/",

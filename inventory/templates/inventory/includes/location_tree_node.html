@@ -1,0 +1,46 @@
+{% comment %}
+Recursive node for the reusable location tree.
+
+Context:
+  node  -- a node dict: {location, item_count, items, children}
+
+A node WITH children renders a Bootstrap collapse (expanded by default). A leaf
+node simply lists its direct items. Empty nodes show an em dash.
+{% endcomment %}
+<li class="mb-1">
+    {% if node.children %}
+        <button class="btn btn-link p-0 text-decoration-none text-start d-inline-flex align-items-center"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#loc-node-{{ node.location.id }}"
+                aria-expanded="true"
+                aria-controls="loc-node-{{ node.location.id }}">
+            <i class="bi bi-chevron-down me-1" aria-hidden="true"></i>
+            <span class="fw-semibold">{{ node.location.name }}</span>
+            <span class="badge bg-secondary ms-2">{{ node.item_count }}</span>
+        </button>
+        <div class="collapse show" id="loc-node-{{ node.location.id }}">
+            <ul class="list-unstyled ms-4 mt-1 border-start ps-3">
+                {% for child in node.children %}
+                    {% include "inventory/includes/location_tree_node.html" with node=child %}
+                {% endfor %}
+                {% for item in node.items %}
+                    {% include "inventory/includes/location_tree_item.html" with item=item %}
+                {% endfor %}
+            </ul>
+        </div>
+    {% else %}
+        <div class="d-inline-flex align-items-center">
+            <i class="bi bi-box-seam me-1 text-muted" aria-hidden="true"></i>
+            <span class="fw-semibold">{{ node.location.name }}</span>
+            <span class="badge bg-secondary ms-2">{{ node.item_count }}</span>
+        </div>
+        <ul class="list-unstyled ms-4 mt-1">
+            {% for item in node.items %}
+                {% include "inventory/includes/location_tree_item.html" with item=item %}
+            {% empty %}
+                <li class="text-muted">&mdash;</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+</li>
