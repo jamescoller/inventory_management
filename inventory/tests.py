@@ -4341,3 +4341,18 @@ class AdminLogLevelParseTests(TestCase):
         self.assertEqual(rx.search("[INFO] Adding PLA to inventory").group(1), "INFO")
         self.assertEqual(rx.search("traceback ERROR boom").group(1), "ERROR")
         self.assertIsNone(rx.search("a line with no level keyword"))
+
+
+class SiteBaseUrlSettingTests(TestCase):
+    def test_site_base_url_default_is_https_host(self):
+        from django.conf import settings
+
+        self.assertTrue(settings.SITE_BASE_URL.startswith("https://"))
+        self.assertIn("inventory.home.collerco.com", settings.SITE_BASE_URL)
+
+    def test_https_origin_is_csrf_trusted(self):
+        from django.conf import settings
+
+        self.assertIn(
+            "https://inventory.home.collerco.com", settings.CSRF_TRUSTED_ORIGINS
+        )

@@ -20,6 +20,9 @@ services:
       # than ~/.env_inventory because that file is root-owned (jcoller can't append)
       # and this is a non-secret path, so it belongs in version control anyway.
       - SQLITE_DB_PATH=/app/db/inventory_db.sqlite3
+      # Absolute base URL embedded in QR labels (Phase 12). Non-secret → lives in
+      # version control here, not the root-owned ~/.env_inventory.
+      - SITE_BASE_URL=https://inventory.home.collerco.com
     env_file:
       - ${HOME}/.env_inventory
 

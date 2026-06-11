@@ -36,6 +36,11 @@ SECRET_KEY = config("DJANGO_SECRET_KEY", default=None)
 DEBUG = config("DEBUG", default=False, cast=bool)
 
 ENABLE_BARCODE_PRINTING = config("ENABLE_BARCODE_PRINTING", default=True, cast=bool)
+
+# Public base URL used to build absolute links encoded in QR labels (Phase 12).
+# Non-secret; overridable per-environment via docker-compose `environment:`.
+SITE_BASE_URL = config("SITE_BASE_URL", default="https://inventory.home.collerco.com")
+
 BARCODE_FONT_PATH = BASE_DIR / "fonts" / "DejaVuSans.ttf"
 BARCODE_FONT_SIZE = 22  # or 12 / 16 etc.
 
@@ -169,6 +174,7 @@ CSRF_TRUSTED_ORIGINS = [
     "http://10.10.20.17:8080",
     # Via NGINX
     "http://inventory.home",
+    "https://inventory.home.collerco.com",
 ]
 
 
