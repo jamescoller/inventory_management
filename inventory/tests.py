@@ -4998,6 +4998,96 @@ class PrintUnitLabelsTests(TestCase):
         mock_print.assert_not_called()
 
 
+@override_settings(ENABLE_BARCODE_PRINTING=False)
+class MachineUnitLabelViewTests(TestCase):
+    """The /print-unit-label/<id>/ endpoint prints a DK-1201 unit label (SN
+    Code128 + LOC- QR) for AMS/dryer/printer items, and the edit page shows the
+    "Print Unit Label" button only for machine items."""
+
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="labeler", password="pass")
+        self.client.login(username="labeler", password="pass")
+
+    def test_machine_item_prints_unit_label(self):
+        from unittest.mock import patch
+
+        from inventory.models import AMS
+
+        ams = AMS.objects.create(name="AMS UL", upc="700000088020")
+        item = InventoryItem.objects.create(product=ams, serial_number="SN-AMS-9")
+        loc = Location.objects.create(
+            name="AMS UL Loc", kind=Location.Kind.AMS, unit=item
+        )
+        from django.http import HttpResponse
+
+        with patch(
+            "inventory.barcode_utils.generate_and_print_label",
+            return_value=HttpResponse(content_type="image/png"),
+        ) as mock_print:
+            resp = self.client.get(reverse("print_unit_label", args=[item.pk]))
+        self.assertEqual(resp.status_code, 200)
+        mock_print.assert_called_once()
+        kwargs = mock_print.call_args.kwargs
+        self.assertEqual(kwargs["data"], "SN-AMS-9")
+        self.assertEqual(
+            kwargs["qr_value"],
+            f"https://inventory.home.collerco.com/barcode/LOC-{loc.pk}/",
+        )
+        # Unit labels use the DK-1201 (29x90) profile, not the 17x54 default.
+        self.assertEqual(kwargs["profile"].code, "29x90")
+
+    def test_non_machine_item_redirects_without_printing(self):
+        from unittest.mock import patch
+
+        product = Filament.objects.create(name="PLA UL", upc="700000088021")
+        item = InventoryItem.objects.create(product=product)
+        with patch("inventory.barcode_utils.generate_and_print_label") as mock_print:
+            resp = self.client.get(reverse("print_unit_label", args=[item.pk]))
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("inventory_edit", args=[item.pk]))
+        mock_print.assert_not_called()
+
+    def test_edit_page_shows_button_for_machine(self):
+        from inventory.models import AMS
+
+        ams = AMS.objects.create(name="AMS UL2", upc="700000088022")
+        item = InventoryItem.objects.create(product=ams, serial_number="SN-AMS-10")
+        resp = self.client.get(reverse("inventory_edit", args=[item.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, reverse("print_unit_label", args=[item.pk]))
+
+    def test_edit_page_hides_button_for_non_machine(self):
+        product = Filament.objects.create(name="PLA UL2", upc="700000088023")
+        item = InventoryItem.objects.create(product=product)
+        resp = self.client.get(reverse("inventory_edit", args=[item.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, reverse("print_unit_label", args=[item.pk]))
+
+    def test_print_failure_redirects_with_roll_hint_not_500(self):
+        # A media-mismatch ("wrong size") or any other print error must surface as a
+        # friendly message + redirect, never a 500.
+        from unittest.mock import patch
+
+        from inventory.models import AMS
+
+        ams = AMS.objects.create(name="AMS UL3", upc="700000088024")
+        item = InventoryItem.objects.create(product=ams, serial_number="SN-AMS-11")
+        Location.objects.create(name="AMS UL3 Loc", kind=Location.Kind.AMS, unit=item)
+        with patch(
+            "inventory.views.print_unit_label",
+            side_effect=RuntimeError("wrong size"),
+        ):
+            resp = self.client.get(
+                reverse("print_unit_label", args=[item.pk]), follow=True
+            )
+        self.assertEqual(
+            resp.status_code, 200
+        )  # followed the redirect to the edit page
+        self.assertContains(resp, "DK-1201")
+        self.assertContains(resp, "wrong size")
+
+
 class UnitLabelProfileTests(TestCase):
     """The AMS/dryer/printer unit label is DK-1201 (29x90) sized with a decorative
     rounded border; the 17x54 default label is unchanged."""
