@@ -4766,6 +4766,56 @@ class QuickMoveAdversarialTests(TestCase):
         # No active item established; the scan was rejected.
         self.assertNotContains(resp, "Scan a destination")
 
+    def test_scan_destination_with_terminal_active_id_is_rejected(self):
+        """A forged/replayed POST carrying a terminal active_item_id is blocked.
+
+        The legitimate UI never populates active_item_id from a terminal item
+        (resolve_active_item guards that), but the destination re-entry point
+        fetches via _item() which has no guard. Without a re-entry guard the
+        move no-ops yet the view renders a false "Moved" success.
+        """
+        from inventory.models import InventoryItem
+
+        self.wet_item.status = InventoryItem.Status.DEPLETED
+        self.wet_item.save()
+        self.wet_item.refresh_from_db()
+        loc_before = self.wet_item.location_id
+        resp = self._scan(
+            code=f"LOC-{self.slot.pk}", active_item_id=str(self.wet_item.pk)
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "revive it from its edit page first")
+        self.assertNotContains(resp, "Moved")
+        self.wet_item.refresh_from_db()
+        # Not moved into the destination slot; status stays terminal.
+        self.assertEqual(self.wet_item.location_id, loc_before)
+        self.assertNotEqual(self.wet_item.location_id, self.slot.id)
+        self.assertEqual(self.wet_item.status, InventoryItem.Status.DEPLETED)
+
+    def test_evict_with_terminal_incoming_id_is_rejected(self):
+        """A forged evict POST whose incoming item is terminal is blocked."""
+        from inventory.models import Filament, InventoryItem
+
+        occ = InventoryItem.objects.create(
+            product=Filament.objects.create(name="EvictOcc", upc="700000000034"),
+            location=self.slot,
+        )
+        self.wet_item.status = InventoryItem.Status.SOLD
+        self.wet_item.save()
+        resp = self._scan(
+            action="evict",
+            deplete_old="0",
+            active_item_id=str(self.wet_item.pk),
+            dest_id=str(self.slot.pk),
+            occupant_id=str(occ.pk),
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "revive it from its edit page first")
+        self.assertNotContains(resp, "Placed")
+        occ.refresh_from_db()
+        # The occupant was not evicted.
+        self.assertEqual(occ.location_id, self.slot.id)
+
     # --- BUG 3: non-numeric pk must not 500 ------------------------------
     def test_junk_active_item_id_does_not_500(self):
         resp = self._scan(code="", active_item_id="abc")

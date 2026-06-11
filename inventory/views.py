@@ -1702,6 +1702,21 @@ class QuickMoveScanView(LoginRequiredMixin, View):
         )
 
     def _scan_destination(self, request, active, code):
+        # Defense-in-depth: the legitimate UI only carries a non-terminal
+        # active_item_id (resolve_active_item guards that up front), but a forged
+        # or replayed POST could re-enter here with a DEPLETED/SOLD id. _item()
+        # has no terminal guard, and move_to would no-op such an item while the
+        # view still rendered a false "Moved" success. UNKNOWN stays movable.
+        if active.status in items.TERMINAL_STATUSES:
+            return self._render(
+                request,
+                state="idle",
+                last_result=(
+                    "danger",
+                    f"INV-{active.pk} is {active.get_status_display()} — "
+                    "revive it from its edit page first.",
+                ),
+            )
         try:
             dest = quickmove.resolve_destination(code)
         except quickmove.QuickMoveError as exc:
@@ -1770,6 +1785,20 @@ class QuickMoveScanView(LoginRequiredMixin, View):
                 request,
                 state="idle",
                 last_result=("danger", "Lost track of the swap — rescan the item."),
+            )
+        # Defense-in-depth (mirrors _scan_destination): a forged/replayed evict
+        # POST could carry a terminal incoming item. _item() has no terminal
+        # guard, so block it here before evict_and_place would no-op the move
+        # yet render a false "Placed" success. UNKNOWN stays movable.
+        if incoming.status in items.TERMINAL_STATUSES:
+            return self._render(
+                request,
+                state="idle",
+                last_result=(
+                    "danger",
+                    f"INV-{incoming.pk} is {incoming.get_status_display()} — "
+                    "revive it from its edit page first.",
+                ),
             )
         result, evicted = quickmove.evict_and_place(
             occupant, incoming, dest, deplete_old=deplete_old
