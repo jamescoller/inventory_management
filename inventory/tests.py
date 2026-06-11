@@ -4637,6 +4637,183 @@ class QuickMoveViewTests(TestCase):
         self.assertEqual(resp.status_code, 302)
 
 
+class QuickMoveAdversarialTests(TestCase):
+    """Regression tests for the Phase 12 adversarial review (bugs 1-4)."""
+
+    def setUp(self):
+        from inventory.models import Filament, InventoryItem, Location, Material
+
+        self.client = Client()
+        User.objects.create_user(username="qmadv", password="pass")
+        self.client.login(username="qmadv", password="pass")
+
+        # A non-dry shelf the wet roll starts on. No default_status so a NEW roll
+        # placed here stays NEW (the drying-warning logic only fires for NEW), and
+        # the move is a pure location change without a status recompute.
+        self.shelf = Location.objects.create(
+            name="QMADV Shelf",
+            kind=Location.Kind.SHELF,
+            default_status=None,
+        )
+        # A dry-storage leaf that triggers the wet->dry error.
+        self.dry = Location.objects.create(
+            name="QMADV Dry",
+            kind=Location.Kind.DRY_STORAGE,
+            default_status=InventoryItem.Status.STORED,
+        )
+        # A normal slot used for the terminal-status guard test.
+        self.slot = Location.objects.create(
+            name="QMADV Slot",
+            kind=Location.Kind.AMS_SLOT,
+            default_status=InventoryItem.Status.IN_USE,
+        )
+        material = Material.objects.create(name="WetPLA", drying_required=True)
+        self.wet_product = Filament.objects.create(
+            name="Wet PLA", upc="700000000030", material=material
+        )
+        self.wet_item = InventoryItem.objects.create(
+            product=self.wet_product,
+            location=self.shelf,
+            status=InventoryItem.Status.NEW,
+        )
+
+    def _scan(self, **data):
+        return self.client.post(
+            reverse("quick_move_scan"), data, HTTP_HX_REQUEST="true"
+        )
+
+    # --- BUG 1: drying-safety block must fire in quick-move ---------------
+    def test_drying_error_blocks_move_to_dry_storage(self):
+        """A NEW, drying-required filament scanned into dry storage is blocked.
+
+        With select_related("product") the active item's product was a base
+        Product, not Filament, so filament_drying_warning() returned None and the
+        move went through. The item must NOT move and the error text must show.
+        """
+        from inventory.models import InventoryItem
+
+        resp = self._scan(
+            code=f"LOC-{self.dry.pk}", active_item_id=str(self.wet_item.pk)
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.wet_item.refresh_from_db()
+        # Still on the original shelf — the move was blocked.
+        self.assertEqual(self.wet_item.location_id, self.shelf.id)
+        self.assertEqual(self.wet_item.status, InventoryItem.Status.NEW)
+        self.assertContains(resp, "must be dried")
+
+    def test_resolve_active_item_product_is_real_filament(self):
+        """The resolved active item exposes its polymorphic Filament subclass."""
+        from inventory import quickmove
+        from inventory.models import Filament
+
+        item = quickmove.resolve_active_item(f"INV-{self.wet_item.pk}")
+        self.assertIsInstance(item.product, Filament)
+        # And the drying check actually fires off it.
+        warning = item.filament_drying_warning(self.dry)
+        self.assertIsNotNone(warning)
+        self.assertEqual(warning[0], "error")
+
+    # --- BUG 2: terminal-status items are not movable --------------------
+    def test_resolve_active_item_rejects_depleted(self):
+        from inventory import quickmove
+        from inventory.models import InventoryItem
+
+        self.wet_item.status = InventoryItem.Status.DEPLETED
+        self.wet_item.save()
+        with self.assertRaises(quickmove.QuickMoveError):
+            quickmove.resolve_active_item(f"INV-{self.wet_item.pk}")
+
+    def test_resolve_active_item_rejects_sold(self):
+        from inventory import quickmove
+        from inventory.models import InventoryItem
+
+        self.wet_item.status = InventoryItem.Status.SOLD
+        self.wet_item.save()
+        with self.assertRaises(quickmove.QuickMoveError):
+            quickmove.resolve_active_item(f"INV-{self.wet_item.pk}")
+
+    def test_resolve_active_item_rejects_depleted_by_serial(self):
+        from inventory import quickmove
+        from inventory.models import Filament, InventoryItem
+
+        dead = InventoryItem.objects.create(
+            product=Filament.objects.create(name="Dead", upc="700000000031"),
+            serial_number="DEADSERIAL",
+            status=InventoryItem.Status.DEPLETED,
+        )
+        self.assertEqual(dead.status, InventoryItem.Status.DEPLETED)
+        with self.assertRaises(quickmove.QuickMoveError):
+            quickmove.resolve_active_item("DEADSERIAL")
+
+    def test_resolve_active_item_allows_unknown(self):
+        """UNKNOWN is not terminal — a found/lost item stays movable."""
+        from inventory import quickmove
+        from inventory.models import InventoryItem
+
+        self.wet_item.status = InventoryItem.Status.UNKNOWN
+        self.wet_item.save()
+        item = quickmove.resolve_active_item(f"INV-{self.wet_item.pk}")
+        self.assertEqual(item.pk, self.wet_item.pk)
+
+    def test_scan_depleted_item_shows_danger_and_no_move(self):
+        from inventory.models import InventoryItem
+
+        self.wet_item.status = InventoryItem.Status.DEPLETED
+        self.wet_item.save()
+        resp = self._scan(code=f"INV-{self.wet_item.pk}", active_item_id="")
+        self.assertEqual(resp.status_code, 200)
+        # No active item established; the scan was rejected.
+        self.assertNotContains(resp, "Scan a destination")
+
+    # --- BUG 3: non-numeric pk must not 500 ------------------------------
+    def test_junk_active_item_id_does_not_500(self):
+        resp = self._scan(code="", active_item_id="abc")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_junk_occupant_and_dest_ids_do_not_500(self):
+        resp = self._scan(
+            action="evict",
+            deplete_old="1",
+            active_item_id="abc",
+            dest_id="xyz",
+            occupant_id="nope",
+        )
+        self.assertEqual(resp.status_code, 200)
+
+    # --- FIX 4: evict_and_place is transactional -------------------------
+    def test_evict_and_place_rolls_back_on_placement_failure(self):
+        """If the incoming placement raises, the occupant must keep its location."""
+        from unittest import mock
+
+        from inventory import items as items_mod
+        from inventory import quickmove
+        from inventory.models import Filament, InventoryItem
+
+        occ = InventoryItem.objects.create(
+            product=Filament.objects.create(name="OccTxn", upc="700000000032"),
+            location=self.slot,
+        )
+        incoming = InventoryItem.objects.create(
+            product=Filament.objects.create(name="IncTxn", upc="700000000033"),
+            location=self.shelf,
+        )
+        real_move_to = items_mod.move_to
+
+        def flaky_move_to(item, location, **kwargs):
+            # First call clears the occupant; second call (the placement) blows up.
+            if item.pk == incoming.pk:
+                raise RuntimeError("boom")
+            return real_move_to(item, location, **kwargs)
+
+        with mock.patch.object(quickmove.items, "move_to", side_effect=flaky_move_to):
+            with self.assertRaises(RuntimeError):
+                quickmove.evict_and_place(occ, incoming, self.slot, deplete_old=False)
+        occ.refresh_from_db()
+        # Rolled back: occupant is NOT stranded with a null location.
+        self.assertEqual(occ.location_id, self.slot.id)
+
+
 class PwaManifestTests(TestCase):
     def test_manifest_is_valid_and_complete(self):
         import json

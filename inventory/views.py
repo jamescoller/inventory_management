@@ -1665,14 +1665,26 @@ class QuickMoveScanView(LoginRequiredMixin, View):
         return self._scan_destination(request, active, code)
 
     # --- helpers ---------------------------------------------------------
-    def _item(self, raw_id):
-        if not raw_id:
+    @staticmethod
+    def _int(raw):
+        """Coerce a POST value to an int pk, or None on empty/junk.
+
+        Django does NOT map a non-numeric ``.filter(pk=...)`` to a 404 — it raises
+        ValueError (a 500). Junk ids must degrade gracefully here.
+        """
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
             return None
-        return (
-            InventoryItem.objects.filter(pk=raw_id)
-            .select_related("product", "location")
-            .first()
-        )
+
+    def _item(self, raw_id):
+        pk = self._int(raw_id)
+        if pk is None:
+            return None
+        # No select_related("product"): with django-polymorphic that would
+        # materialize the base Product, silently disabling the drying-safety check
+        # (filament_drying_warning's isinstance(self.product, Filament) guard).
+        return InventoryItem.objects.filter(pk=pk).select_related("location").first()
 
     def _scan_item(self, request, code):
         try:
@@ -1748,7 +1760,10 @@ class QuickMoveScanView(LoginRequiredMixin, View):
     def _evict(self, request):
         incoming = self._item(request.POST.get("active_item_id"))
         occupant = self._item(request.POST.get("occupant_id"))
-        dest = Location.objects.filter(pk=request.POST.get("dest_id") or 0).first()
+        dest_pk = self._int(request.POST.get("dest_id"))
+        dest = (
+            Location.objects.filter(pk=dest_pk).first() if dest_pk is not None else None
+        )
         deplete_old = request.POST.get("deplete_old") == "1"
         if not (incoming and occupant and dest):
             return self._render(

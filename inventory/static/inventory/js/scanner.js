@@ -47,7 +47,19 @@
         if (controls) controls.stop();
         bsModal.hide();
         if (opts.mode === "navigate") {
-          global.location.href = raw;
+          // Only follow same-origin http(s) URLs — never a javascript:/off-site
+          // sink from the raw decoded QR text. Anything else is ignored.
+          try {
+            var u = new URL(raw, global.location.href);
+            if (
+              (u.protocol === "http:" || u.protocol === "https:") &&
+              u.origin === global.location.origin
+            ) {
+              global.location.href = u.href;
+            }
+          } catch (e) {
+            /* not a valid URL — ignore */
+          }
         } else if (typeof opts.onCode === "function") {
           opts.onCode(stripBarcodeUrl(raw));
         }
