@@ -6210,3 +6210,99 @@ class FilamentGuidePayloadTests(TestCase):
         self.client.login(username="u", password="p")
         resp = self.client.get("/filament-guide/")
         self.assertEqual(len(resp.context["picker_options"]), 7)
+
+
+class LoadMaterialSpecsTests(TestCase):
+    def _write_csv(self, rows):
+        import csv
+        import os
+        import tempfile
+
+        fd, path = tempfile.mkstemp(suffix=".csv")
+        os.close(fd)
+        cols = ["name", "material_type", "dry_temp_ideal_degC", "dry_time_hrs"]
+        with open(path, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=cols)
+            w.writeheader()
+            for r in rows:
+                w.writerow(r)
+        return path
+
+    def test_fills_blank_specs(self):
+        from inventory.material_specs import load_material_specs
+        from inventory.models import Material
+
+        Material.objects.create(name="PLA", material_type="Basic")
+        path = self._write_csv(
+            [
+                {
+                    "name": "PLA",
+                    "material_type": "Basic",
+                    "dry_temp_ideal_degC": "50",
+                    "dry_time_hrs": "8",
+                }
+            ]
+        )
+        stats = load_material_specs(path)
+        m = Material.objects.get(name="PLA", material_type="Basic")
+        self.assertEqual(m.dry_temp_ideal_degC, 50)
+        self.assertEqual(m.dry_time_hrs, 8)
+        self.assertEqual(stats["updated"], 1)
+
+    def test_blank_only_preserves_existing(self):
+        from inventory.material_specs import load_material_specs
+        from inventory.models import Material
+
+        Material.objects.create(name="ABS", material_type="", dry_temp_ideal_degC=99)
+        path = self._write_csv(
+            [
+                {
+                    "name": "ABS",
+                    "material_type": "",
+                    "dry_temp_ideal_degC": "80",
+                    "dry_time_hrs": "8",
+                }
+            ]
+        )
+        load_material_specs(path)  # overwrite=False
+        m = Material.objects.get(name="ABS", material_type="")
+        self.assertEqual(m.dry_temp_ideal_degC, 99)  # already set -> preserved
+        self.assertEqual(m.dry_time_hrs, 8)  # was blank -> filled
+
+    def test_unmatched_logged_not_created(self):
+        from inventory.material_specs import load_material_specs
+        from inventory.models import Material
+
+        path = self._write_csv(
+            [
+                {
+                    "name": "NOPE",
+                    "material_type": "X",
+                    "dry_temp_ideal_degC": "50",
+                    "dry_time_hrs": "8",
+                }
+            ]
+        )
+        stats = load_material_specs(path)
+        self.assertEqual(Material.objects.filter(name="NOPE").count(), 0)
+        self.assertEqual(len(stats["unmatched"]), 1)
+
+    def test_idempotent(self):
+        from inventory.material_specs import load_material_specs
+        from inventory.models import Material
+
+        Material.objects.create(name="TPU", material_type="85A")
+        path = self._write_csv(
+            [
+                {
+                    "name": "TPU",
+                    "material_type": "85A",
+                    "dry_temp_ideal_degC": "70",
+                    "dry_time_hrs": "8",
+                }
+            ]
+        )
+        load_material_specs(path)
+        stats2 = load_material_specs(path)
+        self.assertEqual(stats2["updated"], 0)
+        self.assertEqual(stats2["unchanged"], 1)
