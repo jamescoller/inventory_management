@@ -5898,3 +5898,39 @@ class FilamentGradientTests(TestCase):
 
         f = Filament.objects.create(color="X", hex_code="#fff", hex_code_2="abcdef")
         self.assertEqual(f.hex_code_2, "#abcdef")
+
+
+class DryingWarningTriStateTests(TestCase):
+    def _filament_at_new(self, drying_need):
+        from inventory.models import Filament, InventoryItem, Location, Material
+
+        mat = Material.objects.create(
+            name="PLA", material_type="Basic", drying_need=drying_need
+        )
+        # Filament inherits from Product which requires name + upc (non-null, no default).
+        fil = Filament.objects.create(
+            name="PLA Black",
+            upc="9990000000001",
+            color="Black",
+            hex_code="#000000",
+            material=mat,
+        )
+        item = InventoryItem.objects.create(
+            product=fil, status=InventoryItem.Status.NEW
+        )
+        dry = Location.objects.create(name="DS-1", kind=Location.Kind.DRY_STORAGE)
+        return item, dry
+
+    def test_required_blocks_dry_storage(self):
+        from inventory.models import Material
+
+        item, dry = self._filament_at_new(Material.DryingNeed.REQUIRED)
+        result = item.filament_drying_warning(dry)
+        self.assertEqual(result[0], "error")
+
+    def test_recommended_does_not_block_dry_storage(self):
+        from inventory.models import Material
+
+        item, dry = self._filament_at_new(Material.DryingNeed.RECOMMENDED)
+        result = item.filament_drying_warning(dry)
+        self.assertIsNone(result)
