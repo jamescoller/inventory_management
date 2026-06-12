@@ -210,6 +210,13 @@ dev-time PDF lib (`pypdf`) — not a production image dep.*
   `filament_TDS/*.pdf` (dev-only `pypdf`) and `parse_filament_tds` writes a **review CSV**
   to gitignored `filament_review/` — no DB writes. Backfilling existing `Material` rows is
   the human-gated next step (review the CSV, then run a loader).
+  - [x] **Drying temp/time loaded.** `inventory/material_specs.py` + `load_material_specs`
+    command backfill `dry_temp_ideal_degC`/`dry_time_hrs` from the committed
+    `docs/filament-tds-specs.csv` (38 rows, extracted from the TDS, blank-only/idempotent).
+    Surfaces in the filament-guide table + picker cards. (PR #165)
+  - [ ] **Build-plate / hot-end still pending:** `build_plate_compat` extraction has PDF
+    spacing artifacts (e.g. "TexturedPEIPlate") and `hot_end_compat` parsed empty for all —
+    needs a cleanup pass before loading. Not displayed yet either.
 - [x] **17.2 Hex fill.** Parse `filament_hex/` → color→hex map → fill missing
   `Filament.hex_code`/`color_family`; seed a color catalog.
   - [x] **Text PDFs (11)** — `inventory/filament_hex.py` parser (dev-only `pypdf`, like 17.1) +

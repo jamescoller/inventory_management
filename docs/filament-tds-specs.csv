@@ -1,0 +1,39 @@
+name,material_type,dry_temp_ideal_degC,dry_time_hrs
+ABS,,80,8
+ABS,GF,80,8
+ASA,,80,8
+ASA,Aero,80,8
+ASA,CF,80,8
+PA6,CF,80,8
+PA6,GF,80,8
+PAHT,CF,80,8
+PC,,80,8
+PC,FR,80,8
+PET,CF,80,8
+PETG,Basic,65,8
+PETG,CF,65,8
+PETG,HF,65,8
+PETG,Translucent,65,8
+PLA,Aero,55,8
+PLA,Basic,50,8
+PLA,CF,55,8
+PLA,Galaxy,55,8
+PLA,Glow,55,8
+PLA,Marble,55,8
+PLA,Matte,50,8
+PLA,Metal,55,8
+PLA,Silk,55,8
+PLA,Silk+,55,8
+PLA,Sparkle,55,8
+PLA,Translucent,50,8
+PLA,Wood,55,8
+PPS,CF,140,8
+PVA,,80,8
+Support,for ABS,80,4
+Support,for PA/PET,80,8
+Support,for PLA,55,8
+Support,for PLA/PETG,75,8
+TPU,85A,70,8
+TPU,90A,70,8
+TPU,95A HF,70,8
+TPU,for AMS,70,8
