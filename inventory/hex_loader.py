@@ -39,6 +39,8 @@ def load_filament_hex(csv_path, *, overwrite=False):
                     stats["skipped_set"] += 1
                     continue
                 fil.hex_code = hex_code
+                # CSV is authoritative: with --overwrite, a blank hex_code_2 clears
+                # an existing second hex (gradient -> solid). Blank-only mode never reaches here.
                 fil.hex_code_2 = hex2
                 fil.save()  # recomputes color_family (GRADIENT when hex2 set)
                 stats["filled"] += 1

@@ -6110,7 +6110,7 @@ class LoadFilamentHexTests(TestCase):
         stats = load_filament_hex(path)
         fil.refresh_from_db()
         self.assertEqual(fil.hex_code, "#f4a925")
-        self.assertTrue(fil.color_family)
+        self.assertEqual(fil.color_family, "ORANGE")
         self.assertEqual(stats["filled"], 1)
 
     def test_gradient_two_hex(self):
