@@ -121,15 +121,24 @@ class PrintBarcodeView(LoginRequiredMixin, View):
             return response
 
         except Exception as e:
-            return HttpResponse(f"Barcode generation failed: {str(e)}", status=500)
+            logger.error(
+                "Barcode generation failed for item %s: %s", item.id, e, exc_info=True
+            )
+            return HttpResponse(
+                "Barcode generation failed. Check server logs for details.", status=500
+            )
 
     def post(self, request, item_id, mode):
         item = get_object_or_404(InventoryItem, id=item_id)
         try:
             generate_and_print_barcode(item, mode)
         except Exception as e:
-            logger.error(f"Barcode generation failed: {str(e)}")
-            return HttpResponse(str(e), status=500)
+            logger.error(
+                "Barcode generation failed for item %s: %s", item.id, e, exc_info=True
+            )
+            return HttpResponse(
+                "Barcode generation failed. Check server logs for details.", status=500
+            )
 
         if request.headers.get("HX-Request"):
             html_body = render_to_string(
