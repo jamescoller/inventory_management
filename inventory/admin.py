@@ -578,6 +578,7 @@ class MaterialAdmin(UnfoldModelAdmin):
         "name",
         "material_type",
         "mfr",
+        "category",
         "print_temp_min_degC",
         "print_temp_max_degC",
         "print_temp_ideal_degC",
@@ -596,7 +597,7 @@ class MaterialAdmin(UnfoldModelAdmin):
     # unless list_display_links is explicitly set to something else.
     list_display_links = ["name"]
     list_editable = ["material_type"]
-    list_filter = ["mfr", "ams_capable", "drying_need"]
+    list_filter = ["mfr", "category", "ams_capable", "drying_need"]
     fieldsets = (
         (
             None,
