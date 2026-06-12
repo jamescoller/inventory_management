@@ -737,7 +737,7 @@ class LocationModelTests(TestCase):
 
     def test_drying_warning_uses_kind(self):
         mat = Material.objects.create(
-            name="PLA", material_type="", drying_required=True
+            name="PLA", material_type="", drying_need="required"
         )
         fil = Filament.objects.create(name="PLA Wet", upc="9200000000001", material=mat)
         item = InventoryItem.objects.create(product=fil)
@@ -2302,7 +2302,7 @@ class MoveServiceTests(TestCase):
 
     # --- drying-warning surfacing -----------------------------------------
     def test_drying_warning_surfaced_in_result(self):
-        mat = Material.objects.create(name="PLA Dry", drying_required=True)
+        mat = Material.objects.create(name="PLA Dry", drying_need="required")
         fil = Filament.objects.create(
             name="PLA Wet Move", upc="9400000000099", material=mat
         )
@@ -2315,7 +2315,7 @@ class MoveServiceTests(TestCase):
         self.assertEqual(result.drying_warning[0], "warning")
 
     def test_drying_warning_skipped_when_requested(self):
-        mat = Material.objects.create(name="PLA Dry2", drying_required=True)
+        mat = Material.objects.create(name="PLA Dry2", drying_need="required")
         fil = Filament.objects.create(
             name="PLA Wet Move2", upc="9400000000098", material=mat
         )
@@ -3146,7 +3146,7 @@ class LocationDetailViewTests(TestCase):
 
     def test_inline_move_surfaces_drying_warning(self):
         mat = Material.objects.create(
-            name="PLA Wet LD", material_type="", drying_required=True
+            name="PLA Wet LD", material_type="", drying_need="required"
         )
         wet = Filament.objects.create(
             name="PLA Wet LD F", upc="9700000000099", material=mat
@@ -4842,7 +4842,7 @@ class QuickMoveAdversarialTests(TestCase):
             kind=Location.Kind.AMS_SLOT,
             default_status=InventoryItem.Status.IN_USE,
         )
-        material = Material.objects.create(name="WetPLA", drying_required=True)
+        material = Material.objects.create(name="WetPLA", drying_need="required")
         self.wet_product = Filament.objects.create(
             name="Wet PLA", upc="700000000030", material=material
         )

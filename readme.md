@@ -177,3 +177,22 @@ replacement value).
 > exists for forward-compatibility but is inert: serving uploads needs `MEDIA_ROOT`/
 > `MEDIA_URL`, an nginx alias, and a bind-mounted `media/` volume — none configured
 > today.
+
+## Filament guide & requirements picker
+
+**Filament Guide** (`/filament-guide/`) has two modes on the same page:
+
+- **Requirements picker** — base-polymer cards (PLA, PETG, ABS, …) with the
+  best-matching subtype surfaced per card. Client-side JS scores each subtype against
+  your selected requirements (UV resistant, flexible, high strength, heat resistant,
+  easy to print, budget friendly, impact resistant, requires enclosure). EVERYDAY
+  materials float to the top; SUPPORT materials are excluded. Selecting no requirements
+  shows all materials.
+
+- **Reference table** — full guide data (temperatures, compatibility, boolean
+  properties) in a DataTables table, sortable by category.
+
+Guide property data is loaded from `docs/filament-guide-data.csv` via the
+`load_guide_data` management command (human-gated — review the CSV first). Hex
+color swatches (including gradient support for dual-color filaments) are loaded from
+`docs/filament-colors.csv` via `load_filament_hex`.
