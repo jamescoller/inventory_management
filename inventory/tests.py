@@ -5934,3 +5934,63 @@ class DryingWarningTriStateTests(TestCase):
         item, dry = self._filament_at_new(Material.DryingNeed.RECOMMENDED)
         result = item.filament_drying_warning(dry)
         self.assertIsNone(result)
+
+
+class LoadGuideDataTests(TestCase):
+    def _write_csv(self, rows):
+        import csv
+        import os
+        import tempfile
+
+        fd, path = tempfile.mkstemp(suffix=".csv")
+        os.close(fd)
+        cols = [
+            "name",
+            "material_type",
+            "category",
+            "description",
+            "uv_resistant",
+            "flexible",
+            "high_strength",
+            "heat_resistant",
+            "easy_to_print",
+            "budget_friendly",
+            "impact_resistant",
+            "requires_enclosure",
+            "drying_need",
+        ]
+        with open(path, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=cols)
+            w.writeheader()
+            for r in rows:
+                w.writerow(r)
+        return path
+
+    def test_creates_and_updates(self):
+        from inventory.guide_data import load_guide_data
+        from inventory.models import Material
+
+        row = {
+            "name": "PLA",
+            "material_type": "Basic",
+            "category": "everyday",
+            "description": "Easy.",
+            "uv_resistant": 0,
+            "flexible": 0,
+            "high_strength": 0,
+            "heat_resistant": 0,
+            "easy_to_print": 1,
+            "budget_friendly": 1,
+            "impact_resistant": 0,
+            "requires_enclosure": 0,
+            "drying_need": "recommended",
+        }
+        path = self._write_csv([row])
+        load_guide_data(path)
+        m = Material.objects.get(name="PLA", material_type="Basic")
+        self.assertTrue(m.easy_to_print)
+        self.assertEqual(m.drying_need, "recommended")
+        self.assertEqual(m.category, "everyday")
+        stats2 = load_guide_data(path)  # idempotent
+        self.assertEqual(stats2["created"], 0)
+        self.assertEqual(stats2["updated"], 0)
