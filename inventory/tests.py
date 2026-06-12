@@ -6170,3 +6170,43 @@ class LoadFilamentHexTests(TestCase):
         stats = load_filament_hex(path)  # overwrite=False default
         self.assertEqual(stats["filled"], 0)
         self.assertEqual(stats["skipped_set"], 1)
+
+
+class FilamentGuidePayloadTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+
+        from inventory.models import Filament, Material
+
+        User.objects.create_user("u", password="p")
+        upc = 7000000000000
+        for name, mt, cat in [
+            ("PLA", "Basic", "everyday"),
+            ("PLA", "CF", "everyday"),
+            ("PVA", "", "support"),
+        ]:
+            m = Material.objects.create(name=name, material_type=mt, category=cat)
+            upc += 1
+            Filament.objects.create(
+                color="C",
+                hex_code="#111111",
+                material=m,
+                name=f"{name} {mt}",
+                upc=str(upc),
+            )
+
+    def test_payload_groups_by_base_and_excludes_support(self):
+        self.client.login(username="u", password="p")
+        resp = self.client.get("/filament-guide/")
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.context["guide_payload"]
+        names = {g["name"] for g in payload}
+        self.assertIn("PLA", names)
+        self.assertNotIn("PVA", names)  # SUPPORT excluded from picker
+        pla = next(g for g in payload if g["name"] == "PLA")
+        self.assertEqual({s["material_type"] for s in pla["subtypes"]}, {"Basic", "CF"})
+
+    def test_picker_options_present(self):
+        self.client.login(username="u", password="p")
+        resp = self.client.get("/filament-guide/")
+        self.assertEqual(len(resp.context["picker_options"]), 7)
