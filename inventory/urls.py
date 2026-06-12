@@ -52,8 +52,6 @@ from .views import (
     ReceivingScanView,
     SignUpView,
     SpendReportView,
-    StaffUserListView,
-    StaffUserPasswordView,
     UnitMaintenanceView,
     UtilizationView,
 )
@@ -87,16 +85,6 @@ urlpatterns = [
             template_name="inventory/password_change_done.html",
         ),
         name="password_change_done",
-    ),
-    path(
-        "account/staff/users/",
-        StaffUserListView.as_view(),
-        name="staff_user_list",
-    ),
-    path(
-        "account/staff/users/<int:user_id>/password/",
-        StaffUserPasswordView.as_view(),
-        name="staff_user_password",
     ),
     path("addinventory/", AddInventoryView.as_view(), name="add_inventory"),
     path(

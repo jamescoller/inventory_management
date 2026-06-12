@@ -5579,68 +5579,44 @@ class PasswordChangeViewTests(TestCase):
         self.assertContains(resp, reverse("password_change"))
 
 
-class StaffUserPasswordTests(TestCase):
-    """Admin reset of ANOTHER user's password — staff-only, in-app."""
+class AdminPasswordResetTests(TestCase):
+    """Resetting another user's password now lives in Django's native admin
+    (the custom in-app staff reset was removed in favour of the built-in)."""
 
     def setUp(self):
         self.client = Client()
-        self.staff = User.objects.create_user(
-            username="boss", password="boss-pw-123", is_staff=True
+        self.admin = User.objects.create_superuser(
+            username="boss", password="boss-pw-123"
         )
         self.target = User.objects.create_user(
             username="victim", password="victim-old-pw"
         )
 
-    def test_staff_can_list_users(self):
+    def test_admin_user_changelist_reachable(self):
         self.client.login(username="boss", password="boss-pw-123")
-        resp = self.client.get(reverse("staff_user_list"))
+        resp = self.client.get(reverse("admin:auth_user_changelist"))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "victim")
 
-    def test_staff_can_get_reset_page(self):
+    def test_admin_password_form_reachable(self):
         self.client.login(username="boss", password="boss-pw-123")
-        resp = self.client.get(reverse("staff_user_password", args=[self.target.pk]))
+        resp = self.client.get(
+            reverse("admin:auth_user_password_change", args=[self.target.pk])
+        )
         self.assertEqual(resp.status_code, 200)
 
-    def test_staff_resets_target_password(self):
-        from django.contrib.auth import authenticate
-
+    def test_nav_users_link_points_at_admin(self):
         self.client.login(username="boss", password="boss-pw-123")
-        resp = self.client.post(
-            reverse("staff_user_password", args=[self.target.pk]),
-            {
-                "new_password1": "reset-by-admin-55",
-                "new_password2": "reset-by-admin-55",
-            },
-        )
-        self.assertEqual(resp.status_code, 302)
-        self.assertEqual(resp.url, reverse("staff_user_list"))
-        self.assertIsNotNone(
-            authenticate(username="victim", password="reset-by-admin-55")
-        )
-        self.assertIsNone(authenticate(username="victim", password="victim-old-pw"))
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, reverse("admin:auth_user_changelist"))
 
-    def test_non_staff_forbidden_on_list(self):
-        User.objects.create_user(username="peon", password="peon-pw-123")
-        self.client.login(username="peon", password="peon-pw-123")
-        resp = self.client.get(reverse("staff_user_list"))
-        self.assertEqual(resp.status_code, 403)
+    def test_old_custom_routes_removed(self):
+        from django.urls import NoReverseMatch
 
-    def test_non_staff_forbidden_on_reset(self):
-        User.objects.create_user(username="peon", password="peon-pw-123")
-        self.client.login(username="peon", password="peon-pw-123")
-        resp = self.client.get(reverse("staff_user_password", args=[self.target.pk]))
-        self.assertEqual(resp.status_code, 403)
-
-    def test_anonymous_redirected_to_login_on_list(self):
-        resp = self.client.get(reverse("staff_user_list"))
-        self.assertEqual(resp.status_code, 302)
-        self.assertIn(reverse("login"), resp.url)
-
-    def test_anonymous_redirected_to_login_on_reset(self):
-        resp = self.client.get(reverse("staff_user_password", args=[self.target.pk]))
-        self.assertEqual(resp.status_code, 302)
-        self.assertIn(reverse("login"), resp.url)
+        with self.assertRaises(NoReverseMatch):
+            reverse("staff_user_list")
+        with self.assertRaises(NoReverseMatch):
+            reverse("staff_user_password", args=[self.target.pk])
 
 
 class BuildLocationTreeTests(TestCase):
