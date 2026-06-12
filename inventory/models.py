@@ -106,6 +106,12 @@ class Filament(Product):
         blank=True,
         help_text="3 or 6 character hexadecimal color code string",
     )  # Color HEX code
+    hex_code_2 = models.CharField(
+        max_length=7,
+        blank=True,
+        default="",
+        help_text="Second hex for two-tone / gradient spools; renders a gradient swatch.",
+    )
     weight = models.DecimalField(
         decimal_places=2,
         max_digits=4,
@@ -143,6 +149,14 @@ class Filament(Product):
         else:
             return None
 
+    @staticmethod
+    def _norm_hex(value):
+        """Return a normalized '#rrggbb' (or '#rgb') for ``value`` or None if invalid."""
+        rev = value.strip().lower().lstrip("#")
+        if re.fullmatch(r"(?:[0-9a-fA-F]{3}){1,2}", rev):
+            return f"#{rev}"
+        return None
+
     COLOR_FAMILIES = [
         ("RED", "Red"),
         ("ORANGE", "Orange"),
@@ -156,6 +170,7 @@ class Filament(Product):
         ("GRAY", "Gray"),
         ("WHITE", "White"),
         ("TRANSLUCENT", "Translucent"),
+        ("GRADIENT", "Gradient"),
     ]
 
     color_family = models.CharField(
@@ -227,11 +242,25 @@ class Filament(Product):
                         "hex_code": "Invalid hex color code. Use 3 or 6 hex digits (e.g. #F0F or #FF00FF)."
                     }
                 )
+        if self.hex_code_2:
+            normalized = self._norm_hex(self.hex_code_2)
+            if normalized is None:
+                raise ValidationError(
+                    {"hex_code_2": "Invalid hex color code. Use 3 or 6 hex digits."}
+                )
+            self.hex_code_2 = normalized
 
     def save(self, *args, **kwargs):
+        if self.hex_code_2:
+            normalized = self._norm_hex(self.hex_code_2)
+            if normalized:
+                self.hex_code_2 = normalized
         if self.hex_code:
             self.normalize_hex_code()
-            self.color_family = self.get_color_family()
+            if self.hex_code_2:
+                self.color_family = "GRADIENT"
+            else:
+                self.color_family = self.get_color_family()
         super().save(*args, **kwargs)
 
     def __str__(self):

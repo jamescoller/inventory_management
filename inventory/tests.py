@@ -5876,3 +5876,25 @@ class MaterialGuideSchemaTests(TestCase):
 
         field_names = {f.name for f in Material._meta.get_fields()}
         self.assertNotIn("food_safe", field_names)
+
+
+class FilamentGradientTests(TestCase):
+    def test_second_hex_sets_gradient_family(self):
+        from inventory.models import Filament
+
+        f = Filament.objects.create(
+            color="Ocean to Meadow", hex_code="#307FE2", hex_code_2="#54FF9B"
+        )
+        self.assertEqual(f.color_family, "GRADIENT")
+
+    def test_single_hex_unchanged(self):
+        from inventory.models import Filament
+
+        f = Filament.objects.create(color="Blue", hex_code="#0A2CA5")
+        self.assertEqual(f.color_family, "BLUE")
+
+    def test_second_hex_normalized(self):
+        from inventory.models import Filament
+
+        f = Filament.objects.create(color="X", hex_code="#fff", hex_code_2="abcdef")
+        self.assertEqual(f.hex_code_2, "#abcdef")
