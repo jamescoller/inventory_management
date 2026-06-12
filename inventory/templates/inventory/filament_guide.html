@@ -1,4 +1,5 @@
 {% extends "inventory/base.html" %}
+{% load static %}
 
 {% block content %}
 <div class="container-fluid mt-4">
@@ -12,7 +13,31 @@
         </div>
     </div>
 
-    {# Stage 2: requirements picker goes here #}
+    {{ guide_payload|json_script:"guide-data" }}
+    <div class="card mb-4 no-print">
+        <div class="card-body">
+            <h5 class="card-title">What do you need from your part?</h5>
+            <p class="text-muted small mb-3">Check what matters — we'll rank the materials that fit.</p>
+            <div class="row" id="picker-checkboxes">
+                {% for key, label, tip in picker_options %}
+                <div class="col-6 col-md-4 col-lg-3 mb-2">
+                    <div class="form-check">
+                        <input class="form-check-input picker-req" type="checkbox" value="{{ key }}" id="req-{{ key }}">
+                        <label class="form-check-label" for="req-{{ key }}" data-bs-toggle="tooltip" title="{{ tip }}">{{ label }}</label>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="mt-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="picker-clear">Clear</button>
+                <span class="form-check form-check-inline float-end">
+                    <input class="form-check-input" type="checkbox" id="picker-show-all">
+                    <label class="form-check-label small" for="picker-show-all">Show all materials</label>
+                </span>
+            </div>
+        </div>
+    </div>
+    <div id="picker-results" class="row mb-4"></div>
 
     <div class="row">
         <div class="col">
@@ -20,18 +45,18 @@
                 <table id="filament-guide-table" class="table table-sm table-hover table-bordered w-100">
                     <thead class="table-dark">
                         <tr>
+                            <th>Category</th>
                             <th>Material</th>
                             <th>Description</th>
                             <th title="Survives prolonged sunlight / outdoor exposure">UV Resistant</th>
                             <th title="Can bend or flex without fracturing">Flexible</th>
                             <th title="Suitable for structural or load-bearing parts">High Strength</th>
                             <th title="Tolerates elevated temperatures">Heat Resistant</th>
-                            <th title="Safe for food contact">Food Safe</th>
                             <th title="Beginner-friendly; forgiving without enclosure or drying">Easy to Print</th>
                             <th title="Generally lower cost per spool">Budget Friendly</th>
                             <th title="Absorbs impact without shattering">Impact Resistant</th>
                             <th title="VOCs or warping make open-frame printing impractical">Enclosure Req.</th>
-                            <th title="Must be dried before printing for good results">Drying Req.</th>
+                            <th title="Required / recommended / not needed before printing.">Drying Req.</th>
                             <th title="Recommended drying temperature">Drying Temp</th>
                             <th title="Recommended drying time">Drying Time</th>
                         </tr>
@@ -39,6 +64,12 @@
                     <tbody>
                         {% for m in materials %}
                         <tr>
+                            <td data-order="{{ m.category }}">
+                                {% if m.category == 'everyday' %}<span class="badge bg-primary">Everyday</span>
+                                {% elif m.category == 'engineering' %}<span class="badge bg-secondary">Engineering</span>
+                                {% elif m.category == 'flexible' %}<span class="badge bg-info text-dark">Flexible</span>
+                                {% else %}<span class="badge bg-light text-dark">Support</span>{% endif %}
+                            </td>
                             <td>
                                 <a href="{% url 'inventory_search' %}?item_type=filament&material={{ m.name|urlencode }}&material_type={{ m.material_type|urlencode }}"
                                    title="See where these spools are"
@@ -60,9 +91,6 @@
                             <td data-sort="{{ m.heat_resistant|yesno:'1,0' }}" class="text-center">
                                 {% if m.heat_resistant %}<span>✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
                             </td>
-                            <td data-sort="{{ m.food_safe|yesno:'1,0' }}" class="text-center">
-                                {% if m.food_safe %}<span>✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
-                            </td>
                             <td data-sort="{{ m.easy_to_print|yesno:'1,0' }}" class="text-center">
                                 {% if m.easy_to_print %}<span>✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
                             </td>
@@ -75,8 +103,10 @@
                             <td data-sort="{{ m.requires_enclosure|yesno:'1,0' }}" class="text-center">
                                 {% if m.requires_enclosure %}<span class="text-warning">✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
                             </td>
-                            <td data-sort="{{ m.drying_required|yesno:'1,0' }}" class="text-center">
-                                {% if m.drying_required %}<span class="text-warning">✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                            <td data-sort="{{ m.drying_need }}" class="text-center">
+                                {% if m.drying_need == 'required' %}<span class="text-warning">Required</span>
+                                {% elif m.drying_need == 'recommended' %}<span class="text-muted">Recommended</span>
+                                {% else %}<span class="text-muted">—</span>{% endif %}
                             </td>
                             <td class="text-center">
                                 {% if m.dry_temp_ideal_degC %}{{ m.dry_temp_ideal_degC }} °C{% else %}<span class="text-muted">—</span>{% endif %}
@@ -98,10 +128,15 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         new DataTable('#filament-guide-table', {
-            ordering: true,
-            paging: false,
-            info: false,
-            searching: true,
+            ordering: true, paging: false, info: false, searching: true,
+            order: [[0, 'asc']],
+            columnDefs: [{
+                targets: 0,
+                render: function (data, type) {
+                    if (type !== 'sort') return data;
+                    return {everyday:'1',engineering:'2',flexible:'3',support:'4'}[data] || '9';
+                },
+            }],
             language: { emptyTable: 'No materials with filament in inventory.' },
         });
 
@@ -109,6 +144,10 @@
         document.querySelectorAll('#filament-guide-table th[title]').forEach(function (el) {
             new bootstrap.Tooltip(el, { placement: 'top' });
         });
+        document.querySelectorAll('.form-check-label[data-bs-toggle="tooltip"]').forEach(function (el) {
+            new bootstrap.Tooltip(el);
+        });
     });
 </script>
+<script src="{% static 'inventory/js/filament_guide.js' %}"></script>
 {% endblock extra_scripts %}

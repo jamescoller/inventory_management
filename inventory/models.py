@@ -106,6 +106,12 @@ class Filament(Product):
         blank=True,
         help_text="3 or 6 character hexadecimal color code string",
     )  # Color HEX code
+    hex_code_2 = models.CharField(
+        max_length=7,
+        blank=True,
+        default="",
+        help_text="Second hex for two-tone / gradient spools; renders a gradient swatch.",
+    )
     weight = models.DecimalField(
         decimal_places=2,
         max_digits=4,
@@ -143,6 +149,14 @@ class Filament(Product):
         else:
             return None
 
+    @staticmethod
+    def _norm_hex(value):
+        """Return a normalized '#rrggbb' (or '#rgb') for ``value`` or None if invalid."""
+        rev = value.strip().lower().lstrip("#")
+        if re.fullmatch(r"(?:[0-9a-fA-F]{3}){1,2}", rev):
+            return f"#{rev}"
+        return None
+
     COLOR_FAMILIES = [
         ("RED", "Red"),
         ("ORANGE", "Orange"),
@@ -156,6 +170,7 @@ class Filament(Product):
         ("GRAY", "Gray"),
         ("WHITE", "White"),
         ("TRANSLUCENT", "Translucent"),
+        ("GRADIENT", "Gradient"),
     ]
 
     color_family = models.CharField(
@@ -227,11 +242,25 @@ class Filament(Product):
                         "hex_code": "Invalid hex color code. Use 3 or 6 hex digits (e.g. #F0F or #FF00FF)."
                     }
                 )
+        if self.hex_code_2:
+            normalized = self._norm_hex(self.hex_code_2)
+            if normalized is None:
+                raise ValidationError(
+                    {"hex_code_2": "Invalid hex color code. Use 3 or 6 hex digits."}
+                )
+            self.hex_code_2 = normalized
 
     def save(self, *args, **kwargs):
+        if self.hex_code_2:
+            normalized = self._norm_hex(self.hex_code_2)
+            if normalized:
+                self.hex_code_2 = normalized
         if self.hex_code:
             self.normalize_hex_code()
-            self.color_family = self.get_color_family()
+            if self.hex_code_2:
+                self.color_family = "GRADIENT"
+            else:
+                self.color_family = self.get_color_family()
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -937,6 +966,17 @@ class Material(models.Model):
     notes (str, optional): Additional notes or comments about the material.
     """
 
+    class Category(models.TextChoices):
+        EVERYDAY = "everyday", "Everyday"
+        ENGINEERING = "engineering", "Engineering"
+        FLEXIBLE = "flexible", "Flexible"
+        SUPPORT = "support", "Support"
+
+    class DryingNeed(models.TextChoices):
+        NOT_NEEDED = "not_needed", "Not needed"
+        RECOMMENDED = "recommended", "Recommended"
+        REQUIRED = "required", "Required"
+
     name = models.CharField(max_length=100)
     material_type = models.CharField(max_length=50, blank=True, default="")
     # name = base polymer (e.g. "PETG", "PLA"); material_type = subtype modifier (e.g. "HF", "CF")
@@ -962,9 +1002,12 @@ class Material(models.Model):
     hot_end_compat = models.CharField(max_length=120, blank=True, default="")
 
     ams_capable = models.BooleanField(default=True)  # Is it compatible with AMS?
-    drying_required = models.BooleanField(
-        default=True
-    )  # Does it require drying before use?
+    drying_need = models.CharField(
+        max_length=12,
+        choices=DryingNeed.choices,
+        default=DryingNeed.REQUIRED,
+        help_text="Whether drying is required, recommended, or not needed before printing.",
+    )
 
     notes = models.TextField(blank=True)
 
@@ -974,11 +1017,16 @@ class Material(models.Model):
     flexible = models.BooleanField(default=False)
     high_strength = models.BooleanField(default=False)
     heat_resistant = models.BooleanField(default=False)
-    food_safe = models.BooleanField(default=False)
     easy_to_print = models.BooleanField(default=False)
     budget_friendly = models.BooleanField(default=False)
     impact_resistant = models.BooleanField(default=False)
     requires_enclosure = models.BooleanField(default=False)
+    category = models.CharField(
+        max_length=12,
+        choices=Category.choices,
+        default=Category.EVERYDAY,
+        help_text="Drives guide grouping; SUPPORT materials are excluded from the picker.",
+    )
 
     class Meta:
         unique_together = [("name", "material_type")]
@@ -988,6 +1036,13 @@ class Material(models.Model):
         if self.material_type:
             return f"{self.name} {self.material_type}"
         return self.name
+
+    @property
+    def drying_required(self):
+        """Back-compat shim: filament_drying_warning() and the Stage-1 reference
+        table template read this as a boolean. Only REQUIRED -> True; RECOMMENDED
+        and NOT_NEEDED -> False (RECOMMENDED does not block dry-storage moves)."""
+        return self.drying_need == self.DryingNeed.REQUIRED
 
 
 class AuditSession(models.Model):

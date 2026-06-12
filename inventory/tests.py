@@ -737,7 +737,7 @@ class LocationModelTests(TestCase):
 
     def test_drying_warning_uses_kind(self):
         mat = Material.objects.create(
-            name="PLA", material_type="", drying_required=True
+            name="PLA", material_type="", drying_need="required"
         )
         fil = Filament.objects.create(name="PLA Wet", upc="9200000000001", material=mat)
         item = InventoryItem.objects.create(product=fil)
@@ -2302,7 +2302,7 @@ class MoveServiceTests(TestCase):
 
     # --- drying-warning surfacing -----------------------------------------
     def test_drying_warning_surfaced_in_result(self):
-        mat = Material.objects.create(name="PLA Dry", drying_required=True)
+        mat = Material.objects.create(name="PLA Dry", drying_need="required")
         fil = Filament.objects.create(
             name="PLA Wet Move", upc="9400000000099", material=mat
         )
@@ -2315,7 +2315,7 @@ class MoveServiceTests(TestCase):
         self.assertEqual(result.drying_warning[0], "warning")
 
     def test_drying_warning_skipped_when_requested(self):
-        mat = Material.objects.create(name="PLA Dry2", drying_required=True)
+        mat = Material.objects.create(name="PLA Dry2", drying_need="required")
         fil = Filament.objects.create(
             name="PLA Wet Move2", upc="9400000000098", material=mat
         )
@@ -3146,7 +3146,7 @@ class LocationDetailViewTests(TestCase):
 
     def test_inline_move_surfaces_drying_warning(self):
         mat = Material.objects.create(
-            name="PLA Wet LD", material_type="", drying_required=True
+            name="PLA Wet LD", material_type="", drying_need="required"
         )
         wet = Filament.objects.create(
             name="PLA Wet LD F", upc="9700000000099", material=mat
@@ -4842,7 +4842,7 @@ class QuickMoveAdversarialTests(TestCase):
             kind=Location.Kind.AMS_SLOT,
             default_status=InventoryItem.Status.IN_USE,
         )
-        material = Material.objects.create(name="WetPLA", drying_required=True)
+        material = Material.objects.create(name="WetPLA", drying_need="required")
         self.wet_product = Filament.objects.create(
             name="Wet PLA", upc="700000000030", material=material
         )
@@ -5848,3 +5848,365 @@ class ReceivingOverviewTreeTests(TestCase):
         Location.objects.all().delete()
         resp = self.client.get(reverse("receiving_overview"))
         self.assertEqual(resp.status_code, 200)
+
+
+class MaterialGuideSchemaTests(TestCase):
+    def test_drying_required_property_true_only_for_required(self):
+        from inventory.models import Material
+
+        m = Material.objects.create(
+            name="PETG",
+            material_type="Basic",
+            drying_need=Material.DryingNeed.REQUIRED,
+        )
+        self.assertTrue(m.drying_required)
+        m.drying_need = Material.DryingNeed.RECOMMENDED
+        self.assertFalse(m.drying_required)
+        m.drying_need = Material.DryingNeed.NOT_NEEDED
+        self.assertFalse(m.drying_required)
+
+    def test_category_defaults_everyday(self):
+        from inventory.models import Material
+
+        m = Material.objects.create(name="PLA", material_type="Basic")
+        self.assertEqual(m.category, Material.Category.EVERYDAY)
+
+    def test_food_safe_field_removed(self):
+        from inventory.models import Material
+
+        field_names = {f.name for f in Material._meta.get_fields()}
+        self.assertNotIn("food_safe", field_names)
+
+
+class FilamentGradientTests(TestCase):
+    def test_second_hex_sets_gradient_family(self):
+        from inventory.models import Filament
+
+        f = Filament.objects.create(
+            color="Ocean to Meadow", hex_code="#307FE2", hex_code_2="#54FF9B"
+        )
+        self.assertEqual(f.color_family, "GRADIENT")
+
+    def test_single_hex_unchanged(self):
+        from inventory.models import Filament
+
+        f = Filament.objects.create(color="Blue", hex_code="#0A2CA5")
+        self.assertEqual(f.color_family, "BLUE")
+
+    def test_second_hex_normalized(self):
+        from inventory.models import Filament
+
+        f = Filament.objects.create(color="X", hex_code="#fff", hex_code_2="abcdef")
+        self.assertEqual(f.hex_code_2, "#abcdef")
+
+
+class DryingWarningTriStateTests(TestCase):
+    def _filament_at_new(self, drying_need):
+        from inventory.models import Filament, InventoryItem, Location, Material
+
+        mat = Material.objects.create(
+            name="PLA", material_type="Basic", drying_need=drying_need
+        )
+        # Filament inherits from Product which requires name + upc (non-null, no default).
+        fil = Filament.objects.create(
+            name="PLA Black",
+            upc="9990000000001",
+            color="Black",
+            hex_code="#000000",
+            material=mat,
+        )
+        item = InventoryItem.objects.create(
+            product=fil, status=InventoryItem.Status.NEW
+        )
+        dry = Location.objects.create(name="DS-1", kind=Location.Kind.DRY_STORAGE)
+        return item, dry
+
+    def test_required_blocks_dry_storage(self):
+        from inventory.models import Material
+
+        item, dry = self._filament_at_new(Material.DryingNeed.REQUIRED)
+        result = item.filament_drying_warning(dry)
+        self.assertEqual(result[0], "error")
+
+    def test_recommended_does_not_block_dry_storage(self):
+        from inventory.models import Material
+
+        item, dry = self._filament_at_new(Material.DryingNeed.RECOMMENDED)
+        result = item.filament_drying_warning(dry)
+        self.assertIsNone(result)
+
+
+class LoadGuideDataTests(TestCase):
+    def _write_csv(self, rows):
+        import csv
+        import os
+        import tempfile
+
+        fd, path = tempfile.mkstemp(suffix=".csv")
+        os.close(fd)
+        cols = [
+            "name",
+            "material_type",
+            "category",
+            "description",
+            "uv_resistant",
+            "flexible",
+            "high_strength",
+            "heat_resistant",
+            "easy_to_print",
+            "budget_friendly",
+            "impact_resistant",
+            "requires_enclosure",
+            "drying_need",
+        ]
+        with open(path, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=cols)
+            w.writeheader()
+            for r in rows:
+                w.writerow(r)
+        return path
+
+    def test_creates_and_updates(self):
+        from inventory.guide_data import load_guide_data
+        from inventory.models import Material
+
+        row = {
+            "name": "PLA",
+            "material_type": "Basic",
+            "category": "everyday",
+            "description": "Easy.",
+            "uv_resistant": 0,
+            "flexible": 0,
+            "high_strength": 0,
+            "heat_resistant": 0,
+            "easy_to_print": 1,
+            "budget_friendly": 1,
+            "impact_resistant": 0,
+            "requires_enclosure": 0,
+            "drying_need": "recommended",
+        }
+        path = self._write_csv([row])
+        load_guide_data(path)
+        m = Material.objects.get(name="PLA", material_type="Basic")
+        self.assertTrue(m.easy_to_print)
+        self.assertEqual(m.drying_need, "recommended")
+        self.assertEqual(m.category, "everyday")
+        stats2 = load_guide_data(path)  # idempotent
+        self.assertEqual(stats2["created"], 0)
+        self.assertEqual(stats2["updated"], 0)
+
+    def test_category_uppercase_normalized_to_lowercase(self):
+        from inventory.guide_data import load_guide_data
+        from inventory.models import Material
+
+        row = {
+            "name": "ABS",
+            "material_type": "",
+            "category": "EVERYDAY",
+            "description": "Strong.",
+            "uv_resistant": 0,
+            "flexible": 0,
+            "high_strength": 1,
+            "heat_resistant": 1,
+            "easy_to_print": 0,
+            "budget_friendly": 1,
+            "impact_resistant": 1,
+            "requires_enclosure": 1,
+            "drying_need": "required",
+        }
+        path = self._write_csv([row])
+        load_guide_data(path)
+        m = Material.objects.get(name="ABS", material_type="")
+        self.assertEqual(
+            m.category, "everyday"
+        )  # stored lowercase, matches Material.Category.EVERYDAY
+        self.assertEqual(m.category, Material.Category.EVERYDAY)
+
+    def test_fill_blank_only_preserves_existing(self):
+        from inventory.guide_data import load_guide_data
+        from inventory.models import Material
+
+        # Pre-existing row with a True bool and a description already set.
+        Material.objects.create(
+            name="PETG",
+            material_type="Basic",
+            high_strength=True,
+            description="Original desc.",
+        )
+        row = {
+            "name": "PETG",
+            "material_type": "Basic",
+            "category": "everyday",
+            "description": "New desc.",
+            "uv_resistant": 1,
+            "flexible": 0,
+            "high_strength": 0,
+            "heat_resistant": 1,
+            "easy_to_print": 1,
+            "budget_friendly": 1,
+            "impact_resistant": 1,
+            "requires_enclosure": 0,
+            "drying_need": "required",
+        }
+        path = self._write_csv([row])
+        load_guide_data(path, overwrite=False)
+        m = Material.objects.get(name="PETG", material_type="Basic")
+        # overwrite=False fills blank/False fields...
+        self.assertTrue(m.uv_resistant)  # was False -> filled
+        # ...but does NOT overwrite already-set values:
+        self.assertTrue(m.high_strength)  # stays True (CSV had 0, but overwrite=False)
+        self.assertEqual(m.description, "Original desc.")  # not overwritten
+
+
+class LoadFilamentHexTests(TestCase):
+    def _write_csv(self, rows):
+        import csv
+        import os
+        import tempfile
+
+        fd, path = tempfile.mkstemp(suffix=".csv")
+        os.close(fd)
+        cols = [
+            "material",
+            "material_type",
+            "color_name",
+            "hex_code",
+            "hex_code_2",
+            "notes",
+            "source_file",
+        ]
+        with open(path, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=cols)
+            w.writeheader()
+            for r in rows:
+                w.writerow(r)
+        return path
+
+    def test_fills_blank_hex_and_sets_family(self):
+        from inventory.hex_loader import load_filament_hex
+        from inventory.models import Filament, Material
+
+        mat = Material.objects.create(name="PLA", material_type="Silk")
+        fil = Filament.objects.create(
+            name="PLA Silk Gold",
+            upc="HEX0000000001",
+            color="Gold",
+            hex_code="",
+            material=mat,
+        )
+        path = self._write_csv(
+            [
+                {
+                    "material": "PLA",
+                    "material_type": "Silk",
+                    "color_name": "Gold",
+                    "hex_code": "#F4A925",
+                    "hex_code_2": "",
+                    "notes": "",
+                    "source_file": "x",
+                }
+            ]
+        )
+        stats = load_filament_hex(path)
+        fil.refresh_from_db()
+        self.assertEqual(fil.hex_code, "#f4a925")
+        self.assertEqual(fil.color_family, "ORANGE")
+        self.assertEqual(stats["filled"], 1)
+
+    def test_gradient_two_hex(self):
+        from inventory.hex_loader import load_filament_hex
+        from inventory.models import Filament, Material
+
+        mat = Material.objects.create(name="PLA", material_type="Gradient")
+        fil = Filament.objects.create(
+            name="PLA Gradient Ocean",
+            upc="HEX0000000002",
+            color="Ocean to Meadow",
+            hex_code="",
+            material=mat,
+        )
+        path = self._write_csv(
+            [
+                {
+                    "material": "PLA",
+                    "material_type": "Gradient",
+                    "color_name": "Ocean to Meadow",
+                    "hex_code": "#307FE2",
+                    "hex_code_2": "#54FF9B",
+                    "notes": "gradient",
+                    "source_file": "x",
+                }
+            ]
+        )
+        load_filament_hex(path)
+        fil.refresh_from_db()
+        self.assertEqual(fil.color_family, "GRADIENT")
+
+    def test_skips_already_set(self):
+        from inventory.hex_loader import load_filament_hex
+        from inventory.models import Filament, Material
+
+        mat = Material.objects.create(name="PLA", material_type="Basic")
+        Filament.objects.create(
+            name="PLA Basic Black",
+            upc="HEX0000000003",
+            color="Black",
+            hex_code="#111111",
+            material=mat,
+        )
+        path = self._write_csv(
+            [
+                {
+                    "material": "PLA",
+                    "material_type": "Basic",
+                    "color_name": "Black",
+                    "hex_code": "#000000",
+                    "hex_code_2": "",
+                    "notes": "",
+                    "source_file": "x",
+                }
+            ]
+        )
+        stats = load_filament_hex(path)  # overwrite=False default
+        self.assertEqual(stats["filled"], 0)
+        self.assertEqual(stats["skipped_set"], 1)
+
+
+class FilamentGuidePayloadTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+
+        from inventory.models import Filament, Material
+
+        User.objects.create_user("u", password="p")
+        upc = 7000000000000
+        for name, mt, cat in [
+            ("PLA", "Basic", "everyday"),
+            ("PLA", "CF", "everyday"),
+            ("PVA", "", "support"),
+        ]:
+            m = Material.objects.create(name=name, material_type=mt, category=cat)
+            upc += 1
+            Filament.objects.create(
+                color="C",
+                hex_code="#111111",
+                material=m,
+                name=f"{name} {mt}",
+                upc=str(upc),
+            )
+
+    def test_payload_groups_by_base_and_excludes_support(self):
+        self.client.login(username="u", password="p")
+        resp = self.client.get("/filament-guide/")
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.context["guide_payload"]
+        names = {g["name"] for g in payload}
+        self.assertIn("PLA", names)
+        self.assertNotIn("PVA", names)  # SUPPORT excluded from picker
+        pla = next(g for g in payload if g["name"] == "PLA")
+        self.assertEqual({s["material_type"] for s in pla["subtypes"]}, {"Basic", "CF"})
+
+    def test_picker_options_present(self):
+        self.client.login(username="u", password="p")
+        resp = self.client.get("/filament-guide/")
+        self.assertEqual(len(resp.context["picker_options"]), 7)

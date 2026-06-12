@@ -385,6 +385,50 @@ Spec/plan in `docs/superpowers/`. Built subagent-driven (TDD, 6 tasks).
   non-nullable `CharField` (latent 500 on the add-product-from-inventory flow) →
   `shipment=pending.get("shipment") or ""`.
 
+### Phase 17.2/17.3 — what was done (June 2026, PR #164)
+
+Hex color backfill + filament guide Stage 2 requirements picker. Spec:
+`docs/superpowers/specs/2026-06-12-filament-guide-picker-and-data-design.md`; plan:
+`docs/superpowers/plans/2026-06-12-filament-guide-picker.md`.
+
+**Schema changes (migrations 0037 + 0038):**
+- `Material` (migration `0037`, RunPython backfill): `drying_required` BooleanField →
+  `drying_need` CharField (`DryingNeed` TextChoices: `required`/`recommended`/`not_needed`;
+  default `required`). `drying_required` kept as a `@property` (True only when
+  `drying_need == REQUIRED`) so `filament_drying_warning()`, the admin, and all tests that
+  *read* it are untouched — only tests that *write* it via `objects.create()` needed updating
+  (replaced `drying_required=True` with `drying_need="required"`). Added `category` field
+  (`Material.Category` TextChoices: `EVERYDAY`/`ENGINEERING`/`FLEXIBLE`/`SUPPORT`; SUPPORT
+  excluded from the picker). Dropped `food_safe` BooleanField (never populated, not on any
+  guide; RunPython backfill not needed — column was always False/null).
+- `Filament` (migration `0038`): added `hex_code_2` (second hex for gradient swatches;
+  nullable). Gradient rendering: `"GRADIENT"` color_family triggers a CSS linear-gradient
+  swatch instead of a solid block; `hex_code` = start, `hex_code_2` = end.
+
+**Two human-gated idempotent loaders:**
+- `load_guide_data` — reads `docs/filament-guide-data.csv` (38 rows), updates `Material`
+  guide properties (description, booleans, `drying_need`, `category`, etc.). Idempotent
+  (`get_or_create` + field update). James runs after reviewing the CSV, then on prod:
+  `manage.py migrate && manage.py load_guide_data`.
+- `load_filament_hex` — reads `docs/filament-colors.csv` (227 colors = 123 from 11 text
+  PDFs via `filament_hex.py` + 104 from vision pass over 16 screenshot PNGs). Updates
+  `Filament.hex_code`/`hex_code_2`/`color_family` where the UPC matches. Idempotent;
+  `--overwrite` flag clears `hex_code_2` on non-gradient rows. James runs after reviewing
+  the CSV. **Neither loader has been run on prod yet.**
+
+**Stage 2 requirements picker on `/filament-guide/`:**
+- Base-polymer cards: each card surfaces the best-scoring subtype (JS scoring over a
+  `json_script` payload, not a server round-trip). EVERYDAY materials get "Everyday
+  favorite" prominence styling + float to top. Empty-state band shown when no cards match.
+- Category tabs / prominence: SUPPORT excluded entirely from the picker. EVERYDAY
+  prominence driven by `material.category == EVERYDAY`.
+- Reference table remains on the same page, now grouped by `category` (sort-only via
+  DataTables column sort; the rowGroup extension is NOT bundled — a visual-pass item if
+  collapsible headers are wanted).
+- **Prod deploy checklist** (migrations drop two columns — `food_safe`, and the boolean
+  `drying_required` is replaced by `drying_need` — both safe, nightly backup is live):
+  `manage.py migrate` + `manage.py load_guide_data` + `manage.py load_filament_hex`.
+
 ### Roadmap (rewritten 2026-06-09 — Phases 11–18)
 
 A 10,000-ft review (2026-06-09) replaced the old Phase 5–10 framing with a forward,

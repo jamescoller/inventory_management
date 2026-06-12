@@ -578,6 +578,7 @@ class MaterialAdmin(UnfoldModelAdmin):
         "name",
         "material_type",
         "mfr",
+        "category",
         "print_temp_min_degC",
         "print_temp_max_degC",
         "print_temp_ideal_degC",
@@ -588,7 +589,7 @@ class MaterialAdmin(UnfoldModelAdmin):
         "build_plate_compat",
         "hot_end_compat",
         "ams_capable",
-        "drying_required",
+        "drying_need",
         "notes",
     ]
     # name is the list_display_links field (clickable link); only material_type
@@ -596,7 +597,7 @@ class MaterialAdmin(UnfoldModelAdmin):
     # unless list_display_links is explicitly set to something else.
     list_display_links = ["name"]
     list_editable = ["material_type"]
-    list_filter = ["mfr", "ams_capable", "drying_required"]
+    list_filter = ["mfr", "category", "ams_capable", "drying_need"]
     fieldsets = (
         (
             None,
@@ -615,7 +616,7 @@ class MaterialAdmin(UnfoldModelAdmin):
                     "build_plate_compat",
                     "hot_end_compat",
                     "ams_capable",
-                    "drying_required",
+                    "drying_need",
                     "notes",
                 )
             },
@@ -629,11 +630,11 @@ class MaterialAdmin(UnfoldModelAdmin):
                     "flexible",
                     "high_strength",
                     "heat_resistant",
-                    "food_safe",
                     "easy_to_print",
                     "budget_friendly",
                     "impact_resistant",
                     "requires_enclosure",
+                    "category",
                 )
             },
         ),

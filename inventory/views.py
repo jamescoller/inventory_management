@@ -1200,11 +1200,85 @@ class FilamentGuideView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["materials"] = (
+        materials = (
             Material.objects.filter(filament__isnull=False)
             .distinct()
             .order_by("name", "material_type")
         )
+        context["materials"] = materials  # full reference table (all categories)
+
+        REQ_FIELDS = [
+            "uv_resistant",
+            "flexible",
+            "high_strength",
+            "heat_resistant",
+            "easy_to_print",
+            "budget_friendly",
+            "impact_resistant",
+        ]
+        groups = {}
+        for m in materials:
+            if m.category == Material.Category.SUPPORT:
+                continue  # excluded from the picker
+            g = groups.setdefault(
+                m.name,
+                {
+                    "name": m.name,
+                    "category": m.category,
+                    "description": "",
+                    "subtypes": [],
+                },
+            )
+            sub = {
+                "material_type": m.material_type,
+                "requires_enclosure": m.requires_enclosure,
+                "drying_need": m.drying_need,
+                "dry_temp": m.dry_temp_ideal_degC,
+                "dry_time": m.dry_time_hrs,
+                "description": m.description,
+            }
+            for f in REQ_FIELDS:
+                sub[f] = getattr(m, f)
+            g["subtypes"].append(sub)
+            if (m.material_type in ("", "Basic") and m.description) or not g[
+                "description"
+            ]:
+                g["description"] = m.description or g["description"]
+        context["guide_payload"] = list(groups.values())
+
+        context["picker_options"] = [
+            (
+                "uv_resistant",
+                "UV Resistant",
+                "Outdoor use or parts in direct sunlight.",
+            ),
+            (
+                "flexible",
+                "Flexible",
+                "Bends or compresses without breaking (clips, gaskets).",
+            ),
+            (
+                "high_strength",
+                "High Strength",
+                "Load-bearing or structural — takes stress or weight.",
+            ),
+            (
+                "heat_resistant",
+                "Heat Resistant",
+                "Near heat, in a car interior, or hot liquids.",
+            ),
+            (
+                "easy_to_print",
+                "Easy to Print",
+                "Beginner-friendly; no enclosure or dryer needed.",
+            ),
+            ("budget_friendly", "Budget Friendly", "Cost is a priority."),
+            (
+                "impact_resistant",
+                "Impact Resistant",
+                "Absorbs shock without shattering.",
+            ),
+        ]
         return context
 
 
