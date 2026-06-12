@@ -26,7 +26,6 @@
                             <th title="Can bend or flex without fracturing">Flexible</th>
                             <th title="Suitable for structural or load-bearing parts">High Strength</th>
                             <th title="Tolerates elevated temperatures">Heat Resistant</th>
-                            <th title="Safe for food contact">Food Safe</th>
                             <th title="Beginner-friendly; forgiving without enclosure or drying">Easy to Print</th>
                             <th title="Generally lower cost per spool">Budget Friendly</th>
                             <th title="Absorbs impact without shattering">Impact Resistant</th>
@@ -59,9 +58,6 @@
                             </td>
                             <td data-sort="{{ m.heat_resistant|yesno:'1,0' }}" class="text-center">
                                 {% if m.heat_resistant %}<span>✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
-                            </td>
-                            <td data-sort="{{ m.food_safe|yesno:'1,0' }}" class="text-center">
-                                {% if m.food_safe %}<span>✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
                             </td>
                             <td data-sort="{{ m.easy_to_print|yesno:'1,0' }}" class="text-center">
                                 {% if m.easy_to_print %}<span>✓</span>{% else %}<span class="text-muted">—</span>{% endif %}

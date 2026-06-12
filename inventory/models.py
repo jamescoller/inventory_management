@@ -1010,8 +1010,9 @@ class Material(models.Model):
 
     @property
     def drying_required(self):
-        """Back-compat shim: the wet-filament safety check and admin read this.
-        Only a REQUIRED need blocks moving a NEW spool into dry storage."""
+        """Back-compat shim: filament_drying_warning() and the Stage-1 reference
+        table template read this as a boolean. Only REQUIRED -> True; RECOMMENDED
+        and NOT_NEEDED -> False (RECOMMENDED does not block dry-storage moves)."""
         return self.drying_need == self.DryingNeed.REQUIRED
 
 
