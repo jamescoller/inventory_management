@@ -5848,3 +5848,31 @@ class ReceivingOverviewTreeTests(TestCase):
         Location.objects.all().delete()
         resp = self.client.get(reverse("receiving_overview"))
         self.assertEqual(resp.status_code, 200)
+
+
+class MaterialGuideSchemaTests(TestCase):
+    def test_drying_required_property_true_only_for_required(self):
+        from inventory.models import Material
+
+        m = Material.objects.create(
+            name="PETG",
+            material_type="Basic",
+            drying_need=Material.DryingNeed.REQUIRED,
+        )
+        self.assertTrue(m.drying_required)
+        m.drying_need = Material.DryingNeed.RECOMMENDED
+        self.assertFalse(m.drying_required)
+        m.drying_need = Material.DryingNeed.NOT_NEEDED
+        self.assertFalse(m.drying_required)
+
+    def test_category_defaults_everyday(self):
+        from inventory.models import Material
+
+        m = Material.objects.create(name="PLA", material_type="Basic")
+        self.assertEqual(m.category, Material.Category.EVERYDAY)
+
+    def test_food_safe_field_removed(self):
+        from inventory.models import Material
+
+        field_names = {f.name for f in Material._meta.get_fields()}
+        self.assertNotIn("food_safe", field_names)

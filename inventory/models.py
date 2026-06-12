@@ -937,6 +937,17 @@ class Material(models.Model):
     notes (str, optional): Additional notes or comments about the material.
     """
 
+    class Category(models.TextChoices):
+        EVERYDAY = "everyday", "Everyday"
+        ENGINEERING = "engineering", "Engineering"
+        FLEXIBLE = "flexible", "Flexible"
+        SUPPORT = "support", "Support"
+
+    class DryingNeed(models.TextChoices):
+        NOT_NEEDED = "not_needed", "Not needed"
+        RECOMMENDED = "recommended", "Recommended"
+        REQUIRED = "required", "Required"
+
     name = models.CharField(max_length=100)
     material_type = models.CharField(max_length=50, blank=True, default="")
     # name = base polymer (e.g. "PETG", "PLA"); material_type = subtype modifier (e.g. "HF", "CF")
@@ -962,9 +973,12 @@ class Material(models.Model):
     hot_end_compat = models.CharField(max_length=120, blank=True, default="")
 
     ams_capable = models.BooleanField(default=True)  # Is it compatible with AMS?
-    drying_required = models.BooleanField(
-        default=True
-    )  # Does it require drying before use?
+    drying_need = models.CharField(
+        max_length=12,
+        choices=DryingNeed.choices,
+        default=DryingNeed.REQUIRED,
+        help_text="Whether drying is required, recommended, or not needed before printing.",
+    )
 
     notes = models.TextField(blank=True)
 
@@ -974,11 +988,16 @@ class Material(models.Model):
     flexible = models.BooleanField(default=False)
     high_strength = models.BooleanField(default=False)
     heat_resistant = models.BooleanField(default=False)
-    food_safe = models.BooleanField(default=False)
     easy_to_print = models.BooleanField(default=False)
     budget_friendly = models.BooleanField(default=False)
     impact_resistant = models.BooleanField(default=False)
     requires_enclosure = models.BooleanField(default=False)
+    category = models.CharField(
+        max_length=12,
+        choices=Category.choices,
+        default=Category.EVERYDAY,
+        help_text="Drives guide grouping; SUPPORT materials are excluded from the picker.",
+    )
 
     class Meta:
         unique_together = [("name", "material_type")]
@@ -988,6 +1007,12 @@ class Material(models.Model):
         if self.material_type:
             return f"{self.name} {self.material_type}"
         return self.name
+
+    @property
+    def drying_required(self):
+        """Back-compat shim: the wet-filament safety check and admin read this.
+        Only a REQUIRED need blocks moving a NEW spool into dry storage."""
+        return self.drying_need == self.DryingNeed.REQUIRED
 
 
 class AuditSession(models.Model):
