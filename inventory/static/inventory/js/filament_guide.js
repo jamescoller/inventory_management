@@ -9,6 +9,15 @@
   const CAT_RANK = { everyday: 0, engineering: 1, flexible: 2, support: 3 };
   const results = document.getElementById("picker-results");
 
+  // Escape values derived from the json_script payload before they enter innerHTML.
+  // The data is admin-controlled (Material names/descriptions) and Django escapes the
+  // json_script block, but this is defense-in-depth and satisfies CodeQL js/xss-through-dom.
+  function esc(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
   function checkedReqs() {
     return Array.from(document.querySelectorAll(".picker-req:checked")).map((c) => c.value);
   }
@@ -38,12 +47,12 @@
     const everyday = group.category === "everyday"
       ? '<span class="badge bg-primary me-1">Everyday favorite</span>' : "";
     const surfaced = (!best.isBase && best.sub.material_type)
-      ? `<div class="small text-muted">best match: <strong>${group.name} ${best.sub.material_type}</strong></div>` : "";
+      ? `<div class="small text-muted">best match: <strong>${esc(group.name)} ${esc(best.sub.material_type)}</strong></div>` : "";
     const chips = reqs.map((r) => chip(REQ_LABELS[r], best.sub[r])).join("");
     const warns = [];
     if (best.sub.drying_need === "required") {
-      const dt = best.sub.dry_temp ? ` ${best.sub.dry_temp}°C` : "";
-      const dh = best.sub.dry_time ? `/${best.sub.dry_time}h` : "";
+      const dt = best.sub.dry_temp ? ` ${esc(best.sub.dry_temp)}°C` : "";
+      const dh = best.sub.dry_time ? `/${esc(best.sub.dry_time)}h` : "";
       warns.push(`<span class="badge bg-warning text-dark me-1">⚠ Requires drying${dt}${dh}</span>`);
     } else if (best.sub.drying_need === "recommended") {
       warns.push('<span class="badge bg-light text-muted me-1">Drying recommended</span>');
@@ -51,8 +60,8 @@
     if (best.sub.requires_enclosure) warns.push('<span class="badge bg-danger me-1">⚠ Needs enclosure</span>');
     return `<div class="col-md-6 col-lg-4 mb-3"><div class="card h-100"><div class="card-body">
       <div class="d-flex justify-content-between align-items-start">
-        <h5 class="card-title mb-1">${group.name}</h5><div>${everyday}${badge}</div></div>
-      <p class="card-text small text-muted">${group.description || ""}</p>${surfaced}
+        <h5 class="card-title mb-1">${esc(group.name)}</h5><div>${everyday}${badge}</div></div>
+      <p class="card-text small text-muted">${esc(group.description)}</p>${surfaced}
       <div class="mb-2">${chips}</div><div>${warns.join("")}</div>
     </div></div></div>`;
   }
@@ -62,8 +71,8 @@
     const cards = everyday.map((g) =>
       `<div class="col-md-6 col-lg-3 mb-3"><div class="card h-100 border-primary"><div class="card-body">
         <span class="badge bg-primary mb-1">Everyday favorite</span>
-        <h5 class="card-title">${g.name}</h5>
-        <p class="card-text small text-muted">${g.description || ""}</p></div></div></div>`
+        <h5 class="card-title">${esc(g.name)}</h5>
+        <p class="card-text small text-muted">${esc(g.description)}</p></div></div></div>`
     ).join("");
     results.innerHTML = `<div class="col-12"><p class="text-muted">New to this? Start with one of these everyday filaments:</p></div>${cards}`;
   }
