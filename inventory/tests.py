@@ -6056,3 +6056,117 @@ class LoadGuideDataTests(TestCase):
         # ...but does NOT overwrite already-set values:
         self.assertTrue(m.high_strength)  # stays True (CSV had 0, but overwrite=False)
         self.assertEqual(m.description, "Original desc.")  # not overwritten
+
+
+class LoadFilamentHexTests(TestCase):
+    def _write_csv(self, rows):
+        import csv
+        import os
+        import tempfile
+
+        fd, path = tempfile.mkstemp(suffix=".csv")
+        os.close(fd)
+        cols = [
+            "material",
+            "material_type",
+            "color_name",
+            "hex_code",
+            "hex_code_2",
+            "notes",
+            "source_file",
+        ]
+        with open(path, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=cols)
+            w.writeheader()
+            for r in rows:
+                w.writerow(r)
+        return path
+
+    def test_fills_blank_hex_and_sets_family(self):
+        from inventory.hex_loader import load_filament_hex
+        from inventory.models import Filament, Material
+
+        mat = Material.objects.create(name="PLA", material_type="Silk")
+        fil = Filament.objects.create(
+            name="PLA Silk Gold",
+            upc="HEX0000000001",
+            color="Gold",
+            hex_code="",
+            material=mat,
+        )
+        path = self._write_csv(
+            [
+                {
+                    "material": "PLA",
+                    "material_type": "Silk",
+                    "color_name": "Gold",
+                    "hex_code": "#F4A925",
+                    "hex_code_2": "",
+                    "notes": "",
+                    "source_file": "x",
+                }
+            ]
+        )
+        stats = load_filament_hex(path)
+        fil.refresh_from_db()
+        self.assertEqual(fil.hex_code, "#f4a925")
+        self.assertTrue(fil.color_family)
+        self.assertEqual(stats["filled"], 1)
+
+    def test_gradient_two_hex(self):
+        from inventory.hex_loader import load_filament_hex
+        from inventory.models import Filament, Material
+
+        mat = Material.objects.create(name="PLA", material_type="Gradient")
+        fil = Filament.objects.create(
+            name="PLA Gradient Ocean",
+            upc="HEX0000000002",
+            color="Ocean to Meadow",
+            hex_code="",
+            material=mat,
+        )
+        path = self._write_csv(
+            [
+                {
+                    "material": "PLA",
+                    "material_type": "Gradient",
+                    "color_name": "Ocean to Meadow",
+                    "hex_code": "#307FE2",
+                    "hex_code_2": "#54FF9B",
+                    "notes": "gradient",
+                    "source_file": "x",
+                }
+            ]
+        )
+        load_filament_hex(path)
+        fil.refresh_from_db()
+        self.assertEqual(fil.color_family, "GRADIENT")
+
+    def test_skips_already_set(self):
+        from inventory.hex_loader import load_filament_hex
+        from inventory.models import Filament, Material
+
+        mat = Material.objects.create(name="PLA", material_type="Basic")
+        Filament.objects.create(
+            name="PLA Basic Black",
+            upc="HEX0000000003",
+            color="Black",
+            hex_code="#111111",
+            material=mat,
+        )
+        path = self._write_csv(
+            [
+                {
+                    "material": "PLA",
+                    "material_type": "Basic",
+                    "color_name": "Black",
+                    "hex_code": "#000000",
+                    "hex_code_2": "",
+                    "notes": "",
+                    "source_file": "x",
+                }
+            ]
+        )
+        stats = load_filament_hex(path)  # overwrite=False default
+        self.assertEqual(stats["filled"], 0)
+        self.assertEqual(stats["skipped_set"], 1)
