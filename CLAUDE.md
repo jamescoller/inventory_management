@@ -385,7 +385,7 @@ Spec/plan in `docs/superpowers/`. Built subagent-driven (TDD, 6 tasks).
   non-nullable `CharField` (latent 500 on the add-product-from-inventory flow) →
   `shipment=pending.get("shipment") or ""`.
 
-### Phase 17.2/17.3 — what was done (June 2026, PR #TBD)
+### Phase 17.2/17.3 — what was done (June 2026, PR #164)
 
 Hex color backfill + filament guide Stage 2 requirements picker. Spec:
 `docs/superpowers/specs/2026-06-12-filament-guide-picker-and-data-design.md`; plan:
