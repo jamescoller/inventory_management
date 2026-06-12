@@ -585,6 +585,23 @@ class ViewRoundTripTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp["Content-Type"], "image/png")
 
+    def test_print_barcode_error_does_not_leak_exception(self):
+        """A failed barcode print returns a generic 500, not the raw exception
+        string (CodeQL py/stack-trace-exposure)."""
+        from unittest.mock import patch
+
+        sentinel = "INTERNAL-DETAIL-/secret/path-9f3a"
+        url = reverse(
+            "print_barcode", kwargs={"item_id": self.item.id, "mode": "unique"}
+        )
+        with patch(
+            "inventory.views.generate_and_print_barcode",
+            side_effect=RuntimeError(sentinel),
+        ):
+            resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 500)
+        self.assertNotIn(sentinel, resp.content.decode())
+
     def test_barcode_redirect_inv(self):
         url = reverse("barcode_redirect", kwargs={"value": f"INV-{self.item.id}"})
         resp = self.client.get(url)
