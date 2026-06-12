@@ -65,7 +65,7 @@
         <h5 class="card-title">${g.name}</h5>
         <p class="card-text small text-muted">${g.description || ""}</p></div></div></div>`
     ).join("");
-    results.innerHTML = `<div class="col-12"><p class="text-muted">New to this? Start with one of these four:</p></div>${cards}`;
+    results.innerHTML = `<div class="col-12"><p class="text-muted">New to this? Start with one of these everyday filaments:</p></div>${cards}`;
   }
 
   function render() {
@@ -73,6 +73,7 @@
     if (!reqs.length) { emptyState(); return; }
     const showAll = document.getElementById("picker-show-all").checked;
     const scored = data.map((g) => ({ g, best: scoreGroup(g, reqs) }))
+      .filter((s) => s.best)
       .sort((a, b) => (b.best.score - a.best.score)
         || (CAT_RANK[a.g.category] - CAT_RANK[b.g.category])
         || a.g.name.localeCompare(b.g.name));
