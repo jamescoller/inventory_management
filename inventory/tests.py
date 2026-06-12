@@ -5994,3 +5994,65 @@ class LoadGuideDataTests(TestCase):
         stats2 = load_guide_data(path)  # idempotent
         self.assertEqual(stats2["created"], 0)
         self.assertEqual(stats2["updated"], 0)
+
+    def test_category_uppercase_normalized_to_lowercase(self):
+        from inventory.guide_data import load_guide_data
+        from inventory.models import Material
+
+        row = {
+            "name": "ABS",
+            "material_type": "",
+            "category": "EVERYDAY",
+            "description": "Strong.",
+            "uv_resistant": 0,
+            "flexible": 0,
+            "high_strength": 1,
+            "heat_resistant": 1,
+            "easy_to_print": 0,
+            "budget_friendly": 1,
+            "impact_resistant": 1,
+            "requires_enclosure": 1,
+            "drying_need": "required",
+        }
+        path = self._write_csv([row])
+        load_guide_data(path)
+        m = Material.objects.get(name="ABS", material_type="")
+        self.assertEqual(
+            m.category, "everyday"
+        )  # stored lowercase, matches Material.Category.EVERYDAY
+        self.assertEqual(m.category, Material.Category.EVERYDAY)
+
+    def test_fill_blank_only_preserves_existing(self):
+        from inventory.guide_data import load_guide_data
+        from inventory.models import Material
+
+        # Pre-existing row with a True bool and a description already set.
+        Material.objects.create(
+            name="PETG",
+            material_type="Basic",
+            high_strength=True,
+            description="Original desc.",
+        )
+        row = {
+            "name": "PETG",
+            "material_type": "Basic",
+            "category": "everyday",
+            "description": "New desc.",
+            "uv_resistant": 1,
+            "flexible": 0,
+            "high_strength": 0,
+            "heat_resistant": 1,
+            "easy_to_print": 1,
+            "budget_friendly": 1,
+            "impact_resistant": 1,
+            "requires_enclosure": 0,
+            "drying_need": "required",
+        }
+        path = self._write_csv([row])
+        load_guide_data(path, overwrite=False)
+        m = Material.objects.get(name="PETG", material_type="Basic")
+        # overwrite=False fills blank/False fields...
+        self.assertTrue(m.uv_resistant)  # was False -> filled
+        # ...but does NOT overwrite already-set values:
+        self.assertTrue(m.high_strength)  # stays True (CSV had 0, but overwrite=False)
+        self.assertEqual(m.description, "Original desc.")  # not overwritten
