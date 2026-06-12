@@ -1,0 +1,228 @@
+material,material_type,color_name,hex_code,hex_code_2,notes,source_file
+ABS,,White,#FFFFFF,,,Bambu_ABS_Hex_Code_(1).pdf
+ABS,,Bambu Green,#00AE42,,,Bambu_ABS_Hex_Code_(1).pdf
+ABS,,Olive,#789D4A,,,Bambu_ABS_Hex_Code_(1).pdf
+ABS,,Azure,#489FDF,,,Bambu_ABS_Hex_Code_(1).pdf
+ABS,,Navy Blue,#0C2340,,,Bambu_ABS_Hex_Code_(1).pdf
+ABS,,Blue,#0A2CA5,,,Bambu_ABS_Hex_Code_(1).pdf
+ABS,,Tangerine Yellow,#FFC72C,,,Bambu_ABS_Hex_Code_(1).pdf
+ABS,,Orange,#FF6A13,,,Bambu_ABS_Hex_Code_(1).pdf
+ABS,,Red,#D32941,,,Bambu_ABS_Hex_Code_(1).pdf
+ABS,,Purple,#AF1685,,,Bambu_ABS_Hex_Code_(1).pdf
+ABS,,Silver,#87909A,,,Bambu_ABS_Hex_Code_(1).pdf
+ABS,,Black,#000000,,,Bambu_ABS_Hex_Code_(1).pdf
+PLA,Basic,Jade White,#FFFFFF,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Beige,#F7E6DE,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Light Gray,#D1D3D5,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Silver,#A6A9AA,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Gray,#8E9089,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Magenta,#EC008C,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Pink,#F55A74,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Hot Pink,#F5547C,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Orange,#FF6A13,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Pumpkin Orange,#FF9016,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Gold,#E4BD68,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Sunflower Yellow,#FEC600,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Yellow,#F4EE2A,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Bright Green,#BECF00,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Bambu Green,#00AE42,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Mistletoe Green,#3F8E43,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Bronze,#847D48,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Cocoa Brown,#6F5034,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Brown,#9D432C,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Maroon Red,#9D2235,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Red,#C12E1F,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Turquoise,#00B1B7,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Cyan,#0086D6,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Blue,#0A2989,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Cobalt Blue,#0056B8,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Purple,#5E43B7,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Indigo Purple,#482960,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Blue Grey,#5B6579,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Dark Gray,#545454,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Basic,Black,#000000,,,Bambu_PLA_Basic_Hex_Code.pdf
+PLA,Matte,Ivory White,#FFFFFF,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Bone White,#CBC6B8,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Desert Tan,#E8DBB7,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Latte Brown,#D3B7A7,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Caramel,#AE835B,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Terracotta,#B15533,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Dark Brown,#7D6556,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Dark Chocolate,#4D3324,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Lilac Purple,#AE96D4,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Sakura Pink,#E8AFCF,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Mandarin Orange,#F99963,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Lemon Yellow,#F7D959,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Plum,#950051,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Scarlet Red,#DE4343,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Dark Red,#BB3D43,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Dark Green,#68724D,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Grass Green,#61C680,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Apple Green,#C2E189,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Ice Blue,#A3D8E1,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Sky Blue,#56B7E6,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Marine Blue,#0078BF,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Dark Blue,#042F56,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Ash Gray,#9B9EA0,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Nardo Gray,#757575,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Matte,Charcoal,#000000,,,Bambu_PLA_Matte_Hex_Code.pdf
+PLA,Tough,White,#FFFFFF,,,Bambu_PLA_Tough_Hex_Code_Table.pdf
+PLA,Tough,Gray,#AFB1AE,,,Bambu_PLA_Tough_Hex_Code_Table.pdf
+PLA,Tough,Black,#000000,,,Bambu_PLA_Tough_Hex_Code_Table.pdf
+PLA,Tough,Silver,#959698,,,Bambu_PLA_Tough_Hex_Code_Table.pdf
+PLA,Tough,Yellow,#F4D53F,,,Bambu_PLA_Tough_Hex_Code_Table.pdf
+PLA,Tough,Cyan,#009BD8,,,Bambu_PLA_Tough_Hex_Code_Table.pdf
+PLA,Tough,Orange,#DC3A27,,,Bambu_PLA_Tough_Hex_Code_Table.pdf
+TPU,85A,Black,#000000,,,Bambu_TPU_85A_Hex_Code.pdf
+TPU,85A,Light Cyan,#C3E2D6,,,Bambu_TPU_85A_Hex_Code.pdf
+TPU,85A,Neon Orange,#F68B1B,,,Bambu_TPU_85A_Hex_Code.pdf
+TPU,85A,Flesh,#F3CFB2,,,Bambu_TPU_85A_Hex_Code.pdf
+TPU,85A,Lime Green,#CDEA80,,,Bambu_TPU_85A_Hex_Code.pdf
+TPU,90A,Black,#000000,,,Bambu_TPU_90A_Hex_Code_Table.pdf
+TPU,90A,White,#FFFFEE,,,Bambu_TPU_90A_Hex_Code_Table.pdf
+TPU,90A,Grape Jelly,#D6ABFF,,,Bambu_TPU_90A_Hex_Code_Table.pdf
+TPU,90A,Crystal Blue,#7EB4E1,,,Bambu_TPU_90A_Hex_Code_Table.pdf
+TPU,90A,Cocoa Brown,#5C4738,,,Bambu_TPU_90A_Hex_Code_Table.pdf
+TPU,90A,Quicksilver,#9EA2A2,,,Bambu_TPU_90A_Hex_Code_Table.pdf
+TPU,90A,Blaze,#F1AAA8,,,Bambu_TPU_90A_Hex_Code_Table.pdf
+TPU,90A,Frozen,#FFFFFF,,,Bambu_TPU_90A_Hex_Code_Table.pdf
+PETG,CF,Brick Red,#9F332A,,,PETG-CF_Hex_Code_Table.pdf
+PETG,CF,Violet Purple,#583061,,,PETG-CF_Hex_Code_Table.pdf
+PETG,CF,Indigo Blue,#324585,,,PETG-CF_Hex_Code_Table.pdf
+PETG,CF,Malachite Green,#16B08E,,,PETG-CF_Hex_Code_Table.pdf
+PETG,CF,Black,#000000,,,PETG-CF_Hex_Code_Table.pdf
+PETG,CF,Titan Gray,#565656,,,PETG-CF_Hex_Code_Table.pdf
+PETG,Basic,Red,#D6001C,,,PETG_Basic_Hex_Code_Table.pdf
+PETG,Basic,Orange,#FF671F,,,PETG_Basic_Hex_Code_Table.pdf
+PETG,Basic,Yellow,#FCE300,,,PETG_Basic_Hex_Code_Table.pdf
+PETG,Basic,Reflex Blue,#001489,,,PETG_Basic_Hex_Code_Table.pdf
+PETG,Basic,Navy Blue,#0086D6,,,PETG_Basic_Hex_Code_Table.pdf
+PETG,Basic,Misty Blue,#688197,,,PETG_Basic_Hex_Code_Table.pdf
+PETG,Basic,Green,#009639,,,PETG_Basic_Hex_Code_Table.pdf
+PETG,Basic,Pine Green,#034638,,,PETG_Basic_Hex_Code_Table.pdf
+PETG,Basic,Dark Brown,#4F2C1D,,,PETG_Basic_Hex_Code_Table.pdf
+PETG,Basic,Dark Beige,#DBC8B6,,,PETG_Basic_Hex_Code_Table.pdf
+PETG,Basic,Black,#000000,,,PETG_Basic_Hex_Code_Table.pdf
+PETG,Basic,Gray,#7F7E83,,,PETG_Basic_Hex_Code_Table.pdf
+PETG,Basic,White,#FFFFFF,,,PETG_Basic_Hex_Code_Table.pdf
+PLA,CF,Burgundy Red,#951E23,,,PLA-CF_Hex_Code_Table.pdf
+PLA,CF,Iris Purple,#69398E,,,PLA-CF_Hex_Code_Table.pdf
+PLA,CF,Matcha Green,#5C9748,,,PLA-CF_Hex_Code_Table.pdf
+PLA,CF,Jeans Blue,#6E88BC,,,PLA-CF_Hex_Code_Table.pdf
+PLA,CF,Royal Blue,#2842AD,,,PLA-CF_Hex_Code_Table.pdf
+PLA,CF,Lava Gray,#4D5054,,,PLA-CF_Hex_Code_Table.pdf
+PLA,CF,Black,#000000,,,PLA-CF_Hex_Code_Table.pdf
+PLA,Translucent,Teal,#009FA1,,,PLA_Translucent_Hex_Code_Table (1).pdf
+PLA,Translucent,Light Jade,#96D8AF,,,PLA_Translucent_Hex_Code_Table (1).pdf
+PLA,Translucent,Blue,#0047BB,,,PLA_Translucent_Hex_Code_Table (1).pdf
+PLA,Translucent,Mellow Yellow,#F5DBAB,,,PLA_Translucent_Hex_Code_Table (1).pdf
+PLA,Translucent,Purple,#8344B0,,,PLA_Translucent_Hex_Code_Table (1).pdf
+PLA,Translucent,Cherry Pink,#F5B6CD,,,PLA_Translucent_Hex_Code_Table (1).pdf
+PLA,Translucent,Orange,#F74E02,,,PLA_Translucent_Hex_Code_Table (1).pdf
+PLA,Translucent,Ice Blue,#B8CDE9,,,PLA_Translucent_Hex_Code_Table (1).pdf
+PLA,Translucent,Red,#B50011,,,PLA_Translucent_Hex_Code_Table (1).pdf
+PLA,Translucent,Lavender,#B8ACD6,,,PLA_Translucent_Hex_Code_Table (1).pdf
+ABS,GF,White,#FFFFFF,,,ABS_GF_Hex.png
+ABS,GF,Gray,#C6C6C6,,,ABS_GF_Hex.png
+ABS,GF,Orange,#F48438,,,ABS_GF_Hex.png
+ABS,GF,Red,#E83100,,,ABS_GF_Hex.png
+ABS,GF,Blue,#0C3B95,,,ABS_GF_Hex.png
+ABS,GF,Black,#000000,,,ABS_GF_Hex.png
+ASA,,White,#FFFAF2,,,ASA_Hex.png
+ASA,,Gray,#8A949E,,,ASA_Hex.png
+ASA,,Red,#E02928,,,ASA_Hex.png
+ASA,,Green,#00A6A0,,,ASA_Hex.png
+ASA,,Blue,#2140B4,,,ASA_Hex.png
+ASA,,Black,#000000,,,ASA_Hex.png
+PA6,GF,White,#EAEAE4,,,PA6_GF_Hex.png
+PA6,GF,Blue,#75AED8,,,PA6_GF_Hex.png
+PA6,GF,Orange,#FF4800,,,PA6_GF_Hex.png
+PA6,GF,Gray,#353533,,,PA6_GF_Hex.png
+PA6,GF,Black,#000000,,,PA6_GF_Hex.png
+PC,FR,White,#FFFFFF,,,PC_FR.png
+PC,FR,Gray,#A8A8AA,,,PC_FR.png
+PC,FR,Black,#000000,,,PC_FR.png
+PETG,HF,Yellow,#FFD00B,,,PETG_HF_Hex.png
+PETG,HF,Orange,#F75403,,,PETG_HF_Hex.png
+PETG,HF,Green,#00AE42,,,PETG_HF_Hex.png
+PETG,HF,Red,#EB3A3A,,,PETG_HF_Hex.png
+PETG,HF,Blue,#002E96,,,PETG_HF_Hex.png
+PETG,HF,Black,#000000,,,PETG_HF_Hex.png
+PETG,HF,White,#FFFFFF,,,PETG_HF_Hex.png
+PETG,HF,Cream,#F9DFB9,,,PETG_HF_Hex.png
+PETG,HF,Lime Green,#6EE53C,,,PETG_HF_Hex.png
+PETG,HF,Forest Green,#39541A,,,PETG_HF_Hex.png
+PETG,HF,Lake Blue,#1F79E5,,,PETG_HF_Hex.png
+PETG,HF,Peanut Brown,#875718,,,PETG_HF_Hex.png
+PETG,HF,Gray,#ADB1B2,,,PETG_HF_Hex.png
+PETG,HF,Dark Gray,#515151,,,PETG_HF_Hex.png
+PETG,Translucent,Translucent Gray,#8E8E8E,,,PETG_Translucent_Hex.png
+PETG,Translucent,Translucent Light Blue,#61B0FF,,,PETG_Translucent_Hex.png
+PETG,Translucent,Translucent Olive,#748C45,,,PETG_Translucent_Hex.png
+PETG,Translucent,Translucent Brown,#C9A381,,,PETG_Translucent_Hex.png
+PETG,Translucent,Translucent Teal,#77EDD7,,,PETG_Translucent_Hex.png
+PETG,Translucent,Translucent Orange,#FF911A,,,PETG_Translucent_Hex.png
+PETG,Translucent,Translucent Purple,#D6ABFF,,,PETG_Translucent_Hex.png
+PETG,Translucent,Translucent Pink,#F9C1BD,,,PETG_Translucent_Hex.png
+PLA,Galaxy,Brown,#684A43,,Brown base with gold shimmer,PLA Galaxy Hex.png
+PLA,Galaxy,Green,#3B665E,,Green base with gold shimmer,PLA Galaxy Hex.png
+PLA,Galaxy,Nebulae,#424379,,Deep blue base with green shimmer,PLA Galaxy Hex.png
+PLA,Galaxy,Purple,#594177,,Purple base with blue shimmer,PLA Galaxy Hex.png
+PLA,Gradient,Arctic Whisper,#9CDBD9,#FFFFFF,gradient; PLA Basic Gradient line,PLA_Basic_Gradient.png
+PLA,Gradient,Solar Breeze,#E94B3C,#FFFFFF,gradient; PLA Basic Gradient line,PLA_Basic_Gradient.png
+PLA,Gradient,Ocean to Meadow,#307FE2,#54FF9B,gradient; PLA Basic Gradient line,PLA_Basic_Gradient.png
+PLA,Gradient,Cotton Candy Cloud,#E7C1D5,#8EC9E9,gradient; PLA Basic Gradient line,PLA_Basic_Gradient.png
+PLA,Gradient,Blueberry Bubblegum,#6FCAEF,#8573DD,gradient; PLA Basic Gradient line,PLA_Basic_Gradient.png
+PLA,Gradient,Mint Lime,#B6FF43,#4EC939,gradient; PLA Basic Gradient line,PLA_Basic_Gradient.png
+PLA,Gradient,Pink Citrus,#F78F77,#E4505A,gradient; PLA Basic Gradient line,PLA_Basic_Gradient.png
+PLA,Gradient,Dusk Glare,#ED9558,#CE4406,gradient; PLA Basic Gradient line,PLA_Basic_Gradient.png
+PLA,Glow,Glow Green,#A1FFAC,,,PLA_Glow_Hex.png
+PLA,Glow,Glow Yellow,#F8FF80,,,PLA_Glow_Hex.png
+PLA,Glow,Glow Pink,#F17B8F,,,PLA_Glow_Hex.png
+PLA,Glow,Glow Blue,#7AC0E9,,,PLA_Glow_Hex.png
+PLA,Glow,Glow Orange,#FF9D5B,,,PLA_Glow_Hex.png
+PLA,Marble,White Marble,#F7F3F0,,,PLA_Marble_Hex.png
+PLA,Marble,Red Granite,#AD4E38,,,PLA_Marble_Hex.png
+PLA,Metal,Iridium Gold Metallic,#B39B84,,,PLA_Metal_Hex.png
+PLA,Metal,Copper Brown Metallic,#AA6443,,,PLA_Metal_Hex.png
+PLA,Metal,Oxide Green Metallic,#1D7C6A,,,PLA_Metal_Hex.png
+PLA,Metal,Cobalt Blue Metallic,#39699E,,,PLA_Metal_Hex.png
+PLA,Metal,Iron Gray Metallic,#43403D,,,PLA_Metal_Hex.png
+PLA,Silk,Gold,#F4A925,,,PLA_Silk_Hex.png
+PLA,Silk,Silver,#C8C8C8,,,PLA_Silk_Hex.png
+PLA,Silk,Titan Gray,#5F6367,,,PLA_Silk_Hex.png
+PLA,Silk,Blue,#008BDA,,,PLA_Silk_Hex.png
+PLA,Silk,Purple,#8671CB,,,PLA_Silk_Hex.png
+PLA,Silk,Candy Red,#D02727,,,PLA_Silk_Hex.png
+PLA,Silk,Candy Green,#018814,,,PLA_Silk_Hex.png
+PLA,Silk,Rose Gold,#BA9594,,,PLA_Silk_Hex.png
+PLA,Silk,Baby Blue,#A8C6EE,,,PLA_Silk_Hex.png
+PLA,Silk,Pink,#F7ADA6,,,PLA_Silk_Hex.png
+PLA,Silk,Mint,#96DCB9,,,PLA_Silk_Hex.png
+PLA,Silk,Champagne,#F3CFB2,,,PLA_Silk_Hex.png
+PLA,Silk,White,#FFFFFF,,,PLA_Silk_Hex.png
+PLA,Sparkle,Classic Gold Sparkle,#CEA629,,,PLA_Sparkle_Hex.png
+PLA,Sparkle,Slate Gray Sparkle,#8E9089,,,PLA_Sparkle_Hex.png
+PLA,Sparkle,Crimson Red Sparkle,#792B36,,,PLA_Sparkle_Hex.png
+PLA,Sparkle,Royal Purple Sparkle,#483D8B,,,PLA_Sparkle_Hex.png
+PLA,Sparkle,Alpine Green Sparkle,#3F5443,,,PLA_Sparkle_Hex.png
+PLA,Sparkle,Onyx Black Sparkle,#2D2B28,,,PLA_Sparkle_Hex.png
+PLA,Wood,Black Walnut,#4F3F24,,,PLA_Wood_Hex.png
+PLA,Wood,Rosewood,#4C241C,,,PLA_Wood_Hex.png
+PLA,Wood,Clay Brown,#995F11,,,PLA_Wood_Hex.png
+PLA,Wood,Classic Birch,#918669,,,PLA_Wood_Hex.png
+PLA,Wood,White Oak,#D6CCA3,,,PLA_Wood_Hex.png
+PLA,Wood,Ochre Yellow,#C98935,,,PLA_Wood_Hex.png
+TPU,95A HF,White,#FFFFFF,,,TPU_95A_HF_Hex.png
+TPU,95A HF,Yellow,#F3E600,,,TPU_95A_HF_Hex.png
+TPU,95A HF,Blue,#0072CE,,,TPU_95A_HF_Hex.png
+TPU,95A HF,Red,#C8102E,,,TPU_95A_HF_Hex.png
+TPU,95A HF,Gray,#898D8D,,,TPU_95A_HF_Hex.png
+TPU,95A HF,Black,#101820,,,TPU_95A_HF_Hex.png
+TPU,for AMS,Red,#ED0000,,,TPU_for_AMS_Hex.png
+TPU,for AMS,Yellow,#F9EF41,,,TPU_for_AMS_Hex.png
+TPU,for AMS,Blue,#5898DD,,,TPU_for_AMS_Hex.png
+TPU,for AMS,Neon Green,#90FF1A,,,TPU_for_AMS_Hex.png
+TPU,for AMS,White,#FFFFFF,,,TPU_for_AMS_Hex.png
+TPU,for AMS,Gray,#939393,,,TPU_for_AMS_Hex.png
+TPU,for AMS,Black,#000000,,,TPU_for_AMS_Hex.png

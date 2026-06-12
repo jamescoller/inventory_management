@@ -1,39 +1,39 @@
-name,material_type,description,uv_resistant,flexible,high_strength,heat_resistant,food_safe,easy_to_print,budget_friendly,impact_resistant,requires_enclosure
-ABS,,,,,,,,,,,
-ABS,GF,,,,,,,,,,
-ASA,,,,,,,,,,,
-ASA,Aero,,,,,,,,,,
-ASA,CF,,,,,,,,,,
-PA6,CF,,,,,,,,,,
-PA6,GF,,,,,,,,,,
-PAHT,CF,,,,,,,,,,
-PC,,,,,,,,,,,
-PC,FR,,,,,,,,,,
-PET,CF,,,,,,,,,,
-PETG,Basic,,,,,,,,,,
-PETG,CF,,,,,,,,,,
-PETG,HF,,,,,,,,,,
-PETG,Translucent,,,,,,,,,,
-PLA,Aero,,,,,,,,,,
-PLA,Basic,,,,,,,,,,
-PLA,CF,,,,,,,,,,
-PLA,Galaxy,,,,,,,,,,
-PLA,Glow,,,,,,,,,,
-PLA,Marble,,,,,,,,,,
-PLA,Matte,,,,,,,,,,
-PLA,Metal,,,,,,,,,,
-PLA,Silk,,,,,,,,,,
-PLA,Silk+,,,,,,,,,,
-PLA,Sparkle,,,,,,,,,,
-PLA,Translucent,,,,,,,,,,
-PLA,Wood,,,,,,,,,,
-PPS,CF,,,,,,,,,,
-PVA,,,,,,,,,,,
-Support,for ABS,,,,,,,,,,
-Support,for PA/PET,,,,,,,,,,
-Support,for PLA,,,,,,,,,,
-Support,for PLA/PETG,,,,,,,,,,
-TPU,85A,,,,,,,,,,
-TPU,90A,,,,,,,,,,
-TPU,95A HF,,,,,,,,,,
-TPU,for AMS,,,,,,,,,,
+name,material_type,category,description,uv_resistant,flexible,high_strength,heat_resistant,easy_to_print,budget_friendly,impact_resistant,requires_enclosure,drying_need
+ABS,,EVERYDAY,"Strong, heat- and impact-resistant — and priced about the same as PLA and PETG, so an easy step up when you need durability. Warps badly; needs an enclosure and ventilation.",0,0,1,1,0,1,1,1,required
+ABS,GF,EVERYDAY,"Strong, heat- and impact-resistant — and priced about the same as PLA and PETG, so an easy step up when you need durability. Warps badly; needs an enclosure and ventilation. Fiber-reinforced (stiffer/stronger); abrasive — use a hardened nozzle.",0,0,1,1,0,0,1,1,required
+ASA,,EVERYDAY,ABS's UV-stable cousin: the top choice for parts that live outdoors in the sun. Warps; needs an enclosure.,1,0,1,1,0,0,1,1,required
+ASA,Aero,EVERYDAY,ABS's UV-stable cousin: the top choice for parts that live outdoors in the sun. Warps; needs an enclosure. Lightweight foaming grade.,1,0,0,1,0,0,0,1,required
+ASA,CF,EVERYDAY,ABS's UV-stable cousin: the top choice for parts that live outdoors in the sun. Warps; needs an enclosure. Fiber-reinforced (stiffer/stronger); abrasive — use a hardened nozzle.,1,0,1,1,0,0,1,1,required
+PA6,CF,ENGINEERING,"Tough, wear-resistant nylon with some flex — great for gears and living hinges. Soaks up moisture fast; dry well and enclose.",0,1,1,1,0,0,1,1,required
+PA6,GF,ENGINEERING,"Tough, wear-resistant nylon with some flex — great for gears and living hinges. Soaks up moisture fast; dry well and enclose.",0,1,1,1,0,0,1,1,required
+PAHT,CF,ENGINEERING,"High-temperature carbon-fiber nylon for demanding engineering parts. Stiff and strong; abrasive, needs drying and an enclosure.",0,0,1,1,0,0,1,1,required
+PC,,ENGINEERING,"Extremely strong and heat-resistant engineering plastic. Demanding — high temperatures, an enclosure, and thorough drying.",0,0,1,1,0,0,1,1,required
+PC,FR,ENGINEERING,"Extremely strong and heat-resistant engineering plastic. Demanding — high temperatures, an enclosure, and thorough drying. Flame-retardant grade.",0,0,1,1,0,0,1,1,required
+PET,CF,ENGINEERING,"Stiff, strong, heat- and weather-resistant carbon-fiber engineering filament. Abrasive — hardened nozzle, drying, enclosure.",1,0,1,1,0,0,1,1,required
+PETG,Basic,EVERYDAY,"Tough, weather- and chemical-resistant all-rounder for functional and outdoor parts. Easy to print, but dry it first.",1,0,1,1,1,1,1,0,required
+PETG,CF,EVERYDAY,"Tough, weather- and chemical-resistant all-rounder for functional and outdoor parts. Easy to print, but dry it first. Fiber-reinforced (stiffer/stronger); abrasive — use a hardened nozzle.",1,0,1,1,0,0,1,0,required
+PETG,HF,EVERYDAY,"Tough, weather- and chemical-resistant all-rounder for functional and outdoor parts. Easy to print, but dry it first. High-flow — faster printing.",1,0,1,1,1,1,1,0,required
+PETG,Translucent,EVERYDAY,"Tough, weather- and chemical-resistant all-rounder for functional and outdoor parts. Easy to print, but dry it first.",1,0,1,1,1,1,1,0,required
+PLA,Aero,EVERYDAY,"Easiest and cheapest to print — ideal for models, prototypes, and indoor parts. Brittle and softens in heat or sun; drying optional. Lightweight foaming grade.",0,0,0,0,1,1,0,0,recommended
+PLA,Basic,EVERYDAY,"Easiest and cheapest to print — ideal for models, prototypes, and indoor parts. Brittle and softens in heat or sun; drying optional.",0,0,0,0,1,1,0,0,recommended
+PLA,CF,EVERYDAY,"Easiest and cheapest to print — ideal for models, prototypes, and indoor parts. Brittle and softens in heat or sun; drying optional. Fiber-reinforced (stiffer/stronger); abrasive — use a hardened nozzle.",0,0,1,0,0,0,0,0,recommended
+PLA,Galaxy,EVERYDAY,"Easiest and cheapest to print — ideal for models, prototypes, and indoor parts. Brittle and softens in heat or sun; drying optional. Contains abrasive particles — consider a hardened nozzle.",0,0,0,0,1,1,0,0,recommended
+PLA,Glow,EVERYDAY,"Easiest and cheapest to print — ideal for models, prototypes, and indoor parts. Brittle and softens in heat or sun; drying optional. Contains abrasive particles — consider a hardened nozzle.",0,0,0,0,1,1,0,0,recommended
+PLA,Marble,EVERYDAY,"Easiest and cheapest to print — ideal for models, prototypes, and indoor parts. Brittle and softens in heat or sun; drying optional. Contains abrasive particles — consider a hardened nozzle.",0,0,0,0,1,1,0,0,recommended
+PLA,Matte,EVERYDAY,"Easiest and cheapest to print — ideal for models, prototypes, and indoor parts. Brittle and softens in heat or sun; drying optional.",0,0,0,0,1,1,0,0,recommended
+PLA,Metal,EVERYDAY,"Easiest and cheapest to print — ideal for models, prototypes, and indoor parts. Brittle and softens in heat or sun; drying optional. Contains abrasive particles — consider a hardened nozzle.",0,0,0,0,1,1,0,0,recommended
+PLA,Silk,EVERYDAY,"Easiest and cheapest to print — ideal for models, prototypes, and indoor parts. Brittle and softens in heat or sun; drying optional.",0,0,0,0,1,1,0,0,recommended
+PLA,Silk+,EVERYDAY,"Easiest and cheapest to print — ideal for models, prototypes, and indoor parts. Brittle and softens in heat or sun; drying optional.",0,0,0,0,1,1,0,0,recommended
+PLA,Sparkle,EVERYDAY,"Easiest and cheapest to print — ideal for models, prototypes, and indoor parts. Brittle and softens in heat or sun; drying optional. Contains abrasive particles — consider a hardened nozzle.",0,0,0,0,1,1,0,0,recommended
+PLA,Translucent,EVERYDAY,"Easiest and cheapest to print — ideal for models, prototypes, and indoor parts. Brittle and softens in heat or sun; drying optional.",0,0,0,0,1,1,0,0,recommended
+PLA,Wood,EVERYDAY,"Easiest and cheapest to print — ideal for models, prototypes, and indoor parts. Brittle and softens in heat or sun; drying optional. Contains abrasive particles — consider a hardened nozzle.",0,0,0,0,1,1,0,0,recommended
+PPS,CF,ENGINEERING,High-performance carbon-fiber with outstanding heat and chemical resistance. Specialized high-temperature printing only.,1,0,1,1,0,0,1,1,required
+PVA,,SUPPORT,Water-soluble support that dissolves for clean supports under complex prints. Extremely moisture-sensitive.,0,0,0,0,0,0,0,0,required
+Support,for ABS,SUPPORT,Breakaway support material paired to a specific base polymer; not for printing standalone parts.,0,0,0,0,0,0,0,0,required
+Support,for PA/PET,SUPPORT,Breakaway support material paired to a specific base polymer; not for printing standalone parts.,0,0,0,0,0,0,0,0,required
+Support,for PLA,SUPPORT,Breakaway support material paired to a specific base polymer; not for printing standalone parts.,0,0,0,0,0,0,0,0,required
+Support,for PLA/PETG,SUPPORT,Breakaway support material paired to a specific base polymer; not for printing standalone parts.,0,0,0,0,0,0,0,0,required
+TPU,85A,FLEXIBLE,"Rubber-like and flexible — gaskets, grips, and phone cases. Bends and absorbs impact instead of snapping; prints slowly, keep dry. Softest (85A) — very stretchy.",0,1,0,0,0,0,1,0,required
+TPU,90A,FLEXIBLE,"Rubber-like and flexible — gaskets, grips, and phone cases. Bends and absorbs impact instead of snapping; prints slowly, keep dry. Soft (90A).",0,1,0,0,0,0,1,0,required
+TPU,95A HF,FLEXIBLE,"Rubber-like and flexible — gaskets, grips, and phone cases. Bends and absorbs impact instead of snapping; prints slowly, keep dry. Firmer (95A), high-flow — easier to print.",0,1,0,0,0,0,1,0,required
+TPU,for AMS,FLEXIBLE,"Rubber-like and flexible — gaskets, grips, and phone cases. Bends and absorbs impact instead of snapping; prints slowly, keep dry. AMS-compatible; easier to print.",0,1,0,0,0,0,1,0,required
