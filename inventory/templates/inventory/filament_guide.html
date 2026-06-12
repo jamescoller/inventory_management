@@ -20,6 +20,7 @@
                 <table id="filament-guide-table" class="table table-sm table-hover table-bordered w-100">
                     <thead class="table-dark">
                         <tr>
+                            <th>Category</th>
                             <th>Material</th>
                             <th>Description</th>
                             <th title="Survives prolonged sunlight / outdoor exposure">UV Resistant</th>
@@ -30,7 +31,7 @@
                             <th title="Generally lower cost per spool">Budget Friendly</th>
                             <th title="Absorbs impact without shattering">Impact Resistant</th>
                             <th title="VOCs or warping make open-frame printing impractical">Enclosure Req.</th>
-                            <th title="Must be dried before printing for good results">Drying Req.</th>
+                            <th title="Required / recommended / not needed before printing.">Drying Req.</th>
                             <th title="Recommended drying temperature">Drying Temp</th>
                             <th title="Recommended drying time">Drying Time</th>
                         </tr>
@@ -38,6 +39,12 @@
                     <tbody>
                         {% for m in materials %}
                         <tr>
+                            <td data-order="{{ m.category }}">
+                                {% if m.category == 'everyday' %}<span class="badge bg-primary">Everyday</span>
+                                {% elif m.category == 'engineering' %}<span class="badge bg-secondary">Engineering</span>
+                                {% elif m.category == 'flexible' %}<span class="badge bg-info text-dark">Flexible</span>
+                                {% else %}<span class="badge bg-light text-dark">Support</span>{% endif %}
+                            </td>
                             <td>
                                 <a href="{% url 'inventory_search' %}?item_type=filament&material={{ m.name|urlencode }}&material_type={{ m.material_type|urlencode }}"
                                    title="See where these spools are"
@@ -71,8 +78,10 @@
                             <td data-sort="{{ m.requires_enclosure|yesno:'1,0' }}" class="text-center">
                                 {% if m.requires_enclosure %}<span class="text-warning">✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
                             </td>
-                            <td data-sort="{{ m.drying_required|yesno:'1,0' }}" class="text-center">
-                                {% if m.drying_required %}<span class="text-warning">✓</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                            <td data-sort="{{ m.drying_need }}" class="text-center">
+                                {% if m.drying_need == 'required' %}<span class="text-warning">Required</span>
+                                {% elif m.drying_need == 'recommended' %}<span class="text-muted">Recommended</span>
+                                {% else %}<span class="text-muted">—</span>{% endif %}
                             </td>
                             <td class="text-center">
                                 {% if m.dry_temp_ideal_degC %}{{ m.dry_temp_ideal_degC }} °C{% else %}<span class="text-muted">—</span>{% endif %}
@@ -94,10 +103,15 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         new DataTable('#filament-guide-table', {
-            ordering: true,
-            paging: false,
-            info: false,
-            searching: true,
+            ordering: true, paging: false, info: false, searching: true,
+            order: [[0, 'asc']],
+            columnDefs: [{
+                targets: 0,
+                render: function (data, type) {
+                    if (type !== 'sort') return data;
+                    return {everyday:'1',engineering:'2',flexible:'3',support:'4'}[data] || '9';
+                },
+            }],
             language: { emptyTable: 'No materials with filament in inventory.' },
         });
 
