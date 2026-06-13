@@ -10,7 +10,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
-from django.db.models import Count, Max, Q, Sum
+from django.db.models import Case, Count, IntegerField, Max, Q, Sum, When
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -20,7 +20,15 @@ from django.utils.timezone import localtime
 from django.utils.timezone import now as timezone_now
 from django.views.generic import CreateView, TemplateView, UpdateView, View
 
-from . import audit, items, maintenance, printjobs, procurement, quickmove
+from . import (
+    audit,
+    items,
+    maintenance,
+    printjobs,
+    procurement,
+    quickmove,
+    search_index,
+)
 from .barcode_utils import (
     PrinterUnreachableError,
     generate_and_print_barcode,
@@ -353,34 +361,52 @@ def _filtered_search_items(params):
             Q(status=InventoryItem.Status.UNKNOWN) | Q(location__isnull=True)
         )
 
-    # --- text / field filters ---------------------------------------------
-    # Navbar quick-search: a lone `name` fans out across many fields.
-    navbar_mode = bool(name) and not any([sku, upc, location, serial_number, item_id])
-    if navbar_mode:
-        name_q = (
-            Q(product__name__icontains=name)
-            | Q(product__sku__icontains=name)
-            | Q(product__upc__icontains=name)
-            | Q(serial_number__icontains=name)
-            | Q(id__icontains=name)
-        )
-        loc_ids = _expanded_location_ids(name)
-        if loc_ids:
-            name_q |= Q(location_id__in=loc_ids)
-        items = items.filter(name_q)
-    else:
-        if sku:
-            items = items.filter(product__sku=sku)
-        if upc:
-            items = items.filter(product__upc=upc)
-        if name:
-            items = items.filter(product__name__icontains=name)
-        if location:
-            items = items.filter(location_id__in=_expanded_location_ids(location))
-        if serial_number:
-            items = items.filter(serial_number=serial_number)
-        if item_id:
-            items = items.filter(id=item_id)
+    # --- exact / structured field filters --------------------------------
+    if sku:
+        items = items.filter(product__sku=sku)
+    if upc:
+        items = items.filter(product__upc=upc)
+    if location:
+        items = items.filter(location_id__in=_expanded_location_ids(location))
+    if serial_number:
+        items = items.filter(serial_number=serial_number)
+    if item_id:
+        items = items.filter(id=item_id)
+
+    # --- keyword search via FTS (ranked, multi-field) --------------------
+    if name:
+        ids = search_index.search_ids(name)
+        # A typed ``LOC-<id>`` (or location-name fragment) resolves to the
+        # container's subtree — FTS indexes the location *path names* but not the
+        # synthetic ``LOC-<id>`` code, so honour that route alongside the ranked hits.
+        loc_subtree_ids = _expanded_location_ids(name)
+        if ids is None:
+            # Degenerate query (or FTS error): legacy icontains fan-out.
+            name_q = (
+                Q(product__name__icontains=name)
+                | Q(product__sku__icontains=name)
+                | Q(product__upc__icontains=name)
+                | Q(serial_number__icontains=name)
+            )
+            if loc_subtree_ids:
+                name_q |= Q(location_id__in=loc_subtree_ids)
+            items = items.filter(name_q)
+        else:
+            # bm25-ranked FTS hits first, then any subtree-only location matches.
+            ranked = list(ids)
+            for extra in items.filter(location_id__in=loc_subtree_ids).values_list(
+                "id", flat=True
+            ):
+                if extra not in ranked:
+                    ranked.append(extra)
+            if not ranked:
+                items = items.none()
+            else:
+                rank = Case(
+                    *[When(id=pk, then=pos) for pos, pk in enumerate(ranked)],
+                    output_field=IntegerField(),
+                )
+                items = items.filter(id__in=ranked).order_by(rank)
 
     # --- status -----------------------------------------------------------
     if selected_statuses:

@@ -314,7 +314,11 @@ blast radius; (3) MQTT auto-sync writing back to real inventory.
   `view-log` page now parses a level out of each line and renders a **DataTables** table
   (sortable columns + global search + a level-filter dropdown), tailing up to 1000 lines
   (`?lines=` overridable). (2026-06-10)
-- [ ] Expose a full FTS5 search box to enable improved search functions including wildcards and contains across fields
+- [x] Expose a full FTS5 search box to enable improved search functions including wildcards and contains across fields
+  — FTS5 `unicode61` prefix index over `InventoryItem` (`search_index.py`); kept fresh via
+  `post_save`/`post_delete` signals + a `rebuild_search_index` command. Powers the keyword search
+  (ranked via bm25, prefix `term*` matching) and composes with the existing structured filters;
+  migration `0040` creates and auto-populates the index (no manual prod step).
 
 ### Shipped 2026-06-11 (evening batch — James's field-test items + autonomous backlog)
 - [x] **Phase 12 follow-ups** — `/edit/` **Move** button (preloads the item); **DK-1201 unit
