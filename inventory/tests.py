@@ -6656,3 +6656,57 @@ class RebuildSearchIndexCommandTests(TestCase):
         call_command("rebuild_search_index", stdout=out)
         self.assertIn("Reindexed", out.getvalue())
         self.assertEqual(len(search_index.search_ids("petg")), 1)
+
+
+class FtsSearchViewTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+
+        from inventory import search_index
+        from inventory.models import Filament, InventoryItem, Location, Material
+
+        self.client = Client()
+        User.objects.create_user("ftsuser", "f@b.com", "pass")
+        self.client.login(username="ftsuser", password="pass")
+        mat = Material.objects.create(name="PLA", material_type="Matte")
+        loc = Location.objects.create(name="Shelf 9")
+        self.latte = InventoryItem.objects.create(
+            product=Filament.objects.create(
+                name="PLA Matte Latte",
+                upc="0000000000021",
+                material=mat,
+                color="Latte",
+                manufacturer="Bambu Lab",
+            ),
+            location=loc,
+        )
+        self.ash = InventoryItem.objects.create(
+            product=Filament.objects.create(
+                name="PLA Matte Ash",
+                upc="0000000000022",
+                material=mat,
+                color="Ash",
+                manufacturer="Bambu Lab",
+            ),
+            location=loc,
+            status=5,  # DEPLETED
+        )
+        search_index.rebuild_all()
+
+    def test_keyword_search_finds_by_color(self):
+        resp = self.client.get(reverse("inventory_search") + "?name=latte")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "PLA Matte Latte")
+        self.assertNotContains(resp, "PLA Matte Ash")
+
+    def test_keyword_composes_with_status_filter(self):
+        # Ash is DEPLETED; default search hides terminal statuses.
+        resp = self.client.get(reverse("inventory_search") + "?name=matte")
+        self.assertContains(resp, "PLA Matte Latte")
+        self.assertNotContains(resp, "PLA Matte Ash")
+
+    def test_degenerate_query_falls_back_without_error(self):
+        resp = self.client.get(
+            reverse("inventory_search") + "?name=" + "%22%22"
+        )  # just quotes
+        self.assertEqual(resp.status_code, 200)
