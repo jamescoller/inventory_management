@@ -214,9 +214,11 @@ dev-time PDF lib (`pypdf`) — not a production image dep.*
     command backfill `dry_temp_ideal_degC`/`dry_time_hrs` from the committed
     `docs/filament-tds-specs.csv` (38 rows, extracted from the TDS, blank-only/idempotent).
     Surfaces in the filament-guide table + picker cards. (PR #165)
-  - [ ] **Build-plate / hot-end still pending:** `build_plate_compat` extraction has PDF
-    spacing artifacts (e.g. "TexturedPEIPlate") and `hot_end_compat` parsed empty for all —
-    needs a cleanup pass before loading. Not displayed yet either.
+  - [x] **Build-plate / hot-end loaded + displayed.** Build-plate spacing artifacts (e.g.
+    "TexturedPEIPlate") fixed in the parser; build-plate (from a cleaned parse) + hot-end
+    (rule-based: abrasive → hardened steel) loaded via the extended
+    `docs/filament-tds-specs.csv` + `load_material_specs` (blank-only/idempotent); shown in
+    the filament-guide reference table. Human-gated prod re-run of `load_material_specs`.
 - [x] **17.2 Hex fill.** Parse `filament_hex/` → color→hex map → fill missing
   `Filament.hex_code`/`color_family`; seed a color catalog.
   - [x] **Text PDFs (11)** — `inventory/filament_hex.py` parser (dev-only `pypdf`, like 17.1) +
