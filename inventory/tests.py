@@ -6474,3 +6474,80 @@ class StoreLinksTests(TestCase):
         from inventory.store_links import store_url
 
         self.assertIsNone(store_url(manufacturer="Hatchbox", query="x"))
+
+
+class ColorSheetViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user("sheetuser", "s@b.com", "pass")
+        self.client.login(username="sheetuser", password="pass")
+        from inventory.models import FilamentColor, Material
+
+        self.mat = Material.objects.create(
+            name="PLA", material_type="Matte", mfr="Bambu Lab"
+        )
+        FilamentColor.objects.create(
+            material_name="PLA",
+            material_type="Matte",
+            color_name="Latte",
+            hex_code="#E8D9C0",
+            material=self.mat,
+        )
+        FilamentColor.objects.create(
+            material_name="PLA",
+            material_type="Matte",
+            color_name="Ash",
+            hex_code="#9A9A9A",
+            material=self.mat,
+        )
+
+    def test_index_lists_group_with_counts(self):
+        resp = self.client.get(reverse("filament_color_sheets"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "PLA")
+        self.assertContains(resp, "bambu-lab-pla-matte")
+
+    def test_sheet_renders_owned_marker(self):
+        from inventory.models import Filament, InventoryItem, Location
+
+        loc = Location.objects.create(name="shelf-a")
+        fil = Filament.objects.create(
+            name="PLA Matte Latte",
+            upc="0000000000099",
+            material=self.mat,
+            color="Latte",
+            hex_code="#E8D9C0",
+            manufacturer="Bambu Lab",
+        )
+        InventoryItem.objects.create(product=fil, location=loc, status=4)  # STORED
+        resp = self.client.get(
+            reverse("filament_color_sheet", kwargs={"slug": "bambu-lab-pla-matte"})
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Latte")
+        self.assertContains(resp, "Ash")
+        self.assertEqual(resp.context["n_owned"], 1)
+
+    def test_depleted_spool_not_counted_owned(self):
+        from inventory.models import Filament, InventoryItem, Location
+
+        loc = Location.objects.create(name="shelf-b")
+        fil = Filament.objects.create(
+            name="PLA Matte Ash",
+            upc="0000000000098",
+            material=self.mat,
+            color="Ash",
+            hex_code="#9A9A9A",
+            manufacturer="Bambu Lab",
+        )
+        InventoryItem.objects.create(product=fil, location=loc, status=5)  # DEPLETED
+        resp = self.client.get(
+            reverse("filament_color_sheet", kwargs={"slug": "bambu-lab-pla-matte"})
+        )
+        self.assertEqual(resp.context["n_owned"], 0)
+
+    def test_unknown_slug_404(self):
+        resp = self.client.get(
+            reverse("filament_color_sheet", kwargs={"slug": "nope-nope"})
+        )
+        self.assertEqual(resp.status_code, 404)
