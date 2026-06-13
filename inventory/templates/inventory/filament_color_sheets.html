@@ -1,0 +1,29 @@
+{% extends "inventory/base.html" %}
+{% block content %}
+  <div class="container my-4">
+    {% include "inventory/filament_nav.html" with active="sheets" %}
+    <h1 class="h4 mb-3">Color Reference Sheets</h1>
+    <p class="text-muted">Printable per-material color cards. Owned colors are flagged.</p>
+    <div class="row g-3">
+      {% for card in cards %}
+        <div class="col-12 col-sm-6 col-lg-4">
+          <a class="text-decoration-none"
+             href="{% url 'filament_color_sheet' slug=card.slug %}">
+            <div class="card h-100 shadow-sm">
+              <div class="card-body">
+                <h2 class="h6 mb-1">{{ card.manufacturer }}</h2>
+                <div class="fw-semibold">{{ card.material_name }} {{ card.material_type }}</div>
+                <div class="small text-muted">
+                  {{ card.n_colors }} colors · you own {{ card.n_owned }}
+                </div>
+              </div>
+            </div>
+          </a>
+        </div>
+      {% empty %}
+        <p class="text-muted">No catalog colors seeded yet. Run
+          <code>manage.py seed_filament_colors</code>.</p>
+      {% endfor %}
+    </div>
+  </div>
+{% endblock content %}

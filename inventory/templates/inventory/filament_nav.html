@@ -27,6 +27,12 @@ keep working on their own and the hub is purely additive / reversible.
         </a>
     </li>
     <li class="nav-item">
+        <a class="nav-link{% if active == 'sheets' %} active{% endif %}"
+           href="{% url 'filament_color_sheets' %}">
+            <i class="bi bi-grid-1x2-fill" aria-hidden="true"></i> Sheets
+        </a>
+    </li>
+    <li class="nav-item">
         <a class="nav-link{% if active == 'guide' %} active{% endif %}"
            href="{% url 'filament_guide' %}">
             <i class="bi bi-stars" aria-hidden="true"></i> Selection Guide
