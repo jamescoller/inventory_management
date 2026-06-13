@@ -1,0 +1,149 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_SQLITE",
+      "label": "Inventory SQLite",
+      "description": "frser-sqlite-datasource pointed read-only at the inventory WAL DB",
+      "type": "datasource",
+      "pluginId": "frser-sqlite-datasource",
+      "pluginName": "SQLite"
+    }
+  ],
+  "title": "Bambu Printer Telemetry",
+  "uid": "bambu-telemetry",
+  "tags": ["bambu", "inventory", "3dprinting"],
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "",
+  "time": { "from": "now-24h", "to": "now" },
+  "refresh": "1m",
+  "templating": {
+    "list": [
+      {
+        "name": "DS_SQLITE",
+        "label": "SQLite datasource",
+        "type": "datasource",
+        "query": "frser-sqlite-datasource",
+        "current": {},
+        "hide": 0
+      }
+    ]
+  },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Printer status (latest)",
+      "type": "table",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "${DS_SQLITE}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "options": { "showHeader": true },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "${DS_SQLITE}" },
+          "queryType": "table",
+          "rawQueryText": "SELECT d.name AS Printer, s.gcode_state AS State, s.mc_percent AS 'Progress %', s.remaining_min AS 'Remaining (min)', s.nozzle_temp AS 'Nozzle C', s.bed_temp AS 'Bed C', s.subtask_name AS Job, s.updated_at AS Updated FROM inventory_printerstate s JOIN inventory_printerdevice d ON d.id = s.device_id WHERE d.enabled = 1 ORDER BY d.name;",
+          "queryText": "SELECT d.name AS Printer, s.gcode_state AS State, s.mc_percent AS 'Progress %', s.remaining_min AS 'Remaining (min)', s.nozzle_temp AS 'Nozzle C', s.bed_temp AS 'Bed C', s.subtask_name AS Job, s.updated_at AS Updated FROM inventory_printerstate s JOIN inventory_printerdevice d ON d.id = s.device_id WHERE d.enabled = 1 ORDER BY d.name;",
+          "timeColumns": []
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "AMS humidity (current)",
+      "type": "bargauge",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "${DS_SQLITE}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": true }
+      },
+      "fieldConfig": {
+        "defaults": { "min": 0, "max": 100, "unit": "humidity", "decimals": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "${DS_SQLITE}" },
+          "queryType": "table",
+          "rawQueryText": "SELECT d.name || ' AMS' || u.ams_index AS metric, u.humidity AS value FROM inventory_amsunitstate u JOIN inventory_printerdevice d ON d.id = u.device_id WHERE u.humidity IS NOT NULL ORDER BY d.name, u.ams_index;",
+          "queryText": "SELECT d.name || ' AMS' || u.ams_index AS metric, u.humidity AS value FROM inventory_amsunitstate u JOIN inventory_printerdevice d ON d.id = u.device_id WHERE u.humidity IS NOT NULL ORDER BY d.name, u.ams_index;",
+          "timeColumns": []
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Filament remaining by tray",
+      "type": "bargauge",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "${DS_SQLITE}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": true }
+      },
+      "fieldConfig": {
+        "defaults": { "min": 0, "max": 100, "unit": "percent", "decimals": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "${DS_SQLITE}" },
+          "queryType": "table",
+          "rawQueryText": "SELECT d.name || ' AMS' || c.ams_index || '/T' || c.tray_index || CASE WHEN c.tray_type != '' THEN ' (' || c.tray_type || ')' ELSE '' END AS metric, c.remain_pct AS value FROM inventory_amschannelstate c JOIN inventory_printerdevice d ON d.id = c.device_id WHERE c.remain_pct >= 0 ORDER BY d.name, c.ams_index, c.tray_index;",
+          "queryText": "SELECT d.name || ' AMS' || c.ams_index || '/T' || c.tray_index || CASE WHEN c.tray_type != '' THEN ' (' || c.tray_type || ')' ELSE '' END AS metric, c.remain_pct AS value FROM inventory_amschannelstate c JOIN inventory_printerdevice d ON d.id = c.device_id WHERE c.remain_pct >= 0 ORDER BY d.name, c.ams_index, c.tray_index;",
+          "timeColumns": []
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Print progress trend",
+      "type": "timeseries",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "${DS_SQLITE}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "drawStyle": "line", "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "${DS_SQLITE}" },
+          "queryType": "time series",
+          "rawQueryText": "SELECT strftime('%s', t.ts) * 1000 AS time, d.name AS metric, t.mc_percent AS value FROM inventory_telemetrysample t JOIN inventory_printerdevice d ON d.id = t.device_id WHERE t.ts >= datetime('now', '-24 hours') ORDER BY t.ts;",
+          "queryText": "SELECT strftime('%s', t.ts) * 1000 AS time, d.name AS metric, t.mc_percent AS value FROM inventory_telemetrysample t JOIN inventory_printerdevice d ON d.id = t.device_id WHERE t.ts >= datetime('now', '-24 hours') ORDER BY t.ts;",
+          "timeColumns": ["time"]
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Nozzle / bed temperature trend",
+      "type": "timeseries",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "${DS_SQLITE}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": {
+        "defaults": { "unit": "celsius", "custom": { "drawStyle": "line", "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "${DS_SQLITE}" },
+          "queryType": "time series",
+          "rawQueryText": "SELECT strftime('%s', t.ts) * 1000 AS time, d.name || ' nozzle' AS metric, t.nozzle_temp AS value FROM inventory_telemetrysample t JOIN inventory_printerdevice d ON d.id = t.device_id WHERE t.ts >= datetime('now', '-24 hours') AND t.nozzle_temp IS NOT NULL ORDER BY t.ts;",
+          "queryText": "SELECT strftime('%s', t.ts) * 1000 AS time, d.name || ' nozzle' AS metric, t.nozzle_temp AS value FROM inventory_telemetrysample t JOIN inventory_printerdevice d ON d.id = t.device_id WHERE t.ts >= datetime('now', '-24 hours') AND t.nozzle_temp IS NOT NULL ORDER BY t.ts;",
+          "timeColumns": ["time"]
+        }
+      ]
+    }
+  ]
+}

@@ -186,10 +186,18 @@ Spec/plan in `docs/superpowers/`. Live: all 4 printers mirroring, 0 DB-locks.*
 - [x] **Infra (PR-B):** `TelemetrySample` downsampled (state-transition / 5-min while RUNNING).
   **Decoupled from `InventoryItem`** (no writes to inventory — 16.3 owns the joins).
 
-### 16.2 — Grafana / HA dashboard  *(item #8)*
-- [ ] Extend the **existing** `scripts/ha_stats_export.py` (already reads SQLite read-only →
-  atomic JSON, served by nginx at `/ha-stats/`, cron 5 min) with a `telemetry.json`. HA +
-  Grafana panels. Low friction — reuses a proven, deployed pipeline.
+### 16.2 — Grafana / HA dashboard  *(item #8)* — **DONE (2026-06-13)**
+- [x] `telemetry.json` export — shipped in PR #144 (`build_telemetry` in
+  `scripts/ha_stats_export.py`); served at `/ha-stats/telemetry.json`, 5-min cron, live on prod.
+- [x] **Grafana dashboard** — `docs/ha/grafana_dashboard.json` (frser-sqlite-datasource, templated
+  `${DS_SQLITE}`): printer-status table, AMS-humidity + filament-remaining bar gauges, progress +
+  temp trends from `TelemetrySample`. Reads the WAL DB read-only. Setup in `docs/ha/README.md`.
+- [x] **HA "Printer Fleet" Lovelace dashboard** — authored in the **`home-assistant-config`** repo
+  (`dashboards/printers.yaml` + `configuration.yaml` registration), built on the **native
+  `bambu_lab` entities** + `workshop_*`/`inventory_*` sensors (no new REST sensors — they'd
+  duplicate the real-time native integration). All entity refs validated against the HA registry;
+  yamllint clean. *(Both are import-and-tweak artifacts — not rendered/verified in HA/Grafana from
+  the dev box.)*
 
 ### 16.3 — Auto-sync  *(item #7 phase-2, #10-auto; gated on telemetry trusted)*
 - [ ] Match AMS `tray_uuid`(RFID) → `InventoryItem.serial_number`; write serial +
