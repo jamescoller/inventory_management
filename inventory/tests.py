@@ -6528,3 +6528,73 @@ class GuideTableSpecColumnsTests(TestCase):
         self.assertContains(resp, "Hot End")
         self.assertContains(resp, "Textured PEI Plate")
         self.assertContains(resp, "Hardened steel")
+
+
+class SearchIndexTests(TestCase):
+    def setUp(self):
+        from django.db import connection
+
+        from inventory import search_index
+
+        # The migration also creates this; IF NOT EXISTS makes setUp safe pre-migration.
+        with connection.cursor() as cur:
+            cur.execute(search_index.FTS_CREATE_SQL)
+
+    def _item(self, color="Latte", mtype="Matte", **kw):
+        from inventory.models import Filament, InventoryItem, Location, Material
+
+        mat, _ = Material.objects.get_or_create(name="PLA", material_type=mtype)
+        fil = Filament.objects.create(
+            name=f"PLA {mtype} {color}",
+            upc=kw.get("upc", "0000000000001"),
+            material=mat,
+            color=color,
+            manufacturer="Bambu Lab",
+        )
+        loc = kw.get("loc") or Location.objects.get_or_create(name="Shelf 3")[0]
+        return InventoryItem.objects.create(product=fil, location=loc)
+
+    def test_match_query_sanitizes(self):
+        from inventory.search_index import _to_match_query
+
+        self.assertEqual(_to_match_query("red pla"), "red* pla*")
+        self.assertEqual(_to_match_query('"matte black"'), '"matte black"')
+        self.assertEqual(_to_match_query("  "), None)
+        self.assertEqual(_to_match_query('a"b(c'), "a* b* c*")  # metachars stripped
+
+    def test_index_and_search_prefix(self):
+        from inventory import search_index
+
+        item = self._item(color="Latte")
+        search_index.index_item(item)
+        self.assertEqual(search_index.search_ids("lat"), [item.pk])  # prefix
+        self.assertEqual(search_index.search_ids("zzz"), [])  # valid, no hits
+
+    def test_search_across_fields_and_unindex(self):
+        from inventory import search_index
+
+        item = self._item(color="Latte")
+        search_index.index_item(item)
+        self.assertIn(item.pk, search_index.search_ids("bambu"))  # manufacturer
+        self.assertIn(item.pk, search_index.search_ids("matte"))  # material
+        search_index.unindex_item(item.pk)
+        self.assertEqual(search_index.search_ids("lat"), [])
+
+    def test_location_ancestor_path_matches_parent(self):
+        from inventory import search_index
+        from inventory.models import Location
+
+        rack = Location.objects.create(name="Rack A")
+        shelf = Location.objects.create(name="Shelf 7", parent=rack)
+        item = self._item(loc=shelf)
+        search_index.index_item(item)
+        self.assertIn(item.pk, search_index.search_ids("Rack"))
+
+    def test_rebuild_all(self):
+        from inventory import search_index
+
+        self._item(color="Latte")
+        self._item(color="Ash", upc="0000000000002")
+        n = search_index.rebuild_all()
+        self.assertEqual(n, 2)
+        self.assertEqual(len(search_index.search_ids("pla")), 2)
