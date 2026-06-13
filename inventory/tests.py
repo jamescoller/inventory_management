@@ -6452,3 +6452,52 @@ class BuildPlateParserCleanupTests(TestCase):
 
         text = "Bed Type Cool Plate / Textured PEI Plate Bed Surface foo"
         self.assertEqual(_extract_build_plate(text), "Cool Plate, Textured PEI Plate")
+
+
+class MaterialSpecsStringFieldsTests(TestCase):
+    def _csv(self, line):
+        import os
+        import tempfile
+
+        fd, path = tempfile.mkstemp(suffix=".csv")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(
+                "name,material_type,dry_temp_ideal_degC,dry_time_hrs,"
+                "build_plate_compat,hot_end_compat\n" + line + "\n"
+            )
+        return path
+
+    def test_fills_blank_string_fields(self):
+        from inventory.material_specs import load_material_specs
+        from inventory.models import Material
+
+        Material.objects.create(name="PLA", material_type="CF")
+        path = self._csv('PLA,CF,55,8,"Textured PEI Plate",Hardened steel')
+        load_material_specs(path)
+        m = Material.objects.get(name="PLA", material_type="CF")
+        self.assertEqual(m.build_plate_compat, "Textured PEI Plate")
+        self.assertEqual(m.hot_end_compat, "Hardened steel")
+        self.assertEqual(m.dry_temp_ideal_degC, 55)  # ints still load
+
+    def test_blank_only_does_not_overwrite(self):
+        from inventory.material_specs import load_material_specs
+        from inventory.models import Material
+
+        Material.objects.create(
+            name="PLA", material_type="Matte", build_plate_compat="Cool Plate"
+        )
+        path = self._csv('PLA,Matte,50,8,"Textured PEI Plate",Standard')
+        load_material_specs(path)  # overwrite=False default
+        m = Material.objects.get(name="PLA", material_type="Matte")
+        self.assertEqual(m.build_plate_compat, "Cool Plate")  # unchanged
+        self.assertEqual(m.hot_end_compat, "Standard")  # was blank -> filled
+
+    def test_overwrite_replaces_string(self):
+        from inventory.material_specs import load_material_specs
+        from inventory.models import Material
+
+        Material.objects.create(name="ABS", material_type="", build_plate_compat="Old")
+        path = self._csv('ABS,,80,8,"Textured PEI Plate",Standard')
+        load_material_specs(path, overwrite=True)
+        m = Material.objects.get(name="ABS", material_type="")
+        self.assertEqual(m.build_plate_compat, "Textured PEI Plate")
