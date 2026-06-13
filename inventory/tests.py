@@ -6609,3 +6609,25 @@ class FtsMigrationTests(TestCase):
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='inventory_item_fts'"
             )
             self.assertIsNotNone(cur.fetchone())
+
+
+class SearchIndexSignalTests(TestCase):
+    def test_save_indexes_and_delete_unindexes(self):
+        from inventory import search_index
+        from inventory.models import Filament, InventoryItem, Location, Material
+
+        mat = Material.objects.create(name="PLA", material_type="Silk")
+        fil = Filament.objects.create(
+            name="PLA Silk Gold",
+            upc="0000000000009",
+            material=mat,
+            color="Gold",
+            manufacturer="Bambu Lab",
+        )
+        loc = Location.objects.create(name="Shelf 1")
+        item = InventoryItem.objects.create(
+            product=fil, location=loc
+        )  # post_save -> index
+        self.assertIn(item.pk, search_index.search_ids("gold"))
+        item.delete()  # post_delete -> unindex
+        self.assertEqual(search_index.search_ids("gold"), [])
