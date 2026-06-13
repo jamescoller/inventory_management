@@ -6631,3 +6631,28 @@ class SearchIndexSignalTests(TestCase):
         self.assertIn(item.pk, search_index.search_ids("gold"))
         item.delete()  # post_delete -> unindex
         self.assertEqual(search_index.search_ids("gold"), [])
+
+
+class RebuildSearchIndexCommandTests(TestCase):
+    def test_command_reindexes(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from inventory import search_index
+        from inventory.models import Filament, InventoryItem, Location, Material
+
+        mat = Material.objects.create(name="PETG", material_type="HF")
+        fil = Filament.objects.create(
+            name="PETG HF Blue",
+            upc="0000000000011",
+            material=mat,
+            color="Blue",
+        )
+        InventoryItem.objects.create(
+            product=fil, location=Location.objects.create(name="Shelf 2")
+        )
+        out = StringIO()
+        call_command("rebuild_search_index", stdout=out)
+        self.assertIn("Reindexed", out.getvalue())
+        self.assertEqual(len(search_index.search_ids("petg")), 1)
