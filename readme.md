@@ -193,9 +193,10 @@ replacement value).
   properties) in a DataTables table, sortable by category.
 
 Guide property data is loaded from `docs/filament-guide-data.csv` via the
-`load_guide_data` management command (human-gated — review the CSV first). Hex
-color swatches (including gradient support for dual-color filaments) are loaded from
-`docs/filament-colors.csv` via `load_filament_hex`.
+`load_guide_data` management command (human-gated — review the CSV first). The
+filament color catalog (including gradient support for dual-color filaments) is
+loaded from `docs/filament-colors.csv` via `seed_filament_colors` (see "Color
+reference sheets" below).
 
 ## Color reference sheets
 

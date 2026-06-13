@@ -230,6 +230,9 @@ dev-time PDF lib (`pypdf`) — not a production image dep.*
     `docs/filament-colors.csv`.)*
   - [x] Loader to backfill `Filament.hex_code`/`hex_code_2`/`color_family` from the
     reviewed CSV — `load_filament_hex` management command (human-gated; idempotent).
+    **RETIRED 2026-06-13, never run on prod** — it matched by color-name (which collides
+    across materials), so `--overwrite` would have corrupted material-specific hexes.
+    Superseded by 17.4's `FilamentColor` catalog + `seed_filament_colors` (exact-key).
 - [x] **17.3 Guide build (Phase 7 picker).** Use `filament-guide-en.pdf` +
   `docs/filament-guide-data.csv` to populate `Material` guide booleans/descriptions;
   shipped the requirements picker on `/filament-guide/` (base-polymer cards, best-subtype
@@ -240,7 +243,8 @@ dev-time PDF lib (`pypdf`) — not a production image dep.*
   (`EVERYDAY`/`ENGINEERING`/`FLEXIBLE`/`SUPPORT`; SUPPORT excluded from picker), `food_safe`
   dropped (migration `0037` with RunPython backfill). `load_guide_data` loader (38 rows from
   `docs/filament-guide-data.csv`) is idempotent + human-gated. *(James runs `migrate` +
-  `load_guide_data` + `load_filament_hex` on prod after reviewing the two CSVs.)*
+  `load_guide_data` on prod after reviewing the CSV; the hex loader was retired —
+  17.4's `seed_filament_colors` loads the color CSV instead.)*
 - [x] **17.4 Color sheets + Bambu Store link (item #9).** New `FilamentColor` catalog
   (manufacturer-aware, migration `0039`) + `seed_filament_colors` (human-gated, idempotent;
   defaults brand to `Bambu Lab`, reads an optional `manufacturer` CSV column) load

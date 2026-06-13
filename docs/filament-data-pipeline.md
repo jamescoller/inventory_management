@@ -76,11 +76,12 @@ middle ground.)* Additive migration; no data migration.
    - text-PDFs via `scripts/parse_hex_pdf.py` (`pypdf`),
    - PNGs transcribed via vision into `docs/filament-hex-from-png.csv`.
    Merge → `docs/filament-colors.csv` (`material,material_type,color,hex_code`).
-2. `manage.py load_filament_hex docs/filament-colors.csv` — for matching `Filament` rows with a
-   blank/placeholder `hex_code`, set it; `Filament.save()` recomputes `color_family`
-   (`get_color_family`, `models.py:159`). Fixes the known "swatch shows white because hex is
-   blank" class (todo Phase 3 bug). Also seed a lightweight **color catalog** (optional
-   `FilamentColor` reference table or just the CSV) for the picker.
+2. **Implemented (Phase 17.4):** `manage.py seed_filament_colors docs/filament-colors.csv` seeds
+   the **`FilamentColor` catalog** (the "color catalog" option below) verbatim from the CSV. The
+   earlier `load_filament_hex` approach (mutating `Filament.hex_code` by color-name match) was
+   **retired 2026-06-13** — color names collide across materials, so its `--overwrite` path
+   corrupted material-specific hexes. The catalog uses an exact `(manufacturer, material, subtype,
+   color)` key instead and is the data source for the color sheets + picker.
 
 ### 17.3 — Guide build (finishes Phase 5/7)
 1. Fill `docs/filament-guide-data.csv` (38 rows already stubbed) from `filament-guide-en.pdf`:
