@@ -6443,3 +6443,34 @@ class SeedFilamentColorsTests(TestCase):
                 manufacturer="Polymaker", color_name="Army Green"
             ).exists()
         )
+
+
+class StoreLinksTests(TestCase):
+    def test_bambu_product_page_when_slug_and_mfr_match(self):
+        from inventory.models import Material
+        from inventory.store_links import store_url
+
+        m = Material.objects.create(
+            name="PLA", material_type="Matte", mfr="Bambu Lab", store_slug="pla-matte"
+        )
+        url = store_url(manufacturer="Bambu Lab", material=m, query="PLA Matte Latte")
+        self.assertEqual(url, "https://us.store.bambulab.com/products/pla-matte")
+
+    def test_bambu_search_when_no_slug(self):
+        from inventory.store_links import store_url
+
+        url = store_url(
+            manufacturer="Bambu Lab", material=None, query="PLA Matte Latte"
+        )
+        self.assertIn("/search?q=PLA+Matte+Latte", url)
+
+    def test_polymaker_always_search(self):
+        from inventory.store_links import store_url
+
+        url = store_url(manufacturer="Polymaker", material=None, query="PolyTerra")
+        self.assertTrue(url.startswith("https://us.polymaker.com/search?q="))
+
+    def test_unknown_brand_returns_none(self):
+        from inventory.store_links import store_url
+
+        self.assertIsNone(store_url(manufacturer="Hatchbox", query="x"))
