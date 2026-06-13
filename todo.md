@@ -250,7 +250,9 @@ dev-time PDF lib (`pypdf`) — not a production image dep.*
   print` styling, owned colors flagged via an **exact** `(manufacturer, material, subtype,
   color)` in-stock join — no fuzzy matching). `Material.store_slug` + `inventory/store_links.py`
   build a "View in Store" link (Bambu product page when a slug is set, brand search fallback
-  otherwise, `None` for unknown brands); reused on the color-guide rows. No live price scraping
+  otherwise, `None` for unknown brands) on the color-sheet pages only; the **color-guide row
+  store link is deferred** (aggregated rows lack a single `manufacturer`/`material`, so the
+  link was not wired there — the sheet button covers the need). No live price scraping
   (stays Trashed — no public API). *(James runs `migrate` + `seed_filament_colors` on prod,
   then optionally fills Bambu `store_slug`s in admin.)*
 

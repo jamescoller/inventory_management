@@ -447,8 +447,12 @@ Spec: `docs/superpowers/specs/2026-06-13-filament-color-sheets-design.md`; plan:
   colors with no matching `Material`. Human-gated like the other loaders.
 - **`Material.store_slug`** (same migration `0039`) + **`inventory/store_links.py`** `store_url()`:
   Bambu product page when `store_slug` is set AND brand matches, brand **search fallback**
-  otherwise, `None` for unknown brands (template hides the button). Reused on the color-guide rows.
-  Deliberately **not** a per-color/per-brand slug table yet (YAGNI; upgrade path noted in the spec).
+  otherwise, `None` for unknown brands (template hides the button). Wired only into
+  `FilamentColorSheetView` (`views.py:1399`); the **color-guide row store link is DEFERRED**
+  (plan Task 6 Step 4 skipped — `filament_color_guide.html` renders aggregated rows without a
+  single `manufacturer`/`material` in scope, so no `store_link` context exists there; the sheet's
+  own button already covers the primary need). Deliberately **not** a per-color/per-brand slug
+  table yet (YAGNI; upgrade path noted in the spec).
 - Views (both `LoginRequiredMixin`, under the filament hub, carry `filament_nav.html`):
   `FilamentColorSheetIndexView` → `/filament/color-sheets/` (group cards, own-counts via ORM
   aggregation) and `FilamentColorSheetView` → `/filament/color-sheets/<slug>/`

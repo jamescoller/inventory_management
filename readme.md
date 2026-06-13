@@ -206,7 +206,8 @@ border + ✓ + roll count). Gradient colors render as a `linear-gradient` swatch
 sheet is print-optimized (`@media print` hides the nav/buttons); use the browser's
 "Print → Save as PDF" to export. A "View in Store" button deep-links to the
 manufacturer's product page (Bambu, when a `Material.store_slug` is set) or falls back
-to a brand search; the same link also appears on the color-guide rows.
+to a brand search. This button appears on the color-sheet pages only (it is not wired
+into the color-guide rows).
 
 The catalog lives in a `FilamentColor` model, seeded from `docs/filament-colors.csv`
 via the `seed_filament_colors` management command (human-gated; idempotent; defaults
