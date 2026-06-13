@@ -488,6 +488,27 @@ No migration — `Material.build_plate_compat` / `hot_end_compat` already existe
 - Surfaced as two new columns ("Build Plate" / "Hot End") in the filament-guide reference table.
 - **Prod step:** re-run `manage.py load_material_specs` (blank-only) after deploy.
 
+### FTS5 full-text search (June 2026)
+
+Replaced the OR-`icontains` keyword search with a SQLite **FTS5** index (`unicode61` tokenizer,
+prefix `term*` matching, bm25 ranking). Architecture:
+
+- `inventory/search_index.py` owns the `inventory_item_fts` virtual table (one row per
+  `InventoryItem`, `rowid = pk`). `build_document` pulls text from the **real** product subclass
+  (`get_real_instance()`, never `select_related("product")` per the polymorphic gotcha) and indexes
+  the **full location ancestor path** so a rack name matches items on its child shelves.
+  `search_ids()` returns pks ranked by bm25, or `None` for a degenerate/junk query so the caller
+  falls back to legacy `icontains` (search never 500s).
+- Kept fresh via `post_save`/`post_delete` signals on `InventoryItem` (in `inventory/signals.py`,
+  registered via `apps.ready()`). Related-model renames (Material/Location) refresh on the item's
+  next save or via the rebuild command — acceptable staleness.
+- `manage.py rebuild_search_index` does a full rebuild (after bulk imports / catalog edits).
+- Migration `0040` creates **and** auto-populates the index — **no manual prod step**; signals keep
+  it current afterward.
+- `views._filtered_search_items` routes the `name` keyword through `search_ids` and composes the
+  ranked result with the existing status/type/location/date filters; exact filters
+  (`sku`/`upc`/`serial`/`item_id`) keep their own branches.
+
 ### Roadmap (rewritten 2026-06-09 — Phases 11–18)
 
 A 10,000-ft review (2026-06-09) replaced the old Phase 5–10 framing with a forward,

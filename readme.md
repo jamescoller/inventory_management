@@ -111,7 +111,10 @@ depleted via a per-row checkbox — useful for something found out of place that
 re-shelve after the walk. To track these down later, the **Search** page has a
 **Lost & Found** button (one click → every `UNKNOWN` item plus anything with no
 location); the search form also filters by status (multi-select, including
-depleted/sold/unknown), item type, location subtree, and date-added range.
+depleted/sold/unknown), item type, location subtree, and date-added range. The
+keyword box is backed by a SQLite **FTS5** index — ranked, multi-term, prefix
+(`lat` matches "Latte") matching across name/color/material/manufacturer/serial/
+UPC/SKU/location, and it composes with all of the filters above.
 
 Missing or unreadable `INV-` tags can be reprinted in bulk: search for the items, tick
 the rows, and use the **Reprint tags** button in the selection bar.
