@@ -59,6 +59,8 @@
                             <th title="Required / recommended / not needed before printing.">Drying Req.</th>
                             <th title="Recommended drying temperature">Drying Temp</th>
                             <th title="Recommended drying time">Drying Time</th>
+                            <th title="Compatible build-plate surfaces">Build Plate</th>
+                            <th title="Nozzle / hot-end requirement">Hot End</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -113,6 +115,12 @@
                             </td>
                             <td class="text-center">
                                 {% if m.dry_time_hrs %}{{ m.dry_time_hrs }} h{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if m.build_plate_compat %}{{ m.build_plate_compat }}{% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if m.hot_end_compat %}{{ m.hot_end_compat }}{% else %}<span class="text-muted">—</span>{% endif %}
                             </td>
                         </tr>
                         {% endfor %}

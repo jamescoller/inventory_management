@@ -6501,3 +6501,30 @@ class MaterialSpecsStringFieldsTests(TestCase):
         load_material_specs(path, overwrite=True)
         m = Material.objects.get(name="ABS", material_type="")
         self.assertEqual(m.build_plate_compat, "Textured PEI Plate")
+
+
+class GuideTableSpecColumnsTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+
+        self.client = Client()
+        User.objects.create_user("guideuser", "g@b.com", "pass")
+        self.client.login(username="guideuser", password="pass")
+
+    def test_table_shows_buildplate_and_hotend(self):
+        from inventory.models import Filament, Material
+
+        mat = Material.objects.create(
+            name="PLA",
+            material_type="CF",
+            build_plate_compat="Textured PEI Plate",
+            hot_end_compat="Hardened steel",
+        )
+        # The guide table only lists materials that have filament in inventory.
+        Filament.objects.create(name="PLA CF", upc="9000000000001", material=mat)
+        resp = self.client.get(reverse("filament_guide"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Build Plate")
+        self.assertContains(resp, "Hot End")
+        self.assertContains(resp, "Textured PEI Plate")
+        self.assertContains(resp, "Hardened steel")
