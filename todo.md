@@ -269,6 +269,11 @@ dev-time PDF lib (`pypdf`) — not a production image dep.*
   link was not wired there — the sheet button covers the need). No live price scraping
   (stays Trashed — no public API). *(James runs `migrate` + `seed_filament_colors` on prod,
   then optionally fills Bambu `store_slug`s in admin.)*
+  - [x] **Follow-up (2026-06-13):** the prod seed left 15 catalog colors orphaned (PLA Tough ×7,
+    PLA Gradient ×8 had no `Material` row). Migration `0041` creates those two PLA-family Material
+    rows (specs copied from `PLA Basic`) and links the orphan `FilamentColor` rows — auto-applies on
+    deploy, self-heals prod, no manual step. `store_slug` left blank (search fallback); fill exact
+    Bambu slugs in admin for deep links.
 
 ---
 
