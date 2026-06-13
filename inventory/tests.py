@@ -6361,3 +6361,23 @@ class FilamentColorModelTests(TestCase):
             material_name="PLA", color_name="Y", hex_code="#fff"
         )
         self.assertEqual(c.manufacturer, "Bambu Lab")
+
+
+class FilamentColorAdminTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_superuser("admin1", "a@b.com", "pass")
+        self.client.login(username="admin1", password="pass")
+
+    def test_changelist_loads(self):
+        from inventory.models import FilamentColor
+
+        FilamentColor.objects.create(
+            material_name="PLA",
+            material_type="Matte",
+            color_name="Latte",
+            hex_code="#E8D9C0",
+        )
+        resp = self.client.get("/admin/inventory/filamentcolor/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Latte")

@@ -23,6 +23,7 @@ from .models import (
     AuditUnknownScan,
     Dryer,
     Filament,
+    FilamentColor,
     Hardware,
     InventoryItem,
     Location,
@@ -598,6 +599,7 @@ class MaterialAdmin(UnfoldModelAdmin):
     list_display_links = ["name"]
     list_editable = ["material_type"]
     list_filter = ["mfr", "category", "ams_capable", "drying_need"]
+    search_fields = ("name", "material_type")
     fieldsets = (
         (
             None,
@@ -851,3 +853,29 @@ class TelemetrySampleAdmin(UnfoldModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+
+@admin.register(FilamentColor)
+class FilamentColorAdmin(UnfoldModelAdmin):
+    list_display = (
+        "swatch",
+        "manufacturer",
+        "material_name",
+        "material_type",
+        "color_name",
+        "hex_code",
+        "hex_code_2",
+        "source",
+    )
+    list_filter = ("manufacturer", "material_name", "material_type")
+    search_fields = ("color_name", "material_name", "material_type")
+    list_select_related = ("material",)
+    autocomplete_fields = ("material",)
+
+    @admin.display(description="Swatch")
+    def swatch(self, obj):
+        return format_html(
+            '<span style="display:inline-block;width:22px;height:22px;'
+            'border:1px solid #999;border-radius:4px;background:{};"></span>',
+            obj.swatch_css,
+        )
