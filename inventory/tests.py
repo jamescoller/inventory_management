@@ -6301,16 +6301,19 @@ class SeedFilamentColorsTests(TestCase):
         from inventory.models import FilamentColor, Material
 
         Material.objects.create(name="PLA", material_type="Matte")
+        # "Holographic" is a deliberately non-existent material_type (no Material row,
+        # not created by any migration) so it stays orphaned for the no_material assertion.
+        # (Avoid real variants like Gradient/Tough — migration 0041 creates those.)
         path = self._write_csv(
             [
                 "PLA,Matte,Latte,#E8D9C0,,,x.pdf",
-                "PLA,Gradient,Ocean to Meadow,#307FE2,#54FF9B,,x.pdf",
+                "PLA,Holographic,Aurora,#307FE2,#54FF9B,,x.pdf",
             ]
         )
         stats = seed_filament_colors(path)
         latte = FilamentColor.objects.get(color_name="Latte")
         self.assertIsNotNone(latte.material)
-        grad = FilamentColor.objects.get(color_name="Ocean to Meadow")
+        grad = FilamentColor.objects.get(color_name="Aurora")
         self.assertIsNone(grad.material)
         self.assertTrue(grad.is_gradient)
         self.assertEqual(len(stats["no_material"]), 1)
@@ -6710,3 +6713,39 @@ class FtsSearchViewTests(TestCase):
             reverse("inventory_search") + "?name=" + "%22%22"
         )  # just quotes
         self.assertEqual(resp.status_code, 200)
+
+
+class PlaVariantMaterialsTests(TestCase):
+    """Phase 17.4 follow-up — migration 0041 creates PLA Tough/Gradient Materials."""
+
+    def test_migration_created_pla_variants(self):
+        from inventory.models import Material
+
+        for mt in ["Tough", "Gradient"]:
+            m = Material.objects.filter(name="PLA", material_type=mt).first()
+            self.assertIsNotNone(m, f"PLA {mt} Material missing")
+            self.assertEqual(m.mfr, "Bambu Lab")
+            self.assertEqual(m.category, "everyday")
+            self.assertEqual(m.drying_need, "recommended")
+            self.assertIsNotNone(m.dry_temp_ideal_degC)
+
+    def test_seed_links_pla_variant_colors(self):
+        # With the Material rows present (migration 0041), seeding a PLA Gradient color
+        # resolves its material FK — i.e. it is no longer orphaned.
+        import os
+        import tempfile
+
+        from inventory.color_catalog import seed_filament_colors
+        from inventory.models import FilamentColor
+
+        fd, path = tempfile.mkstemp(suffix=".csv")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(
+                "material,material_type,color_name,hex_code,hex_code_2,notes,source_file\n"
+            )
+            fh.write("PLA,Gradient,Ocean to Meadow,#307FE2,#54FF9B,,x.pdf\n")
+        seed_filament_colors(path)
+        fc = FilamentColor.objects.get(color_name="Ocean to Meadow")
+        self.assertIsNotNone(fc.material)
+        self.assertEqual(fc.material.material_type, "Gradient")
+        self.assertTrue(fc.is_gradient)

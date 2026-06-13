@@ -471,6 +471,11 @@ Spec: `docs/superpowers/specs/2026-06-13-filament-color-sheets-design.md`; plan:
 - **No new dependencies, no `.env`/compose/nginx changes.** Migration `0039` is additive.
   **Prod deploy:** auto-deploy runs `0039`, then human-gated `manage.py seed_filament_colors`
   (227 rows), then optionally fill Bambu `store_slug`s in admin for precise product links.
+- **Follow-up (migration `0041`, 2026-06-13):** the prod seed left 15 catalog colors orphaned —
+  `PLA Tough` (×7) and `PLA Gradient` (×8) had no `Material` row. `0041` is a **data migration**
+  that `get_or_create`s those two PLA-family Material rows (temps copied from `PLA Basic` when
+  present, else 55 °C/8 h) and links the orphan `FilamentColor` rows. Additive, idempotent,
+  auto-heals prod on deploy (no manual step). `store_slug` left blank → search fallback.
 
 ### Phase 17.1 follow-up — build-plate + hot-end (June 2026)
 
