@@ -472,6 +472,22 @@ Spec: `docs/superpowers/specs/2026-06-13-filament-color-sheets-design.md`; plan:
   **Prod deploy:** auto-deploy runs `0039`, then human-gated `manage.py seed_filament_colors`
   (227 rows), then optionally fill Bambu `store_slug`s in admin for precise product links.
 
+### Phase 17.1 follow-up — build-plate + hot-end (June 2026)
+
+Finishes the 17.1 spec items that were still pending after the drying temp/time loader (PR #165).
+No migration — `Material.build_plate_compat` / `hot_end_compat` already existed.
+
+- Fixed the build-plate PDF spacing artifact in `inventory/filament_tds._extract_build_plate`
+  ("TexturedPEIPlate" → "Textured PEI Plate") via case-boundary regex re-spacing.
+- Both free-text fields now load from the **same** committed CSV + loader as drying temps:
+  `docs/filament-tds-specs.csv` (extended with `build_plate_compat`,`hot_end_compat` columns) →
+  `inventory/material_specs.load_material_specs` (blank-only/idempotent; `--overwrite` to replace).
+- **Hot-end is rule-based, not parsed** — the TDS rarely states a nozzle requirement, so the CSV
+  sets "Hardened steel" for abrasive materials (CF/GF or glow/metal/marble/wood/sparkle/galaxy),
+  "Standard" otherwise.
+- Surfaced as two new columns ("Build Plate" / "Hot End") in the filament-guide reference table.
+- **Prod step:** re-run `manage.py load_material_specs` (blank-only) after deploy.
+
 ### Roadmap (rewritten 2026-06-09 — Phases 11–18)
 
 A 10,000-ft review (2026-06-09) replaced the old Phase 5–10 framing with a forward,

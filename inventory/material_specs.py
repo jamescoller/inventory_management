@@ -12,6 +12,7 @@ import csv
 from inventory.models import Material
 
 INT_FIELDS = ["dry_temp_ideal_degC", "dry_time_hrs"]
+STR_FIELDS = ["build_plate_compat", "hot_end_compat"]
 
 
 def _as_int(value):
@@ -45,8 +46,15 @@ def load_material_specs(csv_path, *, overwrite=False):
                 if (overwrite or getattr(obj, f) is None) and getattr(obj, f) != want:
                     setattr(obj, f, want)
                     changed = True
+            for f in STR_FIELDS:
+                want = (row.get(f) or "").strip()
+                if not want:
+                    continue
+                if (overwrite or getattr(obj, f) == "") and getattr(obj, f) != want:
+                    setattr(obj, f, want)
+                    changed = True
             if changed:
-                obj.save(update_fields=INT_FIELDS)
+                obj.save(update_fields=INT_FIELDS + STR_FIELDS)
                 stats["updated"] += 1
             else:
                 stats["unchanged"] += 1
