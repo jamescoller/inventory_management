@@ -117,6 +117,10 @@ def _extract_build_plate(text: str) -> str:
     if not m:
         return ""
     val = _norm(m.group(1))
+    # PDF text extraction concatenates words ("TexturedPEIPlate"); re-insert
+    # spaces at case boundaries before normalizing separators.
+    val = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", val)
+    val = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", " ", val)
     # Normalise separators to a comma list and de-dupe internal double spaces.
     val = re.sub(r"\s*/\s*", ", ", val)
     val = re.sub(r"\s+or\s+", ", ", val, flags=re.IGNORECASE)

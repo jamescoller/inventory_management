@@ -6437,3 +6437,18 @@ class ColorSheetViewTests(TestCase):
             reverse("filament_color_sheet", kwargs={"slug": "nope-nope"})
         )
         self.assertEqual(resp.status_code, 404)
+
+
+class BuildPlateParserCleanupTests(TestCase):
+    def test_splits_concatenated_plate_names(self):
+        from inventory.filament_tds import _extract_build_plate
+
+        # Simulates PDF text-extraction concatenation around the Bed Type row.
+        text = "Build Plate Type TexturedPEIPlate Bed Temperature 60"
+        self.assertEqual(_extract_build_plate(text), "Textured PEI Plate")
+
+    def test_plain_value_still_parses(self):
+        from inventory.filament_tds import _extract_build_plate
+
+        text = "Bed Type Cool Plate / Textured PEI Plate Bed Surface foo"
+        self.assertEqual(_extract_build_plate(text), "Cool Plate, Textured PEI Plate")
