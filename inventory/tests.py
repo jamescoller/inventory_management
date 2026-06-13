@@ -6381,3 +6381,65 @@ class FilamentColorAdminTests(TestCase):
         resp = self.client.get("/admin/inventory/filamentcolor/")
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Latte")
+
+
+class SeedFilamentColorsTests(TestCase):
+    def _write_csv(self, rows, header=None):
+        import tempfile
+
+        header = (
+            header
+            or "material,material_type,color_name,hex_code,hex_code_2,notes,source_file"
+        )
+        fd, path = tempfile.mkstemp(suffix=".csv")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(header + "\n")
+            for r in rows:
+                fh.write(r + "\n")
+        return path
+
+    def test_seed_is_idempotent_and_defaults_manufacturer(self):
+        from inventory.color_catalog import seed_filament_colors
+        from inventory.models import FilamentColor
+
+        path = self._write_csv(["PLA,Matte,Latte,#E8D9C0,,,Bambu_PLA_Matte.pdf"])
+        s1 = seed_filament_colors(path)
+        self.assertEqual(s1["created"], 1)
+        c = FilamentColor.objects.get(color_name="Latte")
+        self.assertEqual(c.manufacturer, "Bambu Lab")
+        s2 = seed_filament_colors(path)
+        self.assertEqual((s2["created"], s2["unchanged"]), (0, 1))
+
+    def test_resolves_material_fk_and_reports_missing(self):
+        from inventory.color_catalog import seed_filament_colors
+        from inventory.models import FilamentColor, Material
+
+        Material.objects.create(name="PLA", material_type="Matte")
+        path = self._write_csv(
+            [
+                "PLA,Matte,Latte,#E8D9C0,,,x.pdf",
+                "PLA,Gradient,Ocean to Meadow,#307FE2,#54FF9B,,x.pdf",
+            ]
+        )
+        stats = seed_filament_colors(path)
+        latte = FilamentColor.objects.get(color_name="Latte")
+        self.assertIsNotNone(latte.material)
+        grad = FilamentColor.objects.get(color_name="Ocean to Meadow")
+        self.assertIsNone(grad.material)
+        self.assertTrue(grad.is_gradient)
+        self.assertEqual(len(stats["no_material"]), 1)
+
+    def test_explicit_manufacturer_column(self):
+        from inventory.color_catalog import seed_filament_colors
+        from inventory.models import FilamentColor
+
+        path = self._write_csv(
+            ["Polymaker,PolyTerra,,Army Green,#5C6B47,,,p.pdf"],
+            header="manufacturer,material,material_type,color_name,hex_code,hex_code_2,notes,source_file",
+        )
+        seed_filament_colors(path)
+        self.assertTrue(
+            FilamentColor.objects.filter(
+                manufacturer="Polymaker", color_name="Army Green"
+            ).exists()
+        )
