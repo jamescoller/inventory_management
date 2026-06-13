@@ -6598,3 +6598,14 @@ class SearchIndexTests(TestCase):
         n = search_index.rebuild_all()
         self.assertEqual(n, 2)
         self.assertEqual(len(search_index.search_ids("pla")), 2)
+
+
+class FtsMigrationTests(TestCase):
+    def test_fts_table_exists_after_migrations(self):
+        from django.db import connection
+
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='inventory_item_fts'"
+            )
+            self.assertIsNotNone(cur.fetchone())
