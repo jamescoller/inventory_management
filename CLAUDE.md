@@ -488,7 +488,23 @@ No migration — `Material.build_plate_compat` / `hot_end_compat` already existe
 - Surfaced as two new columns ("Build Plate" / "Hot End") in the filament-guide reference table.
 - **Prod step:** re-run `manage.py load_material_specs` (blank-only) after deploy.
 
-### FTS5 full-text search (June 2026)
+### Phase 16.2 — telemetry dashboards (June 2026)
+
+Visualization for the 16.1 telemetry mirror. **The export half was already done** (`telemetry.json`
+via `scripts/ha_stats_export.build_telemetry`, PR #144, live). This added the dashboards:
+- **Grafana** (`docs/ha/grafana_dashboard.json` + `docs/ha/README.md`): reads the WAL DB
+  **read-only** via the `frser-sqlite-datasource` plugin (templated `${DS_SQLITE}`) — printer-status
+  table, AMS-humidity + filament-remaining bar gauges, progress/temp trends from `TelemetrySample`.
+  Humidity has **no** history (`TelemetrySample` carries print state only).
+- **HA "Printer Fleet" Lovelace dashboard** — authored in the **separate `home-assistant-config`
+  repo** (`~/projects/home-assistant-config`: `dashboards/printers.yaml` + `configuration.yaml`),
+  NOT here. **Key lesson:** HA already has the `bambu_lab` HACS integration with native real-time
+  entities (`sensor.<model>_<serial>_*`; RuPaul's print-state entities use a `rupaul_` alias while
+  its AMS stays under the `x1c_` prefix; X1C AMS has no `*_drying` binary; some AMS entities carry a
+  `_2` suffix). So REST sensors off `telemetry.json` would **duplicate** the native, real-time data —
+  the dashboard reuses native + `workshop_*`/`inventory_*` entities instead. The HA repo gates entity
+  refs with a `validate-entities` pre-commit hook (checks `tools/entity_registry.json`) + yamllint +
+  an HA config-check CI — run its `pre-commit` before any HA-repo PR.
 
 Replaced the OR-`icontains` keyword search with a SQLite **FTS5** index (`unicode61` tokenizer,
 prefix `term*` matching, bm25 ranking). Architecture:
