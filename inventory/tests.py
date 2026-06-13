@@ -6306,3 +6306,58 @@ class LoadMaterialSpecsTests(TestCase):
         stats2 = load_material_specs(path)
         self.assertEqual(stats2["updated"], 0)
         self.assertEqual(stats2["unchanged"], 1)
+
+
+class FilamentColorModelTests(TestCase):
+    def test_str_and_gradient_swatch(self):
+        from inventory.models import FilamentColor
+
+        solid = FilamentColor.objects.create(
+            material_name="PLA",
+            material_type="Matte",
+            color_name="Latte",
+            hex_code="#E8D9C0",
+        )
+        self.assertIn("PLA Matte", str(solid))
+        self.assertFalse(solid.is_gradient)
+        # _norm_hex lowercases (matching Filament's hex handling), so the stored
+        # value is normalized to lowercase.
+        self.assertEqual(solid.swatch_css, "#e8d9c0")
+
+        grad = FilamentColor.objects.create(
+            material_name="PLA",
+            material_type="Gradient",
+            color_name="Ocean to Meadow",
+            hex_code="#307FE2",
+            hex_code_2="#54FF9B",
+        )
+        self.assertTrue(grad.is_gradient)
+        self.assertIn("linear-gradient", grad.swatch_css)
+
+    def test_save_normalizes_hex(self):
+        from inventory.models import FilamentColor
+
+        c = FilamentColor.objects.create(
+            material_name="ABS",
+            color_name="Black",
+            hex_code="000000",
+        )
+        c.refresh_from_db()
+        self.assertEqual(c.hex_code, "#000000")
+
+    def test_clean_rejects_bad_hex(self):
+        from django.core.exceptions import ValidationError as VE
+
+        from inventory.models import FilamentColor
+
+        c = FilamentColor(material_name="PLA", color_name="X", hex_code="nothex")
+        with self.assertRaises(VE):
+            c.clean()
+
+    def test_default_manufacturer_is_bambu(self):
+        from inventory.models import FilamentColor
+
+        c = FilamentColor.objects.create(
+            material_name="PLA", color_name="Y", hex_code="#fff"
+        )
+        self.assertEqual(c.manufacturer, "Bambu Lab")
