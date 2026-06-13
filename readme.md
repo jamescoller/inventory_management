@@ -196,3 +196,20 @@ Guide property data is loaded from `docs/filament-guide-data.csv` via the
 `load_guide_data` management command (human-gated — review the CSV first). Hex
 color swatches (including gradient support for dual-color filaments) are loaded from
 `docs/filament-colors.csv` via `load_filament_hex`.
+
+## Color reference sheets
+
+**Color Sheets** (`/filament/color-sheets/`) renders printable, Bambu-style swatch
+cards — one sheet per `(manufacturer, material, subtype)` — showing every catalog
+color for that material, with the colors you currently own visually flagged (double
+border + ✓ + roll count). Gradient colors render as a `linear-gradient` swatch. Each
+sheet is print-optimized (`@media print` hides the nav/buttons); use the browser's
+"Print → Save as PDF" to export. A "View in Store" button deep-links to the
+manufacturer's product page (Bambu, when a `Material.store_slug` is set) or falls back
+to a brand search. This button appears on the color-sheet pages only (it is not wired
+into the color-guide rows).
+
+The catalog lives in a `FilamentColor` model, seeded from `docs/filament-colors.csv`
+via the `seed_filament_colors` management command (human-gated; idempotent; defaults
+the brand to `Bambu Lab` and accepts an optional `manufacturer` CSV column so other
+brands drop in without code changes).

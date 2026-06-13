@@ -1,0 +1,52 @@
+{% extends "inventory/base.html" %}
+{% block extra_head %}
+  <style>
+    .swatch-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:.75rem; }
+    .swatch-cell { border:1px solid #ddd; border-radius:8px; overflow:hidden; break-inside:avoid; }
+    .swatch-cell.owned { border:3px double #198754; }
+    .swatch-block { height:64px; }
+    .swatch-meta { padding:.4rem .5rem; font-size:.8rem; }
+    .swatch-hex { color:#666; font-variant-numeric:tabular-nums; }
+    @media print {
+      .no-print { display:none !important; }
+      body { background:#fff; }
+      a[href]::after { content:""; }
+    }
+  </style>
+{% endblock extra_head %}
+{% block content %}
+  <div class="container my-4">
+    <div class="no-print">{% include "inventory/filament_nav.html" with active="sheets" %}</div>
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+      <div>
+        <h1 class="h4 mb-0">{{ manufacturer }} · {{ material_name }} {{ material_type }}</h1>
+        <div class="small text-muted">
+          {{ colors|length }} colors · you own {{ n_owned }}
+          {% if material and material.print_temp_ideal_degC %}
+            · nozzle {{ material.print_temp_ideal_degC }}°C{% endif %}
+        </div>
+      </div>
+      <div class="no-print d-flex gap-2">
+        {% if store_link %}
+          <a class="btn btn-outline-primary btn-sm" href="{{ store_link }}" target="_blank"
+             rel="noopener">View in Store</a>
+        {% endif %}
+        <button class="btn btn-primary btn-sm" onclick="window.print()">Print sheet</button>
+      </div>
+    </div>
+    <div class="swatch-grid">
+      {% for c in colors %}
+        <div class="swatch-cell{% if c.owned_count %} owned{% endif %}">
+          <div class="swatch-block" style="background: {{ c.swatch_css }};"></div>
+          <div class="swatch-meta">
+            <div class="fw-semibold">
+              {{ c.color_name }}{% if c.owned_count %} <span title="owned">✓</span>{% endif %}
+            </div>
+            <div class="swatch-hex">{{ c.hex_code }}{% if c.hex_code_2 %} → {{ c.hex_code_2 }}{% endif %}</div>
+            {% if c.owned_count %}<div class="small text-success">{{ c.owned_count }} on hand</div>{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endblock content %}

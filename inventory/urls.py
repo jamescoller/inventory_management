@@ -26,6 +26,8 @@ from .views import (
     Dashboard,
     DryStorageOverviewView,
     FilamentColorGuideView,
+    FilamentColorSheetIndexView,
+    FilamentColorSheetView,
     FilamentGuideView,
     FilamentHubView,
     FilamentSummaryView,
@@ -129,6 +131,16 @@ urlpatterns = [
     ),
     path("filament-guide/", FilamentGuideView.as_view(), name="filament_guide"),
     path("filament-summary/", FilamentSummaryView.as_view(), name="filament_summary"),
+    path(
+        "filament/color-sheets/",
+        FilamentColorSheetIndexView.as_view(),
+        name="filament_color_sheets",
+    ),
+    path(
+        "filament/color-sheets/<slug:slug>/",
+        FilamentColorSheetView.as_view(),
+        name="filament_color_sheet",
+    ),
     path(
         "dry-storage-overview/",
         DryStorageOverviewView.as_view(),

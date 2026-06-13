@@ -241,9 +241,20 @@ dev-time PDF lib (`pypdf`) — not a production image dep.*
   dropped (migration `0037` with RunPython backfill). `load_guide_data` loader (38 rows from
   `docs/filament-guide-data.csv`) is idempotent + human-gated. *(James runs `migrate` +
   `load_guide_data` + `load_filament_hex` on prod after reviewing the two CSVs.)*
-- [ ] **17.4 Color sheets + Bambu Store link (item #9).** Generate printable per-material
-  color-reference PDFs (Bambu-style), **especially new ones for the PNG-only types**. Add a
-  "View in Bambu Store" link via SKU. *(Live price scraping stays Trashed — no public API.)*
+- [x] **17.4 Color sheets + Bambu Store link (item #9).** New `FilamentColor` catalog
+  (manufacturer-aware, migration `0039`) + `seed_filament_colors` (human-gated, idempotent;
+  defaults brand to `Bambu Lab`, reads an optional `manufacturer` CSV column) load
+  `docs/filament-colors.csv` (227 colors) into the DB — the catalog the sheets read.
+  Printable per-`(manufacturer, material, subtype)` color-reference sheets at
+  `/filament/color-sheets/` (index grid + per-group print sheet, gradient swatches, `@media
+  print` styling, owned colors flagged via an **exact** `(manufacturer, material, subtype,
+  color)` in-stock join — no fuzzy matching). `Material.store_slug` + `inventory/store_links.py`
+  build a "View in Store" link (Bambu product page when a slug is set, brand search fallback
+  otherwise, `None` for unknown brands) on the color-sheet pages only; the **color-guide row
+  store link is deferred** (aggregated rows lack a single `manufacturer`/`material`, so the
+  link was not wired there — the sheet button covers the need). No live price scraping
+  (stays Trashed — no public API). *(James runs `migrate` + `seed_filament_colors` on prod,
+  then optionally fills Bambu `store_slug`s in admin.)*
 
 ---
 

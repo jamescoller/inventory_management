@@ -11,7 +11,7 @@ from django.contrib.auth import authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.db.models import Count, Max, Q, Sum
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
@@ -26,6 +26,7 @@ from .barcode_utils import (
     generate_and_print_barcode,
     print_unit_label,
 )
+from .color_catalog import group_slug
 from .forms import (
     AMSForm,
     DryerForm,
@@ -46,6 +47,7 @@ from .models import (
     AuditUnknownScan,
     Dryer,
     Filament,
+    FilamentColor,
     Hardware,
     InventoryItem,
     Location,
@@ -59,6 +61,7 @@ from .models import (
     PurchaseReceipt,
     is_machine_item,
 )
+from .store_links import store_url
 
 logger = logging.getLogger("inventory")
 
@@ -1280,6 +1283,126 @@ class FilamentGuideView(LoginRequiredMixin, TemplateView):
             ),
         ]
         return context
+
+
+_TERMINAL_STATUSES = (
+    InventoryItem.Status.DEPLETED,
+    InventoryItem.Status.SOLD,
+    InventoryItem.Status.UNKNOWN,
+)
+
+
+def _owned_color_counts(manufacturer, material_name, material_type):
+    """Map of lowercased owned color name -> in-stock roll count for a group."""
+    rows = (
+        InventoryItem.objects.filter(
+            product__filament__manufacturer__iexact=manufacturer,
+            product__filament__material__name__iexact=material_name,
+            product__filament__material__material_type__iexact=material_type,
+        )
+        .exclude(status__in=_TERMINAL_STATUSES)
+        .values("product__filament__color")
+        .annotate(n=Count("id"))
+    )
+    return {
+        (r["product__filament__color"] or "").lower(): r["n"]
+        for r in rows
+        if r["product__filament__color"]
+    }
+
+
+class FilamentColorSheetIndexView(LoginRequiredMixin, TemplateView):
+    template_name = "inventory/filament_color_sheets.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        groups = (
+            FilamentColor.objects.values(
+                "manufacturer", "material_name", "material_type"
+            )
+            .annotate(n_colors=Count("id"))
+            .order_by("manufacturer", "material_name", "material_type")
+        )
+        cards = []
+        for g in groups:
+            owned = _owned_color_counts(
+                g["manufacturer"], g["material_name"], g["material_type"]
+            )
+            cards.append(
+                {
+                    "manufacturer": g["manufacturer"],
+                    "material_name": g["material_name"],
+                    "material_type": g["material_type"],
+                    "n_colors": g["n_colors"],
+                    "n_owned": len(owned),
+                    "slug": group_slug(
+                        g["manufacturer"], g["material_name"], g["material_type"]
+                    ),
+                }
+            )
+        ctx["cards"] = cards
+        ctx["active"] = "sheets"
+        return ctx
+
+
+class FilamentColorSheetView(LoginRequiredMixin, TemplateView):
+    template_name = "inventory/filament_color_sheet.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        slug = kwargs["slug"]
+        groups = FilamentColor.objects.values(
+            "manufacturer", "material_name", "material_type"
+        ).distinct()
+        match = next(
+            (
+                g
+                for g in groups
+                if group_slug(g["manufacturer"], g["material_name"], g["material_type"])
+                == slug
+            ),
+            None,
+        )
+        if match is None:
+            raise Http404("No such color sheet")
+
+        colors = list(
+            FilamentColor.objects.filter(
+                manufacturer=match["manufacturer"],
+                material_name=match["material_name"],
+                material_type=match["material_type"],
+            ).order_by("color_name")
+        )
+        owned = _owned_color_counts(
+            match["manufacturer"], match["material_name"], match["material_type"]
+        )
+        for c in colors:
+            c.owned_count = owned.get(c.color_name.lower(), 0)
+
+        material = (
+            colors[0].material
+            if colors and colors[0].material_id
+            else Material.objects.filter(
+                name__iexact=match["material_name"],
+                material_type__iexact=match["material_type"],
+            ).first()
+        )
+        query = f"{match['material_name']} {match['material_type']}".strip()
+        ctx.update(
+            {
+                "manufacturer": match["manufacturer"],
+                "material_name": match["material_name"],
+                "material_type": match["material_type"],
+                "colors": colors,
+                "material": material,
+                "n_owned": sum(1 for c in colors if c.owned_count),
+                "store_link": store_url(
+                    manufacturer=match["manufacturer"], material=material, query=query
+                ),
+                "active": "sheets",
+            }
+        )
+        return ctx
 
 
 class MaintenanceSummaryView(LoginRequiredMixin, TemplateView):

@@ -429,6 +429,45 @@ Hex color backfill + filament guide Stage 2 requirements picker. Spec:
   `drying_required` is replaced by `drying_need` — both safe, nightly backup is live):
   `manage.py migrate` + `manage.py load_guide_data` + `manage.py load_filament_hex`.
 
+### Phase 17.4 — what was done (June 2026)
+
+Printable color-reference sheets + manufacturer store links — finishes Phase 17 (item #9).
+Spec: `docs/superpowers/specs/2026-06-13-filament-color-sheets-design.md`; plan:
+`docs/superpowers/plans/2026-06-13-filament-color-sheets.md`.
+
+- New **`FilamentColor`** catalog (migration `0039`; manufacturer-aware, **decoupled from
+  `Material`** so a color is never dropped for lack of a `Material` row). `clean()`/`save()`
+  normalize hex like `Filament`; `unique_together` on `(manufacturer, material_name,
+  material_type, color_name)`. This is the color catalog 17.2's checklist named but never built —
+  the CSV (`docs/filament-colors.csv`, 227 colors) is now loadable into the DB.
+- **`seed_filament_colors`** command (logic in `inventory/color_catalog.py` for testability,
+  mirroring the `guide_data.py`/`hex_loader.py` split). Idempotent `get_or_create`; **defaults
+  brand to `Bambu Lab`** and reads an **optional `manufacturer` CSV column** (so Polymaker rows
+  append later with no code change); resolves the `material` FK by `(name, type)` and reports
+  colors with no matching `Material`. Human-gated like the other loaders.
+- **`Material.store_slug`** (same migration `0039`) + **`inventory/store_links.py`** `store_url()`:
+  Bambu product page when `store_slug` is set AND brand matches, brand **search fallback**
+  otherwise, `None` for unknown brands (template hides the button). Wired only into
+  `FilamentColorSheetView` (`views.py:1399`); the **color-guide row store link is DEFERRED**
+  (plan Task 6 Step 4 skipped — `filament_color_guide.html` renders aggregated rows without a
+  single `manufacturer`/`material` in scope, so no `store_link` context exists there; the sheet's
+  own button already covers the primary need). Deliberately **not** a per-color/per-brand slug
+  table yet (YAGNI; upgrade path noted in the spec).
+- Views (both `LoginRequiredMixin`, under the filament hub, carry `filament_nav.html`):
+  `FilamentColorSheetIndexView` → `/filament/color-sheets/` (group cards, own-counts via ORM
+  aggregation) and `FilamentColorSheetView` → `/filament/color-sheets/<slug>/`
+  (`slug = slugify(manufacturer-material-subtype)`, resolved against each group's computed slug —
+  no stored slug field; 404 on miss). **Owned-✓ join is exact** `(manufacturer, material, subtype,
+  color)` over **in-stock** items only (excludes DEPLETED/SOLD/UNKNOWN) — sidesteps the
+  `hex_loader.py` color-only over-match bug.
+- Print sheet: CSS-grid swatch wall, gradient swatches reused from `filament_color_guide.html`,
+  owned swatches get a double border + ✓ + roll count, `@media print` hides nav/buttons
+  (`break-inside: avoid`), inline `window.print()` trigger (no new JS file). `FilamentColorAdmin`
+  (unfold base) is fully editable so James can correct/append colors by hand.
+- **No new dependencies, no `.env`/compose/nginx changes.** Migration `0039` is additive.
+  **Prod deploy:** auto-deploy runs `0039`, then human-gated `manage.py seed_filament_colors`
+  (227 rows), then optionally fill Bambu `store_slug`s in admin for precise product links.
+
 ### Roadmap (rewritten 2026-06-09 — Phases 11–18)
 
 A 10,000-ft review (2026-06-09) replaced the old Phase 5–10 framing with a forward,

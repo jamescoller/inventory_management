@@ -1013,6 +1013,13 @@ class Material(models.Model):
 
     # Filament Guide Properties (Phase 5)
     description = models.CharField(max_length=200, blank=True, default="")
+    store_slug = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        help_text="Manufacturer store product slug (Bambu), e.g. 'pla-matte'. "
+        "Blank falls back to a store search link.",
+    )
     uv_resistant = models.BooleanField(default=False)
     flexible = models.BooleanField(default=False)
     high_strength = models.BooleanField(default=False)
@@ -1043,6 +1050,84 @@ class Material(models.Model):
         table template read this as a boolean. Only REQUIRED -> True; RECOMMENDED
         and NOT_NEEDED -> False (RECOMMENDED does not block dry-storage moves)."""
         return self.drying_need == self.DryingNeed.REQUIRED
+
+
+class FilamentColor(models.Model):
+    """Catalog of manufacturer filament colors (a reference palette), independent
+    of which spools are owned. Seeded from ``docs/filament-colors.csv`` via the
+    ``seed_filament_colors`` command. Decoupled from :class:`Material` (nullable
+    FK) so a color is never dropped for lack of a Material row (e.g. PLA Gradient).
+    """
+
+    manufacturer = models.CharField(
+        max_length=100,
+        default="Bambu Lab",
+        help_text="Brand of this color (e.g. Bambu Lab, Polymaker)",
+    )
+    material_name = models.CharField(
+        max_length=100, help_text="Base polymer, e.g. 'PLA'"
+    )
+    material_type = models.CharField(
+        max_length=50, blank=True, default="", help_text="Subtype, e.g. 'Matte'"
+    )
+    color_name = models.CharField(max_length=80)
+    hex_code = models.CharField(max_length=9, help_text="#RRGGBB; gradient start")
+    hex_code_2 = models.CharField(
+        max_length=9, blank=True, default="", help_text="Set => gradient end color"
+    )
+    material = models.ForeignKey(
+        "Material",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="catalog_colors",
+        help_text="Resolved spec row; supplies header specs + store_slug.",
+    )
+    source = models.CharField(max_length=120, blank=True, default="")
+
+    class Meta:
+        unique_together = [
+            ("manufacturer", "material_name", "material_type", "color_name")
+        ]
+        ordering = ["manufacturer", "material_name", "material_type", "color_name"]
+
+    def __str__(self):
+        sub = f" {self.material_type}" if self.material_type else ""
+        return f"{self.manufacturer} {self.material_name}{sub} — {self.color_name}"
+
+    def save(self, *args, **kwargs):
+        if self.hex_code:
+            self.hex_code = Filament._norm_hex(self.hex_code) or self.hex_code
+        if self.hex_code_2:
+            self.hex_code_2 = Filament._norm_hex(self.hex_code_2) or self.hex_code_2
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        if self.hex_code:
+            normalized = Filament._norm_hex(self.hex_code)
+            if normalized is None:
+                raise ValidationError(
+                    {"hex_code": "Invalid hex color code. Use 3 or 6 hex digits."}
+                )
+            self.hex_code = normalized
+        if self.hex_code_2:
+            normalized = Filament._norm_hex(self.hex_code_2)
+            if normalized is None:
+                raise ValidationError(
+                    {"hex_code_2": "Invalid hex color code. Use 3 or 6 hex digits."}
+                )
+            self.hex_code_2 = normalized
+
+    @property
+    def is_gradient(self):
+        return bool(self.hex_code_2)
+
+    @property
+    def swatch_css(self):
+        """CSS ``background`` value for the swatch (solid or linear-gradient)."""
+        if self.is_gradient:
+            return f"linear-gradient(135deg, {self.hex_code}, {self.hex_code_2})"
+        return self.hex_code
 
 
 class AuditSession(models.Model):

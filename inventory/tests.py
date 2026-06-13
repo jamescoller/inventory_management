@@ -6306,3 +6306,248 @@ class LoadMaterialSpecsTests(TestCase):
         stats2 = load_material_specs(path)
         self.assertEqual(stats2["updated"], 0)
         self.assertEqual(stats2["unchanged"], 1)
+
+
+class FilamentColorModelTests(TestCase):
+    def test_str_and_gradient_swatch(self):
+        from inventory.models import FilamentColor
+
+        solid = FilamentColor.objects.create(
+            material_name="PLA",
+            material_type="Matte",
+            color_name="Latte",
+            hex_code="#E8D9C0",
+        )
+        self.assertIn("PLA Matte", str(solid))
+        self.assertFalse(solid.is_gradient)
+        # _norm_hex lowercases (matching Filament's hex handling), so the stored
+        # value is normalized to lowercase.
+        self.assertEqual(solid.swatch_css, "#e8d9c0")
+
+        grad = FilamentColor.objects.create(
+            material_name="PLA",
+            material_type="Gradient",
+            color_name="Ocean to Meadow",
+            hex_code="#307FE2",
+            hex_code_2="#54FF9B",
+        )
+        self.assertTrue(grad.is_gradient)
+        self.assertIn("linear-gradient", grad.swatch_css)
+
+    def test_save_normalizes_hex(self):
+        from inventory.models import FilamentColor
+
+        c = FilamentColor.objects.create(
+            material_name="ABS",
+            color_name="Black",
+            hex_code="000000",
+        )
+        c.refresh_from_db()
+        self.assertEqual(c.hex_code, "#000000")
+
+    def test_clean_rejects_bad_hex(self):
+        from django.core.exceptions import ValidationError as VE
+
+        from inventory.models import FilamentColor
+
+        c = FilamentColor(material_name="PLA", color_name="X", hex_code="nothex")
+        with self.assertRaises(VE):
+            c.clean()
+
+    def test_default_manufacturer_is_bambu(self):
+        from inventory.models import FilamentColor
+
+        c = FilamentColor.objects.create(
+            material_name="PLA", color_name="Y", hex_code="#fff"
+        )
+        self.assertEqual(c.manufacturer, "Bambu Lab")
+
+
+class FilamentColorAdminTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_superuser("admin1", "a@b.com", "pass")
+        self.client.login(username="admin1", password="pass")
+
+    def test_changelist_loads(self):
+        from inventory.models import FilamentColor
+
+        FilamentColor.objects.create(
+            material_name="PLA",
+            material_type="Matte",
+            color_name="Latte",
+            hex_code="#E8D9C0",
+        )
+        resp = self.client.get("/admin/inventory/filamentcolor/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Latte")
+
+
+class SeedFilamentColorsTests(TestCase):
+    def _write_csv(self, rows, header=None):
+        import tempfile
+
+        header = (
+            header
+            or "material,material_type,color_name,hex_code,hex_code_2,notes,source_file"
+        )
+        fd, path = tempfile.mkstemp(suffix=".csv")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(header + "\n")
+            for r in rows:
+                fh.write(r + "\n")
+        return path
+
+    def test_seed_is_idempotent_and_defaults_manufacturer(self):
+        from inventory.color_catalog import seed_filament_colors
+        from inventory.models import FilamentColor
+
+        path = self._write_csv(["PLA,Matte,Latte,#E8D9C0,,,Bambu_PLA_Matte.pdf"])
+        s1 = seed_filament_colors(path)
+        self.assertEqual(s1["created"], 1)
+        c = FilamentColor.objects.get(color_name="Latte")
+        self.assertEqual(c.manufacturer, "Bambu Lab")
+        s2 = seed_filament_colors(path)
+        self.assertEqual((s2["created"], s2["unchanged"]), (0, 1))
+
+    def test_resolves_material_fk_and_reports_missing(self):
+        from inventory.color_catalog import seed_filament_colors
+        from inventory.models import FilamentColor, Material
+
+        Material.objects.create(name="PLA", material_type="Matte")
+        path = self._write_csv(
+            [
+                "PLA,Matte,Latte,#E8D9C0,,,x.pdf",
+                "PLA,Gradient,Ocean to Meadow,#307FE2,#54FF9B,,x.pdf",
+            ]
+        )
+        stats = seed_filament_colors(path)
+        latte = FilamentColor.objects.get(color_name="Latte")
+        self.assertIsNotNone(latte.material)
+        grad = FilamentColor.objects.get(color_name="Ocean to Meadow")
+        self.assertIsNone(grad.material)
+        self.assertTrue(grad.is_gradient)
+        self.assertEqual(len(stats["no_material"]), 1)
+
+    def test_explicit_manufacturer_column(self):
+        from inventory.color_catalog import seed_filament_colors
+        from inventory.models import FilamentColor
+
+        path = self._write_csv(
+            ["Polymaker,PolyTerra,,Army Green,#5C6B47,,,p.pdf"],
+            header="manufacturer,material,material_type,color_name,hex_code,hex_code_2,notes,source_file",
+        )
+        seed_filament_colors(path)
+        self.assertTrue(
+            FilamentColor.objects.filter(
+                manufacturer="Polymaker", color_name="Army Green"
+            ).exists()
+        )
+
+
+class StoreLinksTests(TestCase):
+    def test_bambu_product_page_when_slug_and_mfr_match(self):
+        from inventory.models import Material
+        from inventory.store_links import store_url
+
+        m = Material.objects.create(
+            name="PLA", material_type="Matte", mfr="Bambu Lab", store_slug="pla-matte"
+        )
+        url = store_url(manufacturer="Bambu Lab", material=m, query="PLA Matte Latte")
+        self.assertEqual(url, "https://us.store.bambulab.com/products/pla-matte")
+
+    def test_bambu_search_when_no_slug(self):
+        from inventory.store_links import store_url
+
+        url = store_url(
+            manufacturer="Bambu Lab", material=None, query="PLA Matte Latte"
+        )
+        self.assertIn("/search?q=PLA+Matte+Latte", url)
+
+    def test_polymaker_always_search(self):
+        from inventory.store_links import store_url
+
+        url = store_url(manufacturer="Polymaker", material=None, query="PolyTerra")
+        self.assertTrue(url.startswith("https://us.polymaker.com/search?q="))
+
+    def test_unknown_brand_returns_none(self):
+        from inventory.store_links import store_url
+
+        self.assertIsNone(store_url(manufacturer="Hatchbox", query="x"))
+
+
+class ColorSheetViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user("sheetuser", "s@b.com", "pass")
+        self.client.login(username="sheetuser", password="pass")
+        from inventory.models import FilamentColor, Material
+
+        self.mat = Material.objects.create(
+            name="PLA", material_type="Matte", mfr="Bambu Lab"
+        )
+        FilamentColor.objects.create(
+            material_name="PLA",
+            material_type="Matte",
+            color_name="Latte",
+            hex_code="#E8D9C0",
+            material=self.mat,
+        )
+        FilamentColor.objects.create(
+            material_name="PLA",
+            material_type="Matte",
+            color_name="Ash",
+            hex_code="#9A9A9A",
+            material=self.mat,
+        )
+
+    def test_index_lists_group_with_counts(self):
+        resp = self.client.get(reverse("filament_color_sheets"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "PLA")
+        self.assertContains(resp, "bambu-lab-pla-matte")
+
+    def test_sheet_renders_owned_marker(self):
+        from inventory.models import Filament, InventoryItem, Location
+
+        loc = Location.objects.create(name="shelf-a")
+        fil = Filament.objects.create(
+            name="PLA Matte Latte",
+            upc="0000000000099",
+            material=self.mat,
+            color="Latte",
+            hex_code="#E8D9C0",
+            manufacturer="Bambu Lab",
+        )
+        InventoryItem.objects.create(product=fil, location=loc, status=4)  # STORED
+        resp = self.client.get(
+            reverse("filament_color_sheet", kwargs={"slug": "bambu-lab-pla-matte"})
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Latte")
+        self.assertContains(resp, "Ash")
+        self.assertEqual(resp.context["n_owned"], 1)
+
+    def test_depleted_spool_not_counted_owned(self):
+        from inventory.models import Filament, InventoryItem, Location
+
+        loc = Location.objects.create(name="shelf-b")
+        fil = Filament.objects.create(
+            name="PLA Matte Ash",
+            upc="0000000000098",
+            material=self.mat,
+            color="Ash",
+            hex_code="#9A9A9A",
+            manufacturer="Bambu Lab",
+        )
+        InventoryItem.objects.create(product=fil, location=loc, status=5)  # DEPLETED
+        resp = self.client.get(
+            reverse("filament_color_sheet", kwargs={"slug": "bambu-lab-pla-matte"})
+        )
+        self.assertEqual(resp.context["n_owned"], 0)
+
+    def test_unknown_slug_404(self):
+        resp = self.client.get(
+            reverse("filament_color_sheet", kwargs={"slug": "nope-nope"})
+        )
+        self.assertEqual(resp.status_code, 404)
