@@ -410,11 +410,14 @@ Hex color backfill + filament guide Stage 2 requirements picker. Spec:
   guide properties (description, booleans, `drying_need`, `category`, etc.). Idempotent
   (`get_or_create` + field update). James runs after reviewing the CSV, then on prod:
   `manage.py migrate && manage.py load_guide_data`.
-- `load_filament_hex` — reads `docs/filament-colors.csv` (227 colors = 123 from 11 text
-  PDFs via `filament_hex.py` + 104 from vision pass over 16 screenshot PNGs). Updates
-  `Filament.hex_code`/`hex_code_2`/`color_family` where the UPC matches. Idempotent;
-  `--overwrite` flag clears `hex_code_2` on non-gradient rows. James runs after reviewing
-  the CSV. **Neither loader has been run on prod yet.**
+- `load_guide_data` **was run on prod (2026-06-12, `unchanged=38`)** — the guide picker is live.
+- `load_filament_hex` — **RETIRED 2026-06-13, never run on prod.** It matched owned `Filament`
+  spools by **color name** (NOT UPC — the CSV has no UPC column), with a narrowing step that
+  silently fell back to color-only matching. Because color names collide across materials,
+  `--overwrite` would have corrupted ~290 material-specific hexes to make 1 gradient land
+  (verified on prod 2026-06-12). Superseded by the Phase 17.4 `FilamentColor` catalog +
+  `seed_filament_colors`, which load the CSV verbatim and use an exact `(manufacturer,
+  material, subtype, color)` key for the owned-✓ join (no fuzzy color matching).
 
 **Stage 2 requirements picker on `/filament-guide/`:**
 - Base-polymer cards: each card surfaces the best-scoring subtype (JS scoring over a
@@ -427,7 +430,8 @@ Hex color backfill + filament guide Stage 2 requirements picker. Spec:
   collapsible headers are wanted).
 - **Prod deploy checklist** (migrations drop two columns — `food_safe`, and the boolean
   `drying_required` is replaced by `drying_need` — both safe, nightly backup is live):
-  `manage.py migrate` + `manage.py load_guide_data` + `manage.py load_filament_hex`.
+  `manage.py migrate` + `manage.py load_guide_data`. (The `load_filament_hex` loader was
+  retired 2026-06-13; Phase 17.4's `seed_filament_colors` replaces it.)
 
 ### Phase 17.4 — what was done (June 2026)
 
@@ -441,7 +445,7 @@ Spec: `docs/superpowers/specs/2026-06-13-filament-color-sheets-design.md`; plan:
   material_type, color_name)`. This is the color catalog 17.2's checklist named but never built —
   the CSV (`docs/filament-colors.csv`, 227 colors) is now loadable into the DB.
 - **`seed_filament_colors`** command (logic in `inventory/color_catalog.py` for testability,
-  mirroring the `guide_data.py`/`hex_loader.py` split). Idempotent `get_or_create`; **defaults
+  mirroring the `guide_data.py` loader/command split). Idempotent `get_or_create`; **defaults
   brand to `Bambu Lab`** and reads an **optional `manufacturer` CSV column** (so Polymaker rows
   append later with no code change); resolves the `material` FK by `(name, type)` and reports
   colors with no matching `Material`. Human-gated like the other loaders.
@@ -459,7 +463,7 @@ Spec: `docs/superpowers/specs/2026-06-13-filament-color-sheets-design.md`; plan:
   (`slug = slugify(manufacturer-material-subtype)`, resolved against each group's computed slug —
   no stored slug field; 404 on miss). **Owned-✓ join is exact** `(manufacturer, material, subtype,
   color)` over **in-stock** items only (excludes DEPLETED/SOLD/UNKNOWN) — sidesteps the
-  `hex_loader.py` color-only over-match bug.
+  color-only over-match bug of the now-retired `hex_loader.py`.
 - Print sheet: CSS-grid swatch wall, gradient swatches reused from `filament_color_guide.html`,
   owned swatches get a double border + ✓ + roll count, `@media print` hides nav/buttons
   (`break-inside: avoid`), inline `window.print()` trigger (no new JS file). `FilamentColorAdmin`
