@@ -6997,3 +6997,83 @@ class BambuMqttParseTests(TestCase):
         )
         self.assertEqual(parse_ams_modules(None), {})
         self.assertEqual(parse_ams_modules([]), {})
+
+
+class SyncSpoolsCommandTests(TestCase):
+    def test_apply_is_blocked(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command("sync_spools", "--apply")
+
+    def test_dryrun_writes_artifact_and_no_db_writes(self):
+        import json
+        import tempfile
+        from decimal import Decimal
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from django.core.management import call_command
+
+        from inventory.models import (
+            AMS,
+            AMSChannelState,
+            Filament,
+            InventoryItem,
+            Location,
+            Material,
+            PrinterDevice,
+        )
+
+        dev = PrinterDevice.objects.create(
+            serial="00M09D460801722",
+            name="Scooby Doo",
+            ip_address="10.10.30.14",
+            access_code="x",
+        )
+        ams_item = InventoryItem.objects.create(
+            product=AMS.objects.create(name="AMS", upc="upc900000001"),
+            serial_number="00600A452241166",
+        )
+        slot = Location.objects.create(
+            name="AMS-slot1",
+            kind=Location.Kind.AMS_SLOT,
+            unit=ams_item,
+            slot_index=1,
+            default_status=InventoryItem.Status.IN_USE,
+        )
+        mat = Material.objects.create(name="PLA", material_type="Basic")
+        fil = Filament.objects.create(
+            name="PLA W", upc="ss1", material=mat, hex_code="#ffffff"
+        )
+        spool = InventoryItem.objects.create(
+            product=fil,
+            location=slot,
+            percent_remaining=Decimal("100"),
+        )
+        AMSChannelState.objects.create(
+            device=dev,
+            ams_index=0,
+            tray_index=0,
+            tray_uuid="31D95EE890CA468D8119FE4946EB21B2",
+            tray_type="PLA",
+            color_hex="FFFFFFFF",
+            remain_pct=67,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch(
+                "inventory.management.commands.sync_spools.bambu_mqtt.fetch_ams_serials_all",
+                return_value={(dev.id, 0): "00600A452241166"},
+            ):
+                call_command("sync_spools", "--out-dir", tmp)
+            files = list(Path(tmp).glob("spool-sync-*.json"))
+            self.assertEqual(len(files), 1)
+            data = json.loads(files[0].read_text())
+            self.assertEqual(data["counts"]["match"], 1)
+            self.assertEqual(data["proposals"][0]["write_percent_to"], 67)
+
+        spool.refresh_from_db()
+        self.assertEqual(spool.serial_number, "")
+        self.assertEqual(int(spool.percent_remaining), 100)
