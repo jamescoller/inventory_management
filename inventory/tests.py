@@ -6971,3 +6971,29 @@ class SpoolSyncTests(TestCase):
         spool.refresh_from_db()
         self.assertEqual(spool.serial_number, "")  # unchanged
         self.assertEqual(int(spool.percent_remaining), 100)  # unchanged
+
+
+class BambuMqttParseTests(TestCase):
+    def test_parse_ams_modules(self):
+        from inventory.bambu_mqtt import parse_ams_modules
+
+        modules = [
+            {"name": "ota", "sn": "0948CD531200537"},  # not an AMS
+            {"name": "ams/0", "sn": "00600A452241166"},  # AMS-Lite
+            {"name": "ams/1", "sn": "00600A462518921"},
+            {"name": "n3f/2", "sn": "19C06A510501697"},  # H2D AMS 2 Pro
+            {"name": "n3s/128", "sn": "19F06A532302491"},  # H2D AMS-HT
+            {"name": "mc-sub", "sn": "N/A"},  # ignored
+            {"name": "ams/3"},  # no sn -> ignored
+        ]
+        self.assertEqual(
+            parse_ams_modules(modules),
+            {
+                0: "00600A452241166",
+                1: "00600A462518921",
+                2: "19C06A510501697",
+                128: "19F06A532302491",
+            },
+        )
+        self.assertEqual(parse_ams_modules(None), {})
+        self.assertEqual(parse_ams_modules([]), {})
