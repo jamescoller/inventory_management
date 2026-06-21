@@ -530,6 +530,38 @@ prefix `term*` matching, bm25 ranking). Architecture:
   ranked result with the existing status/type/location/date filters; exact filters
   (`sku`/`upc`/`serial`/`item_id`) keep their own branches.
 
+### Phase 16.3 — spool-sync dry-run matcher (trust gate) (June 2026, PR #174)
+
+The read-only first slice of MQTT auto-sync: a `sync_spools` command that resolves each Bambu AMS
+tray to the inventory spool in its slot and proposes `serial_number`/`percent_remaining` writes —
+**zero inventory writes**. Spec/plan: `docs/superpowers/{specs,plans}/2026-06-21-spool-sync-dryrun*`.
+Built subagent-driven (TDD per task, per-task spec+quality review, Opus whole-branch review). 3 new
+modules, **no migration**, 12 tests:
+- `inventory/spool_sync.py` — pure matcher. `build_report(ams_serial_map) -> SyncReport` with a
+  10-category matrix; `classify_tray` keys BAMBU/NON_BAMBU/EMPTY off the all-zeros UUID (`"0"*32`)
+  + tray_type/color presence. Polymorphic-safe (`get_real_instance()`, never `select_related`).
+- `inventory/bambu_mqtt.py` — live `get_version` probe = the deterministic AMS↔unit bridge. A
+  module is an AMS iff its name matches `^(?:ams|n3f|n3s)/(\d+)$` (group = telemetry `ams_index`):
+  AMS-Lite `ams/N`, H2D AMS-2-Pro `n3f/N`, H2D AMS-HT `n3s/128`. **Serial is the only reliable
+  AMS↔record key** (same lesson as the Phase 6 reconcile). Fast-fails `{}` on MQTT auth-reject so
+  one bad printer can't stall the serial batch. Only `parse_ams_modules` is unit-tested.
+- `inventory/management/commands/sync_spools.py` — writes a gitignored `telemetry_review/*.json`
+  artifact + stdout summary. **`--apply` is hard-blocked** (`CommandError`) — go-live is a later
+  session.
+- **Design call (validated on live data, James confirmed): keep flag-ambiguity.** A blank inventory
+  `hex_code` makes `color_match` False → the tray is flagged `COLOR_MISMATCH` rather than proposing
+  a write (spec §2 "flag ambiguity, don't guess"). The feared blank-hex noise did NOT materialize —
+  Phase 17's color work means inventory hexes are populated; all 6 live mismatches were real
+  near-misses worth eyeballing. Do **not** add a `color_unknown` bucket.
+- **Prod-verified (Task 6, 2026-06-21):** merged → auto-deployed → ran in the telemetry container
+  (it has paho-mqtt + access codes + the WAL DB). Bridge **10/10 matched** (incl. `n3s/128`), **zero
+  writes** (machine-serial count 18→18; filament serials still blank), report = 11 match / 6
+  color-mismatch / 8 missing-item / 3 inventory-only / 3 slot-overfilled. **Before `--apply` next
+  session:** reconcile the 3 SLOT_OVERFILLED (3 inv items on one H2D physical slot) + the
+  missing/inventory-only drift, then build `--apply`; per spec §7 go-live also promotes `get_version`
+  capture into the telemetry consumer + an `AMSUnitState.serial` field (durable bridge vs. the
+  runtime probe).
+
 ### Roadmap (rewritten 2026-06-09 — Phases 11–18)
 
 A 10,000-ft review (2026-06-09) replaced the old Phase 5–10 framing with a forward,
