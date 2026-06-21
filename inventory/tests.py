@@ -6749,3 +6749,331 @@ class PlaVariantMaterialsTests(TestCase):
         self.assertIsNotNone(fc.material)
         self.assertEqual(fc.material.material_type, "Gradient")
         self.assertTrue(fc.is_gradient)
+
+
+class SpoolSyncTests(TestCase):
+    def _make_ams_unit(self, serial):
+        from inventory.models import AMS, InventoryItem, Location
+
+        product = AMS.objects.create(name="Bambu Lab AMS", upc=f"upc{serial[:9]}")
+        ams_item = InventoryItem.objects.create(product=product, serial_number=serial)
+        slots = []
+        for i in range(1, 5):
+            slots.append(
+                Location.objects.create(
+                    name=f"{serial}-slot{i}",
+                    kind=Location.Kind.AMS_SLOT,
+                    unit=ams_item,
+                    slot_index=i,
+                    default_status=InventoryItem.Status.IN_USE,
+                )
+            )
+        return ams_item, slots
+
+    def test_normalize_hex(self):
+        from inventory.spool_sync import normalize_hex
+
+        self.assertEqual(normalize_hex("#FFFFFF"), "ffffff")
+        self.assertEqual(normalize_hex("057748FF"), "057748")  # RRGGBBAA -> first 6
+        self.assertEqual(normalize_hex("4d5054"), "4d5054")  # no leading #
+        self.assertIsNone(normalize_hex(""))
+        self.assertIsNone(normalize_hex(None))
+        self.assertIsNone(normalize_hex("xyz"))
+
+    def test_classify_tray(self):
+        from inventory.spool_sync import classify_tray
+
+        # Bambu RFID roll (real uuid)
+        self.assertEqual(
+            classify_tray("31D95EE890CA468D8119FE4946EB21B2", "PETG", "FFFFFFFF"),
+            "BAMBU",
+        )
+        # Non-Bambu Polymaker roll: zeros uuid but type+color present
+        self.assertEqual(classify_tray("0" * 32, "ASA", "057748FF"), "NON_BAMBU")
+        self.assertEqual(classify_tray("", "ASA", "057748FF"), "NON_BAMBU")
+        # Empty slot: no type, no color
+        self.assertEqual(classify_tray("0" * 32, "", ""), "EMPTY")
+        self.assertEqual(classify_tray("", None, None), "EMPTY")
+
+    def test_resolve_and_slot_and_spools(self):
+        from decimal import Decimal
+
+        from inventory.models import Filament, InventoryItem, Material
+        from inventory.spool_sync import (
+            filament_of,
+            resolve_ams_item,
+            slot_for,
+            spools_in_slot,
+        )
+
+        ams_item, slots = self._make_ams_unit("00600A452241166")
+        self.assertEqual(
+            resolve_ams_item("00600a452241166"), ams_item
+        )  # case-insensitive
+        self.assertIsNone(resolve_ams_item("NOPE"))
+        self.assertIsNone(resolve_ams_item(""))
+
+        # tray_index 0 -> slot_index 1
+        self.assertEqual(slot_for(ams_item, 0), slots[0])
+        self.assertEqual(slot_for(ams_item, 3), slots[3])
+
+        mat = Material.objects.create(name="PLA", material_type="Basic")
+        fil = Filament.objects.create(
+            name="PLA White", upc="ss0000001", material=mat, hex_code="#ffffff"
+        )
+        spool = InventoryItem.objects.create(
+            product=fil, location=slots[0], percent_remaining=Decimal("100")
+        )
+        self.assertEqual(spools_in_slot(slots[0]), [spool])
+        self.assertEqual(spools_in_slot(slots[1]), [])
+        self.assertEqual(filament_of(spool), fil)
+        self.assertIsNone(filament_of(ams_item))  # an AMS is not a Filament
+
+        # sticky (depleted) item is not "in stock"
+        spool.status = InventoryItem.Status.DEPLETED
+        spool.save()
+        self.assertEqual(spools_in_slot(slots[0]), [])
+
+    def _device(self):
+        from inventory.models import PrinterDevice
+
+        return PrinterDevice.objects.create(
+            serial="00M09D460801722",
+            name="Scooby Doo",
+            ip_address="10.10.30.14",
+            access_code="x",
+        )
+
+    def _channel(self, dev, ams_index, tray_index, uuid, ttype, color, remain):
+        from inventory.models import AMSChannelState
+
+        return AMSChannelState.objects.create(
+            device=dev,
+            ams_index=ams_index,
+            tray_index=tray_index,
+            tray_uuid=uuid,
+            tray_type=ttype,
+            color_hex=color,
+            remain_pct=remain,
+        )
+
+    def _spool(self, slot, hexc, percent="100", serial=""):
+        from decimal import Decimal
+
+        from inventory.models import Filament, InventoryItem, Material
+
+        mat, _ = Material.objects.get_or_create(name="PLA", material_type="Basic")
+        fil = Filament.objects.create(
+            name=f"PLA {hexc}",
+            upc=f"u{abs(hash((slot.id, hexc))) % 10**9}",
+            material=mat,
+            hex_code=hexc,
+        )
+        return InventoryItem.objects.create(
+            product=fil,
+            location=slot,
+            percent_remaining=Decimal(percent),
+            serial_number=serial,
+        )
+
+    def test_bambu_match_proposes_serial_and_percent(self):
+        from inventory.spool_sync import build_report
+
+        dev = self._device()
+        ams, slots = self._make_ams_unit("00600A452241166")
+        self._spool(slots[0], "#ffffff", percent="100")
+        self._channel(
+            dev, 0, 0, "31D95EE890CA468D8119FE4946EB21B2", "PLA", "FFFFFFFF", 67
+        )
+
+        rep = build_report({(dev.id, 0): "00600A452241166"})
+        self.assertEqual(rep.counts["match"], 1)
+        self.assertEqual(len(rep.proposals), 1)
+        p = rep.proposals[0]
+        self.assertEqual(p.write_serial, "31D95EE890CA468D8119FE4946EB21B2")
+        self.assertEqual(p.write_percent_to, 67)
+        self.assertTrue(p.color_match)
+
+    def test_non_bambu_present_proposes_nothing(self):
+        from inventory.spool_sync import build_report
+
+        dev = self._device()
+        ams, slots = self._make_ams_unit("00600A452241166")
+        self._spool(slots[0], "#057748")  # matches the Polymaker green
+        self._channel(dev, 0, 0, "0" * 32, "ASA", "057748FF", -1)
+
+        rep = build_report({(dev.id, 0): "00600A452241166"})
+        self.assertEqual(rep.counts["non_bambu_ok"], 1)
+        self.assertEqual(rep.proposals, [])
+
+    def test_color_mismatch_flags_no_write(self):
+        from inventory.spool_sync import build_report
+
+        dev = self._device()
+        ams, slots = self._make_ams_unit("00600A452241166")
+        self._spool(slots[0], "#00a95c")  # inventory green != telemetry green
+        self._channel(
+            dev, 0, 0, "AAAA1111BBBB2222CCCC3333DDDD4444", "ASA", "057748FF", 80
+        )
+
+        rep = build_report({(dev.id, 0): "00600A452241166"})
+        self.assertEqual(rep.counts["color_mismatch"], 1)
+        self.assertEqual(rep.proposals, [])
+        self.assertEqual(rep.flags[0].category, "COLOR_MISMATCH")
+
+    def test_missing_item_and_inventory_only_and_unmapped(self):
+        from inventory.spool_sync import build_report
+
+        dev = self._device()
+        ams, slots = self._make_ams_unit("00600A452241166")
+        # occupied tray, empty slot -> MISSING_ITEM
+        self._channel(
+            dev, 0, 0, "11112222333344445555666677778888", "PLA", "FFFFFFFF", 50
+        )
+        # empty tray, occupied slot -> INVENTORY_ONLY
+        self._spool(slots[1], "#ffffff")
+        self._channel(dev, 0, 1, "", "", "", -1)
+        # a tray whose ams_index has no serial bridge -> UNMAPPED_AMS
+        self._channel(
+            dev, 9, 0, "99998888777766665555444433332222", "PLA", "000000FF", 30
+        )
+
+        rep = build_report({(dev.id, 0): "00600A452241166"})
+        self.assertEqual(rep.counts["missing_item"], 1)
+        self.assertEqual(rep.counts["inventory_only"], 1)
+        self.assertEqual(rep.counts["unmapped_ams"], 1)
+
+    def test_serial_conflict_never_overwrites(self):
+        from inventory.spool_sync import build_report
+
+        dev = self._device()
+        ams, slots = self._make_ams_unit("00600A452241166")
+        self._spool(slots[0], "#ffffff", serial="PRE-EXISTING-SERIAL")
+        self._channel(
+            dev, 0, 0, "31D95EE890CA468D8119FE4946EB21B2", "PLA", "FFFFFFFF", 67
+        )
+
+        rep = build_report({(dev.id, 0): "00600A452241166"})
+        self.assertEqual(rep.counts["serial_conflict"], 1)
+        self.assertEqual(rep.proposals, [])
+
+    def test_build_report_writes_nothing(self):
+        from inventory.spool_sync import build_report
+
+        dev = self._device()
+        ams, slots = self._make_ams_unit("00600A452241166")
+        spool = self._spool(slots[0], "#ffffff", percent="100")
+        self._channel(
+            dev, 0, 0, "31D95EE890CA468D8119FE4946EB21B2", "PLA", "FFFFFFFF", 67
+        )
+
+        build_report({(dev.id, 0): "00600A452241166"})
+        spool.refresh_from_db()
+        self.assertEqual(spool.serial_number, "")  # unchanged
+        self.assertEqual(int(spool.percent_remaining), 100)  # unchanged
+
+
+class BambuMqttParseTests(TestCase):
+    def test_parse_ams_modules(self):
+        from inventory.bambu_mqtt import parse_ams_modules
+
+        modules = [
+            {"name": "ota", "sn": "0948CD531200537"},  # not an AMS
+            {"name": "ams/0", "sn": "00600A452241166"},  # AMS-Lite
+            {"name": "ams/1", "sn": "00600A462518921"},
+            {"name": "n3f/2", "sn": "19C06A510501697"},  # H2D AMS 2 Pro
+            {"name": "n3s/128", "sn": "19F06A532302491"},  # H2D AMS-HT
+            {"name": "mc-sub", "sn": "N/A"},  # ignored
+            {"name": "ams/3"},  # no sn -> ignored
+        ]
+        self.assertEqual(
+            parse_ams_modules(modules),
+            {
+                0: "00600A452241166",
+                1: "00600A462518921",
+                2: "19C06A510501697",
+                128: "19F06A532302491",
+            },
+        )
+        self.assertEqual(parse_ams_modules(None), {})
+        self.assertEqual(parse_ams_modules([]), {})
+
+
+class SyncSpoolsCommandTests(TestCase):
+    def test_apply_is_blocked(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command("sync_spools", "--apply")
+
+    def test_dryrun_writes_artifact_and_no_db_writes(self):
+        import json
+        import tempfile
+        from decimal import Decimal
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from django.core.management import call_command
+
+        from inventory.models import (
+            AMS,
+            AMSChannelState,
+            Filament,
+            InventoryItem,
+            Location,
+            Material,
+            PrinterDevice,
+        )
+
+        dev = PrinterDevice.objects.create(
+            serial="00M09D460801722",
+            name="Scooby Doo",
+            ip_address="10.10.30.14",
+            access_code="x",
+        )
+        ams_item = InventoryItem.objects.create(
+            product=AMS.objects.create(name="AMS", upc="upc900000001"),
+            serial_number="00600A452241166",
+        )
+        slot = Location.objects.create(
+            name="AMS-slot1",
+            kind=Location.Kind.AMS_SLOT,
+            unit=ams_item,
+            slot_index=1,
+            default_status=InventoryItem.Status.IN_USE,
+        )
+        mat = Material.objects.create(name="PLA", material_type="Basic")
+        fil = Filament.objects.create(
+            name="PLA W", upc="ss1", material=mat, hex_code="#ffffff"
+        )
+        spool = InventoryItem.objects.create(
+            product=fil,
+            location=slot,
+            percent_remaining=Decimal("100"),
+        )
+        AMSChannelState.objects.create(
+            device=dev,
+            ams_index=0,
+            tray_index=0,
+            tray_uuid="31D95EE890CA468D8119FE4946EB21B2",
+            tray_type="PLA",
+            color_hex="FFFFFFFF",
+            remain_pct=67,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch(
+                "inventory.management.commands.sync_spools.bambu_mqtt.fetch_ams_serials_all",
+                return_value={(dev.id, 0): "00600A452241166"},
+            ):
+                call_command("sync_spools", "--out-dir", tmp)
+            files = list(Path(tmp).glob("spool-sync-*.json"))
+            self.assertEqual(len(files), 1)
+            data = json.loads(files[0].read_text())
+            self.assertEqual(data["counts"]["match"], 1)
+            self.assertEqual(data["proposals"][0]["write_percent_to"], 67)
+
+        spool.refresh_from_db()
+        self.assertEqual(spool.serial_number, "")
+        self.assertEqual(int(spool.percent_remaining), 100)
