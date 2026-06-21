@@ -6862,7 +6862,7 @@ class SpoolSyncTests(TestCase):
 
         from inventory.models import Filament, InventoryItem, Material
 
-        mat = Material.objects.create(name="PLA", material_type="Basic")
+        mat, _ = Material.objects.get_or_create(name="PLA", material_type="Basic")
         fil = Filament.objects.create(
             name=f"PLA {hexc}",
             upc=f"u{abs(hash((slot.id, hexc))) % 10**9}",
