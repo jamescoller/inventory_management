@@ -209,9 +209,16 @@ Spec/plan in `docs/superpowers/`. Live: all 4 printers mirroring, 0 DB-locks.*
   (pure matcher: `classify_tray`/`build_report`, 10-category matrix, **zero inventory writes**),
   `inventory/bambu_mqtt.py` (`get_version` AMS-serial bridge probe), command writes a gitignored
   `telemetry_review/` JSON artifact + stdout summary. `--apply` is hard-blocked. 12 tests, no
-  migration. **Pending James:** live read-only first run on prod (Task 6) + a design call on
-  whether blank inventory `hex_code` should stay `COLOR_MISMATCH` (current, by spec §2 "flag
-  ambiguity") or get its own `color_unknown` bucket — the dry-run report will reveal if it's noisy.
+  migration. **Prod-verified 2026-06-21** (PR #174 merged): bridge 10/10 matched (incl. H2D
+  `n3s/128`), zero writes, report = 11 match / 6 color-mismatch / 8 missing-item / 3 inv-only /
+  3 slot-overfilled. Design call **settled** — keep flag-ambiguity (blank hex → `COLOR_MISMATCH`);
+  no `color_unknown` bucket (all 6 live mismatches were real near-misses, no blank-hex noise).
+- [ ] **Interactive reconciliation page** (`/spool-sync/`) — the write surface for 16.3. Live
+  per-slot INV-vs-MQTT table; resolve each discrepancy git-merge style (Learn serial/percent ·
+  Keep INV / Take MQTT color · Acknowledge inv-only). v1 = safe subset; per-value acknowledgments;
+  cached `get_version` bridge + manual refresh. **Spec written** (`feat/spool-sync-page`:
+  `docs/superpowers/specs/2026-06-21-spool-sync-reconcile-page-design.md`), **pending James review**
+  → then writing-plans → subagent-driven build. `--apply` command stays dry-run (page supersedes it).
 
 ---
 
