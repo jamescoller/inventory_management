@@ -6,6 +6,8 @@ is passed in (fetched live by inventory.bambu_mqtt); see
 docs/superpowers/specs/2026-06-21-spool-sync-dryrun-design.md.
 """
 
+from .models import AMS, Filament, InventoryItem, Location
+
 ALL_ZEROS = "0" * 32
 _HEXDIGITS = set("0123456789abcdef")
 
@@ -40,3 +42,35 @@ def material_matches(tray_type, filament):
     mat = filament.material
     haystack = f"{mat.name} {mat.material_type}".lower()
     return tray_type.strip().lower() in haystack
+
+
+def resolve_ams_item(serial):
+    """The AMS unit InventoryItem whose serial_number matches (case-insensitive)."""
+    if not serial:
+        return None
+    for item in InventoryItem.objects.filter(serial_number__iexact=serial):
+        if isinstance(item.product.get_real_instance(), AMS):
+            return item
+    return None
+
+
+def slot_for(ams_item, tray_index):
+    """The ams_slot Location for this unit at slot_index = tray_index + 1."""
+    return Location.objects.filter(
+        kind=Location.Kind.AMS_SLOT, unit=ams_item, slot_index=tray_index + 1
+    ).first()
+
+
+def spools_in_slot(slot):
+    """In-stock InventoryItems in this slot (excludes DEPLETED/SOLD/UNKNOWN)."""
+    return list(
+        InventoryItem.objects.filter(location=slot).exclude(
+            status__in=InventoryItem.STICKY_STATUSES
+        )
+    )
+
+
+def filament_of(item):
+    """The real Filament product for an item, or None (polymorphic-safe)."""
+    product = item.product.get_real_instance()
+    return product if isinstance(product, Filament) else None

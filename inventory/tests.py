@@ -6752,6 +6752,24 @@ class PlaVariantMaterialsTests(TestCase):
 
 
 class SpoolSyncTests(TestCase):
+    def _make_ams_unit(self, serial):
+        from inventory.models import AMS, InventoryItem, Location
+
+        product = AMS.objects.create(name="Bambu Lab AMS", upc=f"upc{serial[:9]}")
+        ams_item = InventoryItem.objects.create(product=product, serial_number=serial)
+        slots = []
+        for i in range(1, 5):
+            slots.append(
+                Location.objects.create(
+                    name=f"{serial}-slot{i}",
+                    kind=Location.Kind.AMS_SLOT,
+                    unit=ams_item,
+                    slot_index=i,
+                    default_status=InventoryItem.Status.IN_USE,
+                )
+            )
+        return ams_item, slots
+
     def test_normalize_hex(self):
         from inventory.spool_sync import normalize_hex
 
@@ -6776,3 +6794,42 @@ class SpoolSyncTests(TestCase):
         # Empty slot: no type, no color
         self.assertEqual(classify_tray("0" * 32, "", ""), "EMPTY")
         self.assertEqual(classify_tray("", None, None), "EMPTY")
+
+    def test_resolve_and_slot_and_spools(self):
+        from decimal import Decimal
+
+        from inventory.models import Filament, InventoryItem, Material
+        from inventory.spool_sync import (
+            filament_of,
+            resolve_ams_item,
+            slot_for,
+            spools_in_slot,
+        )
+
+        ams_item, slots = self._make_ams_unit("00600A452241166")
+        self.assertEqual(
+            resolve_ams_item("00600a452241166"), ams_item
+        )  # case-insensitive
+        self.assertIsNone(resolve_ams_item("NOPE"))
+        self.assertIsNone(resolve_ams_item(""))
+
+        # tray_index 0 -> slot_index 1
+        self.assertEqual(slot_for(ams_item, 0), slots[0])
+        self.assertEqual(slot_for(ams_item, 3), slots[3])
+
+        mat = Material.objects.create(name="PLA", material_type="Basic")
+        fil = Filament.objects.create(
+            name="PLA White", upc="ss0000001", material=mat, hex_code="#ffffff"
+        )
+        spool = InventoryItem.objects.create(
+            product=fil, location=slots[0], percent_remaining=Decimal("100")
+        )
+        self.assertEqual(spools_in_slot(slots[0]), [spool])
+        self.assertEqual(spools_in_slot(slots[1]), [])
+        self.assertEqual(filament_of(spool), fil)
+        self.assertIsNone(filament_of(ams_item))  # an AMS is not a Filament
+
+        # sticky (depleted) item is not "in stock"
+        spool.status = InventoryItem.Status.DEPLETED
+        spool.save()
+        self.assertEqual(spools_in_slot(slots[0]), [])
