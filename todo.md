@@ -203,8 +203,15 @@ Spec/plan in `docs/superpowers/`. Live: all 4 printers mirroring, 0 DB-locks.*
 - [ ] Match AMS `tray_uuid`(RFID) → `InventoryItem.serial_number`; write serial +
   `percent_remaining`. Auto-create `PrintJob`s from MQTT; utilization from MQ. HMS errors →
   open `MaintenanceEvent(kind=FAULT, resolved=False)`.
-- [ ] **Trust gate:** dry-run matcher logs *proposed* writes before any are enabled
+- [x] **Trust gate:** dry-run matcher logs *proposed* writes before any are enabled
   (same damage class as the Audit-15 mis-scan, but automated and unattended).
+  **Built** (`feat/spool-sync-dryrun`): read-only `sync_spools` command — `inventory/spool_sync.py`
+  (pure matcher: `classify_tray`/`build_report`, 10-category matrix, **zero inventory writes**),
+  `inventory/bambu_mqtt.py` (`get_version` AMS-serial bridge probe), command writes a gitignored
+  `telemetry_review/` JSON artifact + stdout summary. `--apply` is hard-blocked. 12 tests, no
+  migration. **Pending James:** live read-only first run on prod (Task 6) + a design call on
+  whether blank inventory `hex_code` should stay `COLOR_MISMATCH` (current, by spec §2 "flag
+  ambiguity") or get its own `color_unknown` bucket — the dry-run report will reveal if it's noisy.
 
 ---
 
