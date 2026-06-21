@@ -45,6 +45,7 @@ def fetch_ams_serials(device, *, timeout=15):
             logger.warning(
                 "get_version connect rc=%s for %s", reason_code, device.serial
             )
+            done["flag"] = True
             return
         client.subscribe(f"device/{device.serial}/report")
         client.publish(f"device/{device.serial}/request", GET_VERSION)
