@@ -6749,3 +6749,30 @@ class PlaVariantMaterialsTests(TestCase):
         self.assertIsNotNone(fc.material)
         self.assertEqual(fc.material.material_type, "Gradient")
         self.assertTrue(fc.is_gradient)
+
+
+class SpoolSyncTests(TestCase):
+    def test_normalize_hex(self):
+        from inventory.spool_sync import normalize_hex
+
+        self.assertEqual(normalize_hex("#FFFFFF"), "ffffff")
+        self.assertEqual(normalize_hex("057748FF"), "057748")  # RRGGBBAA -> first 6
+        self.assertEqual(normalize_hex("4d5054"), "4d5054")  # no leading #
+        self.assertIsNone(normalize_hex(""))
+        self.assertIsNone(normalize_hex(None))
+        self.assertIsNone(normalize_hex("xyz"))
+
+    def test_classify_tray(self):
+        from inventory.spool_sync import classify_tray
+
+        # Bambu RFID roll (real uuid)
+        self.assertEqual(
+            classify_tray("31D95EE890CA468D8119FE4946EB21B2", "PETG", "FFFFFFFF"),
+            "BAMBU",
+        )
+        # Non-Bambu Polymaker roll: zeros uuid but type+color present
+        self.assertEqual(classify_tray("0" * 32, "ASA", "057748FF"), "NON_BAMBU")
+        self.assertEqual(classify_tray("", "ASA", "057748FF"), "NON_BAMBU")
+        # Empty slot: no type, no color
+        self.assertEqual(classify_tray("0" * 32, "", ""), "EMPTY")
+        self.assertEqual(classify_tray("", None, None), "EMPTY")
