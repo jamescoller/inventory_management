@@ -4,4 +4,4 @@ pre-commit
 # pypdf: dev-only PDF text extraction for the Phase 17.1 filament-TDS parser
 # (`parse_filament_tds`). MUST NOT be added to requirements.txt — the production
 # image never imports it; parsing runs once on the dev LXC to emit review CSVs.
-pypdf>=6.0
+pypdf>=6.13.3
