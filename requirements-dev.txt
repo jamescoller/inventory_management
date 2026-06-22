@@ -1,5 +1,5 @@
 -r requirements.txt
-django-debug-toolbar>=6.3.0
+django-debug-toolbar>=7.0.0
 pre-commit
 # pypdf: dev-only PDF text extraction for the Phase 17.1 filament-TDS parser
 # (`parse_filament_tds`). MUST NOT be added to requirements.txt — the production
